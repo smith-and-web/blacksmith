@@ -1,5 +1,8 @@
 # blacksmith
 
+[![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Agentic development orchestrator — a [LangGraph](https://langchain-ai.github.io/langgraph/)
 state machine that drives a single work unit through
 **plan → implement → test-gate → review → PR**, with durable checkpointed state and
