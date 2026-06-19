@@ -1,0 +1,5 @@
+# Non-conforming: contains an unknown key under [target]. Strict parsing should
+# reject this (catches typos and stale keys early).
+[target]
+repo_path = "/tmp/kindling"
+wat = "unexpected"

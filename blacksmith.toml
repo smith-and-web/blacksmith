@@ -1,0 +1,8 @@
+# Toolchain for the test gate when blacksmith is the TARGET repo (self-dogfood,
+# PRD §5 / §11). Read by blacksmith/gate.py. This is DISTINCT from
+# blacksmith.config.toml, which is blacksmith's own runtime config.
+#
+# uv-prefixed so the commands resolve the project environment from a fresh worktree
+# checkout (the PRD's bare "pytest" / "ruff check" assume an already-active venv).
+test_cmd = "uv run pytest"
+lint_cmd = "uv run ruff check"

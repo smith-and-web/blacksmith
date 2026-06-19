@@ -1,0 +1,4 @@
+# Minimal conforming config — only the required [target] section. Everything
+# else (models, checkpointer, api) should fall back to defaults.
+[target]
+repo_path = "/tmp/kindling"

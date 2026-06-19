@@ -1,0 +1,3 @@
+# Non-conforming: [target] is present but the required repo_path key is missing.
+[target]
+default_branch = "main"

@@ -1,0 +1,147 @@
+"""Tests for the PR node (WU-08).
+
+Test contract (PRD §6, WU-08): integration against scratch repo / mocked gh. Unit
+tests use a recording fake runner; the integration test pushes a real branch to a
+bare scratch remote with only `gh` mocked.
+"""
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from blacksmith.contract import WorkUnit
+from blacksmith.nodes.pr import (
+    CommandResult,
+    PRError,
+    open_pr,
+    open_pull_request,
+    subprocess_runner,
+)
+from blacksmith.state import Status
+from blacksmith.worktree import WorktreeManager
+
+
+def _recording_runner(*, gh_url=None, gh_rc=0, push_rc=0):
+    calls: list[list[str]] = []
+
+    def run(argv, cwd=None):
+        calls.append(list(argv))
+        if argv and argv[0] == "gh":
+            stdout = (gh_url + "\n") if gh_url else ""
+            return CommandResult(gh_rc, stdout, "" if gh_rc == 0 else "boom")
+        if argv[:2] == ["git", "push"]:
+            return CommandResult(push_rc, "", "" if push_rc == 0 else "push rejected")
+        return CommandResult(0, "", "")
+
+    run.calls = calls
+    return run
+
+
+def _unit() -> WorkUnit:
+    return WorkUnit(
+        id="WU-01",
+        title="scaffold",
+        layers=["py-logic"],
+        target_modules=["pyproject.toml"],
+        test_contract="pytest",
+        depends_on=[],
+    )
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    ).stdout
+
+
+# --- open_pull_request -------------------------------------------------------
+
+
+def test_pushes_then_creates(tmp_path):
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/42")
+    pr = open_pull_request(
+        worktree_path=tmp_path, branch="blacksmith/wu-01", title="T", body="B", runner=runner
+    )
+    assert pr.url == "https://github.com/o/r/pull/42"
+    assert runner.calls[0][:2] == ["git", "push"]
+    assert runner.calls[1][:3] == ["gh", "pr", "create"]
+    assert "--head" in runner.calls[1] and "blacksmith/wu-01" in runner.calls[1]
+
+
+def test_push_failure_raises(tmp_path):
+    runner = _recording_runner(push_rc=1)
+    with pytest.raises(PRError, match="push"):
+        open_pull_request(worktree_path=tmp_path, branch="b", title="T", body="B", runner=runner)
+
+
+def test_gh_failure_raises(tmp_path):
+    runner = _recording_runner(gh_rc=1)
+    with pytest.raises(PRError, match="gh pr create"):
+        open_pull_request(worktree_path=tmp_path, branch="b", title="T", body="B", runner=runner)
+
+
+def test_unparseable_url_raises(tmp_path):
+    runner = _recording_runner(gh_url=None)  # gh "succeeds" but prints no URL
+    with pytest.raises(PRError, match="parse"):
+        open_pull_request(worktree_path=tmp_path, branch="b", title="T", body="B", runner=runner)
+
+
+# --- open_pr node ------------------------------------------------------------
+
+
+def test_node_success_sets_pr_url_and_done():
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/9")
+    out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+    assert out["pr_url"] == "https://github.com/o/r/pull/9"
+    assert out["status"] == Status.DONE
+
+
+def test_node_missing_inputs_halts():
+    out = open_pr({})
+    assert out["status"] == Status.HALTED
+    assert out["errors"][0]["node"] == "open_pr"
+
+
+def test_node_pr_error_halts():
+    runner = _recording_runner(gh_rc=1)
+    out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+    assert out["status"] == Status.HALTED
+    assert "gh pr create" in out["errors"][0]["message"]
+
+
+# --- integration: real push to a bare scratch remote, mocked gh --------------
+
+
+def test_integration_real_push_mocked_gh(tmp_path):
+    remote = tmp_path / "remote.git"
+    subprocess.run(
+        ["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "README.md").write_text("x\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "init")
+    _git(repo, "remote", "add", "origin", str(remote))
+
+    wt = WorktreeManager(repo, base_dir=tmp_path / "wt").create("WU-01")
+    (wt.path / "feature.txt").write_text("hi\n")
+    _git(wt.path, "add", "-A")
+    _git(wt.path, "commit", "-m", "feature")
+
+    def runner(argv, cwd=None):
+        if argv and argv[0] == "gh":
+            return CommandResult(0, "https://github.com/smith-and-web/kindling/pull/3\n", "")
+        return subprocess_runner(argv, cwd)  # real git
+
+    pr = open_pull_request(
+        worktree_path=wt.path, branch=wt.branch, title="WU-01", body="body", runner=runner
+    )
+    assert pr.url.endswith("/pull/3")
+    # the branch was really pushed to the bare remote
+    assert wt.branch in _git(remote, "branch", "--list", wt.branch)

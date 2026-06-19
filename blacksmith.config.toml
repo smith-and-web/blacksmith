@@ -1,0 +1,26 @@
+# blacksmith runtime config — parsed by blacksmith/config.py (BlacksmithConfig).
+#
+# This is blacksmith's OWN config. Do NOT confuse it with the per-target-repo
+# `blacksmith.toml` (toolchain test_cmd / lint_cmd), which lives in each TARGET
+# repo and is read by the test gate (PRD §12 decision 4).
+
+[target]
+# Absolute path to the repository blacksmith operates on.
+repo_path = "/path/to/target-repo"
+default_branch = "main"
+
+[models]
+# Per-node model tiering (PRD §8). Current model IDs only — no date suffixes.
+plan = "claude-sonnet-4-6"     # cheaper/faster: planning + triage
+implement = "claude-opus-4-8"  # strongest: implementation
+triage = "claude-haiku-4-5"
+
+[checkpointer]
+# SQLite checkpointer DB (PRD §12 decision 1). Relative to blacksmith's CWD.
+db_path = ".blacksmith/checkpoints.sqlite"
+
+[api]
+# blacksmith reads its dedicated Anthropic API key from this env var
+# (PRD §8 / §12 decision 3). The key itself lives in .env, never here.
+key_env_var = "BLACKSMITH_ANTHROPIC_API_KEY"
+prompt_caching = true

@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# blacksmith runtime
+.env
+.blacksmith/
+*.sqlite
+*.sqlite-*
+
+# Worktrees blacksmith creates against target repos
+/worktrees/
+
+# OS
+.DS_Store
