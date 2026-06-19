@@ -109,6 +109,16 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         }
 
     files, diff_summary = _stage_and_commit(worktree_path, f"blacksmith: {unit.id} {unit.title}")
+    if not files and not guard.blocked:
+        # The agent changed nothing — the unit wasn't implemented. Halt rather than
+        # gate an unchanged tree and then fail on an empty-diff PR.
+        return {
+            "status": Status.HALTED,
+            "errors": [
+                {"node": "implement", "message": "implement produced no file changes; "
+                 "nothing to gate or open a PR"}
+            ],
+        }
     update: dict = {
         "implementation": {
             "files_touched": files,
@@ -147,9 +157,11 @@ def _git(worktree_path: str, *args: str) -> str:
 
 def _implement_prompt(unit: WorkUnit) -> str:
     return (
-        "Implement this work unit fully inside the current working directory. Make the "
-        "minimal changes needed to satisfy the test contract; do not add anything beyond "
-        "what the unit asks for.\n\n"
+        "Implement this work unit fully inside the current working directory by creating or "
+        "editing the target modules. Make the minimal changes needed to satisfy the test "
+        "contract; do not add anything beyond what the unit asks for. Do NOT assume a target "
+        "module already exists — verify with Read and create it if missing. You are done only "
+        "once the target modules exist on disk with the required content.\n\n"
         f"Unit {unit.id}: {unit.title}\n"
         f"Layers: {', '.join(unit.layers)}\n"
         f"Target modules: {', '.join(unit.target_modules)}\n"

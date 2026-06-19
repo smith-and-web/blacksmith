@@ -154,3 +154,22 @@ def test_implement_missing_inputs_halts():
 
 def test_implement_noop_without_executor():
     assert implement({}) == {"status": Status.IMPLEMENTING}
+
+
+class NoOpFakeExecutor:
+    """Simulates an agent that writes nothing (e.g. wrongly thinks files exist)."""
+
+    def run_implement(self, prompt, **kwargs):
+        return _result(text="I believe the target files already exist.")
+
+
+def test_implement_halts_when_no_changes(tmp_path):
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    state = {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)}
+
+    out = implement(state, executor=NoOpFakeExecutor())
+    assert out["status"] == Status.HALTED
+    assert "no file changes" in out["errors"][0]["message"]
+    assert "implementation" not in out  # nothing to gate or PR
