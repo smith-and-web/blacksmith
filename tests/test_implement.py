@@ -173,3 +173,26 @@ def test_implement_halts_when_no_changes(tmp_path):
     assert out["status"] == Status.HALTED
     assert "no file changes" in out["errors"][0]["message"]
     assert "implementation" not in out  # nothing to gate or PR
+
+
+def test_guard_blocks_writes_outside_worktree():
+    guard = make_pre_edit_guard(worktree_root="/tmp/wt")
+    out = asyncio.run(guard("Write", {"file_path": "/Users/someone/realrepo/cli.py"}, None))
+    assert isinstance(out, PermissionResultDeny)
+    assert guard.blocked[0]["reason"] == "outside_worktree"
+
+
+def test_guard_allows_writes_inside_worktree():
+    guard = make_pre_edit_guard(worktree_root="/tmp/wt")
+    assert isinstance(
+        asyncio.run(guard("Write", {"file_path": "/tmp/wt/sub/file.py"}, None)),
+        PermissionResultAllow,
+    )
+
+
+def test_guard_allows_relative_paths_under_worktree():
+    guard = make_pre_edit_guard(worktree_root="/tmp/wt")
+    assert isinstance(
+        asyncio.run(guard("Write", {"file_path": "blacksmith/cli.py"}, None)),
+        PermissionResultAllow,
+    )

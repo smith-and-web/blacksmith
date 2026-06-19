@@ -19,7 +19,7 @@ from __future__ import annotations
 import fnmatch
 import subprocess
 from collections.abc import Sequence
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
@@ -49,19 +49,34 @@ def is_protected(path: str, protected_globs: Sequence[str] = DEFAULT_PROTECTED_G
     return any(fnmatch.fnmatch(posix, glob) for glob in protected_globs)
 
 
-def make_pre_edit_guard(protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS):
-    """Build a ``can_use_tool`` callback that denies writes to untouchable paths.
+def make_pre_edit_guard(
+    protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS,
+    *,
+    worktree_root: str | Path | None = None,
+):
+    """Build a ``can_use_tool`` callback that denies dangerous writes.
 
-    The returned callback carries a ``.blocked`` list recording every denied attempt,
-    so the node can surface them for human sign-off (AC-7).
+    It blocks two things and records each in ``.blocked`` (so the node can surface them
+    for human sign-off, AC-7): (1) writes whose path is outside ``worktree_root`` — the
+    isolation boundary (§4/§5), so the agent can never edit the real checkout; and
+    (2) writes to untouchable paths (§7).
     """
     blocked: list[dict] = []
+    root = Path(worktree_root).resolve() if worktree_root is not None else None
 
     async def can_use_tool(tool_name, tool_input, context):
         if tool_name in _WRITE_TOOLS:
             path = tool_input.get("file_path") or tool_input.get("path") or ""
+            if path and root is not None and not _within_worktree(root, path):
+                blocked.append({"tool": tool_name, "path": path, "reason": "outside_worktree"})
+                return PermissionResultDeny(
+                    message=(
+                        f"BLOCKED: {path} is outside the worktree ({root}). Every edit must "
+                        "stay inside the worktree — use a path within it."
+                    )
+                )
             if path and is_protected(path, protected_globs):
-                blocked.append({"tool": tool_name, "path": path})
+                blocked.append({"tool": tool_name, "path": path, "reason": "untouchable"})
                 return PermissionResultDeny(
                     message=(
                         f"BLOCKED: {path} is an untouchable path (PRD §7). "
@@ -72,6 +87,19 @@ def make_pre_edit_guard(protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS
 
     can_use_tool.blocked = blocked
     return can_use_tool
+
+
+def _within_worktree(root: Path, path: str) -> bool:
+    """A relative path resolves against the agent's cwd (the worktree); an absolute path
+    must resolve to somewhere under the worktree root."""
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        return True
+    try:
+        candidate.resolve().relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 def implement(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
@@ -87,7 +115,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
             "errors": [{"node": "implement", "message": "missing prd/selected_unit/worktree_path"}],
         }
 
-    guard = make_pre_edit_guard()
+    guard = make_pre_edit_guard(worktree_root=worktree_path)
     result = executor.run_implement(
         _implement_prompt(unit),
         system_prompt=_system_prompt(prd.contract),
@@ -162,6 +190,9 @@ def _implement_prompt(unit: WorkUnit) -> str:
         "contract; do not add anything beyond what the unit asks for. Do NOT assume a target "
         "module already exists — verify with Read and create it if missing. You are done only "
         "once the target modules exist on disk with the required content.\n\n"
+        "Work ONLY within the current working directory, using paths relative to it. Never "
+        "edit a file by an absolute path or outside this directory — it is an isolated "
+        "worktree, not the canonical repo.\n\n"
         f"Unit {unit.id}: {unit.title}\n"
         f"Layers: {', '.join(unit.layers)}\n"
         f"Target modules: {', '.join(unit.target_modules)}\n"
