@@ -15,6 +15,7 @@ from pathlib import Path
 
 from langgraph.types import Command
 
+from blacksmith import __version__
 from blacksmith.config import BlacksmithConfig
 from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
@@ -81,6 +82,9 @@ def _report(snapshot) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
     parser.add_argument("prd_path", help="Path to a contract-conforming PRD markdown file.")
     parser.add_argument(
         "--config", default="blacksmith.config.toml", help="blacksmith config path."
