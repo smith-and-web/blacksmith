@@ -13,7 +13,8 @@ is the per-node execution engine; blacksmith operates *on* a target repository
 The point of v0 is to bootstrap a working, inspectable understanding of LangGraph's
 state-machine / checkpoint / human-in-the-loop model — Kindling is the dogfood;
 LangGraph fluency is the deliverable. See [`blacksmith-v0-prd.md`](blacksmith-v0-prd.md)
-for the full spec.
+for the full spec. Writing your own PRD? The [PRD authoring guide](docs/prd-authoring-guide.md)
+documents the contract every PRD must conform to.
 
 **Status:** v0 spine complete — all 11 work units built and test-gated (90 tests),
 and the first live dogfood passed end to end (plan → implement → test-gate →
