@@ -33,6 +33,12 @@ _ALLOWED_TOOLS = ["Read", "Glob", "Grep"]  # auto-allowed read-only tools
 _DISALLOWED_TOOLS = ["Bash"]  # no shell escape around the guard in v0
 _IMPLEMENT_MAX_TURNS = 40
 
+# The target repo's CLAUDE.md (if committed) is injected into the implementer's system
+# prompt as project context, so a repo with no claude.ai Project still carries its own
+# conventions into the run. See _read_project_context for why we read it ourselves
+# rather than enabling the SDK's setting_sources loader.
+_PROJECT_CONTEXT_FILE = "CLAUDE.md"
+
 # Path-like untouchables (PRD §7). Matched against the file's POSIX path with fnmatch
 # (so `*` spans separators). The behavioral untouchables are NOT path-matchable.
 DEFAULT_PROTECTED_GLOBS: tuple[str, ...] = (
@@ -118,7 +124,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     guard = make_pre_edit_guard(worktree_root=worktree_path)
     result = executor.run_implement(
         _implement_prompt(unit),
-        system_prompt=_system_prompt(prd.contract),
+        system_prompt=_system_prompt(prd.contract, _read_project_context(worktree_path)),
         cwd=worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
         # "default" permission mode they evaluate to "ask" and route through the
@@ -200,12 +206,35 @@ def _implement_prompt(unit: WorkUnit) -> str:
     )
 
 
-def _system_prompt(contract: PRDContract) -> str:
+def _read_project_context(worktree_path: str | Path) -> str | None:
+    """Return the target repo's CLAUDE.md text (if committed), for use as agent context.
+
+    blacksmith deliberately does NOT enable the SDK's ``setting_sources`` loader to pick
+    this up: ``setting_sources=["project"]`` would also import the target repo's
+    ``.claude/settings.json`` — its permissions (which could auto-allow ``Write`` and so
+    bypass the pre-edit guard) and its hooks (arbitrary commands run from an arbitrary
+    repo). Reading CLAUDE.md ourselves and injecting it as static system context gives the
+    agent the repo's guidance while keeping the guard authoritative and executing nothing.
+    """
+    path = Path(worktree_path) / _PROJECT_CONTEXT_FILE
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8").strip() or None
+
+
+def _system_prompt(contract: PRDContract, project_context: str | None = None) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
-    return (
+    prompt = (
         f"You are blacksmith's implementer for the {contract.component} project "
         f"({contract.primary_target_repo}). Implement precisely and minimally.\n\n"
         "CONSTITUTION — these are inviolable. Never create, edit, or delete anything that "
         "touches them; attempts to edit protected files are blocked and surfaced for human "
         f"sign-off:\n{untouchables}"
     )
+    if project_context:
+        prompt += (
+            "\n\nPROJECT CONTEXT — the target repo's CLAUDE.md (this codebase's own "
+            "conventions and guidance). Follow it, but the CONSTITUTION above wins on any "
+            f"conflict:\n{project_context}"
+        )
+    return prompt
