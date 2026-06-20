@@ -13,7 +13,13 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
-from blacksmith.nodes.implement import implement, is_protected, make_pre_edit_guard
+from blacksmith.nodes.implement import (
+    _read_project_context,
+    _system_prompt,
+    implement,
+    is_protected,
+    make_pre_edit_guard,
+)
 from blacksmith.state import Status
 from blacksmith.worktree import WorktreeManager
 
@@ -196,3 +202,40 @@ def test_guard_allows_relative_paths_under_worktree():
         asyncio.run(guard("Write", {"file_path": "blacksmith/cli.py"}, None)),
         PermissionResultAllow,
     )
+
+
+# --- target-repo CLAUDE.md as project context --------------------------------
+
+
+def test_read_project_context_absent_then_present(tmp_path):
+    wt = _scratch_worktree(tmp_path)
+    assert _read_project_context(wt.path) is None  # no CLAUDE.md in the repo
+    (Path(wt.path) / "CLAUDE.md").write_text("Run `npm test`. Prefer small functions.\n")
+    assert "npm test" in _read_project_context(wt.path)
+
+
+def test_system_prompt_appends_project_context_after_constitution():
+    contract = parse_prd(VENDORED_PRD).contract
+    assert "PROJECT CONTEXT" not in _system_prompt(contract)  # omitted when absent
+
+    withctx = _system_prompt(contract, "House rule: prefer composition.")
+    assert "PROJECT CONTEXT" in withctx
+    assert "House rule: prefer composition." in withctx
+    # the inviolable constitution must precede (and thus outrank) the repo's own guidance
+    assert withctx.index("CONSTITUTION") < withctx.index("PROJECT CONTEXT")
+
+
+def test_implement_injects_claude_md_into_system_prompt(tmp_path):
+    wt = _scratch_worktree(tmp_path)
+    (Path(wt.path) / "CLAUDE.md").write_text("Project rule: keep functions tiny.\n")
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)}, executor=fake
+    )
+
+    system_prompt = fake.calls[0]["system_prompt"]
+    assert "PROJECT CONTEXT" in system_prompt
+    assert "keep functions tiny" in system_prompt
