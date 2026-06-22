@@ -4,6 +4,10 @@ Loads config (+ .env for the dedicated key), builds the graph with the real
 executor / worktree manager / test gate / PR runner, and drives one run — pausing at
 the plan and PR approval gates for a terminal y/n. The drive loop is separated from
 the interactive prompt so it can be tested with an injected approver.
+
+For non-interactive / CI use, ``--auto-approve`` approves every gate and
+``--approve plan,pr`` approves only the named gates (any gate not listed is denied,
+which halts the run there — e.g. ``--approve plan`` builds and stops before the PR).
 """
 
 from __future__ import annotations
@@ -71,6 +75,31 @@ def _cli_approver(payload, values) -> bool:
     return input("Approve? [y/N] ").strip().lower() in ("y", "yes")
 
 
+def _auto_approver(gates: set[str] | None):
+    """Non-interactive approver: approve gates in ``gates`` (``None`` = all), deny others.
+
+    A denied gate routes to ``human_halt`` (the same path as a terminal "no"), so
+    ``--approve plan`` runs through implementation and stops at the PR gate.
+    """
+
+    def approve(payload, values) -> bool:
+        gate = payload.get("gate", "?") if isinstance(payload, dict) else "?"
+        decision = gates is None or gate in gates
+        print(f"[auto] gate '{gate}': {'approved' if decision else 'denied'}")
+        return decision
+
+    return approve
+
+
+def _select_approver(args):
+    """Pick the approver from CLI flags: --auto-approve > --approve > interactive."""
+    if args.auto_approve:
+        return _auto_approver(None)
+    if args.approve is not None:
+        return _auto_approver({g.strip() for g in args.approve.split(",") if g.strip()})
+    return _cli_approver
+
+
 def _report(snapshot) -> None:
     values = snapshot.values
     print(f"\nstatus: {values.get('status')}")
@@ -90,6 +119,17 @@ def main(argv: list[str] | None = None) -> int:
         "--config", default="blacksmith.config.toml", help="blacksmith config path."
     )
     parser.add_argument("--thread-id", default="run", help="Checkpointer thread id for this run.")
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Approve every gate non-interactively (headless/CI).",
+    )
+    parser.add_argument(
+        "--approve",
+        metavar="GATES",
+        help="Comma-separated gates to auto-approve (e.g. 'plan,pr'); unlisted gates "
+        "are denied, halting the run there. Non-interactive.",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv(Path.cwd() / ".env")
@@ -97,7 +137,9 @@ def main(argv: list[str] | None = None) -> int:
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
 
-    final = drive(graph, args.prd_path, approver=_cli_approver, thread_id=args.thread_id)
+    final = drive(
+        graph, args.prd_path, approver=_select_approver(args), thread_id=args.thread_id
+    )
     _report(final)
     return 0 if final.values.get("status") == Status.DONE else 1
 
