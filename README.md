@@ -16,9 +16,10 @@ LangGraph fluency is the deliverable. See [`blacksmith-v0-prd.md`](blacksmith-v0
 for the full spec. Writing your own PRD? The [PRD authoring guide](docs/prd-authoring-guide.md)
 documents the contract every PRD must conform to.
 
-**Status:** v0 spine complete — all 11 work units built and test-gated (90 tests),
-and the first live dogfood passed end to end (plan → implement → test-gate →
-PR-approval). Public so early visitors see a working spine (§11.4).
+**Status:** v0 spine complete — all 11 work units built and test-gated (108 tests).
+Two live dogfoods passed end to end (plan → implement → test-gate → PR): blacksmith
+against its own repo, and against an external Node/TypeScript target. The live
+agent-edit path is confirmed working — not aspirational.
 
 ## Stack
 
@@ -38,27 +39,54 @@ uv run ruff check        # lint
 - **`blacksmith.config.toml`** — blacksmith's own runtime config (model tiering,
   target repo, checkpointer, API auth). Parsed by [`blacksmith/config.py`](blacksmith/config.py).
 - A separate **`blacksmith.toml`** lives in each *target* repo and defines that repo's
-  toolchain (`test_cmd` / `lint_cmd`), read by the test gate (WU-06).
+  toolchain — `test_cmd`, optional `lint_cmd`, and optional `setup_cmd` (a one-off
+  provisioning step like `npm ci`, run before the gate) — read by the test gate.
 
 The dedicated Anthropic API key is read from the env var named in `[api].key_env_var`
 (default `BLACKSMITH_ANTHROPIC_API_KEY`) — never from subscription auth, keeping
-blacksmith's metered spend isolated (PRD §8).
+blacksmith's metered spend isolated.
+
+## Running
+
+```sh
+uv run blacksmith <path/to/prd.md>          # run one work unit from a PRD
+uv run blacksmith <prd> --approve plan,pr   # non-interactive (CI / headless)
+```
+
+The PRD path is the single positional argument. `--config` points at a non-default
+`blacksmith.config.toml`; `--thread-id` names the checkpointer thread for the run.
+Interactive runs pause for a y/n at the plan and PR gates; `--auto-approve` approves
+both, and `--approve plan,pr` approves only the gates you name (an unlisted gate is
+denied, halting the run there).
 
 ## Onboarding a new target repo
 
 blacksmith operates *on* a target repo via git worktrees — nothing about blacksmith is
-compiled into it, and the repo needs no prior setup beyond being a git clone. To point
-blacksmith at a new project:
+compiled into it, and the repo needs no prior setup beyond being a git clone.
+
+> **blacksmith only sees committed state.** Each run cuts a fresh worktree from `HEAD`,
+> so anything it should use must be **committed, not just staged** — including
+> `blacksmith.toml` and `CLAUDE.md` (a staged-but-uncommitted config reads as "no
+> `blacksmith.toml` found"). That worktree also starts with **no installed dependencies**
+> (`node_modules`, virtualenvs, etc. are gitignored) — which is what `setup_cmd` is for.
+
+To point blacksmith at a new project:
 
 1. **Point blacksmith at the clone.** In `blacksmith.config.toml`, set
    `[target] repo_path` to the local path and `default_branch`.
 2. **Add a `blacksmith.toml` to the target repo** so the test gate knows its toolchain.
-   Commands must work from a fresh worktree checkout:
+   Because the gate runs in a fresh worktree with no installed deps, a Node/TS target
+   needs `setup_cmd` to install them — `test_cmd = "npm test"` alone dies with
+   `vitest: command not found`:
    ```toml
    # committed in the TARGET repo (e.g. a Node/TypeScript MCP server)
+   setup_cmd = "npm ci"           # optional; one-off provisioning, runs before the gate
    test_cmd = "npm test"
    lint_cmd = "npm run lint"      # optional; runs only if tests pass
    ```
+   Commands run through a shell, so chains work directly
+   (`test_cmd = "npm ci && npm test"`) with no `sh -c` wrapper. cargo needs no
+   `setup_cmd` — it fetches its own deps.
 3. **Give it context — commit a `CLAUDE.md`.** For a repo with no claude.ai Project, a
    root-level `CLAUDE.md` is how its conventions reach the agent: blacksmith reads the
    worktree's `CLAUDE.md` and injects it into the implementer's system prompt as
@@ -71,10 +99,12 @@ blacksmith at a new project:
    **root** unit, so make the unit you want built first `depends_on: []` (and an `auto`
    layer if you want the gate to decide it end to end).
 5. **Have the `claude` CLI on `PATH`** — the Agent SDK spawns it for live runs.
-6. **Run**, then approve at the plan and PR gates.
+6. **Run it** — `uv run blacksmith path/to/your-prd.md` — then approve at the plan and
+   PR gates (or run headless with `--approve`; see [Running](#running)).
 
 > **Worked example — fixing an MCP spec violation.** Given an Obsidian MCP server whose
-> tool violates the MCP spec: add `blacksmith.toml` (`npm test` / `npm run lint`), commit
+> tool violates the MCP spec: add `blacksmith.toml` (`npm ci` setup + `npm test` /
+> `npm run lint`), commit
 > a `CLAUDE.md` capturing the server's conventions, and write a one-unit PRD whose work
 > unit targets the offending tool's module with a `test_contract` that asserts the
 > spec-conformant shape. blacksmith plans, implements in an isolated worktree, gates on
@@ -85,11 +115,11 @@ blacksmith at a new project:
 - [x] **WU-01** — project scaffold + config loader
 - [x] **WU-02** — PRD contract schema + validator
 - [x] **WU-03** — state schema + graph skeleton + checkpointer
-- [x] **WU-04** — Claude Agent SDK executor wrapper *(mocked tests pass; manual live smoke `scripts/smoke.py` pending an env with the `claude` CLI)*
+- [x] **WU-04** — Claude Agent SDK executor wrapper *(mocked tests pass; live agent path confirmed via dogfood)*
 - [x] **WU-05** — worktree manager
 - [x] **WU-06** — toolchain-aware test gate
 - [x] **WU-07** — HITL interrupt nodes (plan + PR)
 - [x] **WU-08** — PR node
 - [x] **WU-09** — plan node
-- [x] **WU-10** — implement node *(guard + diff/commit auto-tested; live agent-edit smoke pending an env with the `claude` CLI)*
+- [x] **WU-10** — implement node *(guard + diff/commit auto-tested; live agent-edit confirmed via dogfood)*
 - [x] **WU-11** — end-to-end wiring (happy path + human-halt-on-fail) + CLI

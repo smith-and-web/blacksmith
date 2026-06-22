@@ -23,7 +23,7 @@ def _worktree(path: Path, toolchain: str) -> Path:
 def test_load_toolchain(tmp_path):
     wt = _worktree(tmp_path, 'test_cmd = "pytest"\nlint_cmd = "ruff check"\n')
     tc = load_toolchain(wt)
-    assert tc.commands_for() == ("pytest", "ruff check")
+    assert tc.commands_for() == (None, "pytest", "ruff check")
 
 
 def test_missing_toolchain_raises(tmp_path):
@@ -84,3 +84,36 @@ def test_self_target_toolchain_is_valid():
     tc = load_toolchain(REPO_ROOT)
     assert "pytest" in tc.test_cmd
     assert tc.lint_cmd is not None and "ruff" in tc.lint_cmd
+
+
+def test_setup_cmd_runs_before_test(tmp_path):
+    # setup writes a marker the test then requires — proves setup runs first, in the worktree.
+    wt = _worktree(
+        tmp_path,
+        'setup_cmd = "echo ok > setup.marker"\ntest_cmd = "test -f setup.marker"\n',
+    )
+    result = run_gate(wt)
+    assert result.passed is True
+    assert result.command == "echo ok > setup.marker && test -f setup.marker"
+
+
+def test_setup_failure_short_circuits_before_test(tmp_path):
+    wt = _worktree(tmp_path, 'setup_cmd = "false"\ntest_cmd = "true"\n')
+    result = run_gate(wt)
+    assert result.passed is False
+    assert result.command == "false"  # a failed setup never reaches the test
+
+
+def test_shell_chaining_without_sh_c(tmp_path):
+    # `a && b` runs through the shell directly; the old shlex.split path tokenized
+    # this into garbage and forced an explicit `sh -c "..."` wrapper (dogfood landmine).
+    assert run_gate(_worktree(tmp_path / "ok", 'test_cmd = "true && true"\n')).passed is True
+    assert run_gate(_worktree(tmp_path / "no", 'test_cmd = "true && false"\n')).passed is False
+
+
+def test_setup_cmd_layer_override(tmp_path):
+    wt = _worktree(
+        tmp_path,
+        'test_cmd = "false"\n\n[layers.node]\nsetup_cmd = "true"\ntest_cmd = "true"\n',
+    )
+    assert run_gate(wt, "node").passed is True  # layer's setup + test override win
