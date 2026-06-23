@@ -162,10 +162,13 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         },
         "status": Status.TESTING,
     }
-    if guard.blocked:
-        attempts = [b["path"] for b in guard.blocked]
+    # Only untouchable blocks (§7) are run errors that need human sign-off. Out-of-worktree
+    # blocks are the isolation boundary doing its job — benign audit info, recorded under
+    # implementation["blocked"] above but never surfaced as an implement error.
+    untouchable = [b["path"] for b in guard.blocked if b.get("reason") == "untouchable"]
+    if untouchable:
         update["errors"] = [
-            {"node": "implement", "message": f"blocked untouchable edit(s): {attempts}"}
+            {"node": "implement", "message": f"blocked untouchable edit(s): {untouchable}"}
         ]
     return update
 
