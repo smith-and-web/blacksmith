@@ -1,9 +1,12 @@
-"""End-to-end wiring tests (WU-11).
+"""End-to-end wiring tests (WU-11, updated to the clone model in WU-CLONE-WIRING).
 
 Test contract (PRD §6, WU-11): e2e run on a trivial unit — pass -> PR-approval halt;
 fail -> human_halt. Driven through the real CLI drive loop with the model + gh mocked
-but a REAL worktree, REAL test gate (true/false stand-in commands), and the real
-graph. Also covers AC-1 (a non-conforming PRD halts at ingest with a field-level error).
+but a REAL local source repo, an isolated CloneManager run, the REAL test gate (true/
+false stand-in commands), and the real graph. Also covers AC-1 (a non-conforming PRD
+halts at ingest with a field-level error) and the clone isolation guarantee: the run
+executes inside a clone whose .git is a real local directory and the SOURCE repo's
+working tree is untouched after the run (WU-CLONE-WIRING).
 """
 
 import subprocess
@@ -15,7 +18,7 @@ from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.nodes.pr import CommandResult
 from blacksmith.state import Status
-from blacksmith.worktree import WorktreeManager
+from blacksmith.worktree import CloneManager
 
 PRD = """\
 ---
@@ -52,11 +55,22 @@ done.
 
 
 class FakeExecutor:
+    """Stand-in implementer that records where it ran, so a test can prove the run
+    happened inside the clone (own .git dir) and not the source checkout."""
+
+    def __init__(self):
+        self.implement_cwd: Path | None = None
+        self.git_is_dir: bool | None = None
+
     def run_plan(self, prompt, **kwargs):
         return _result("1. write out.txt")
 
     def run_implement(self, prompt, **kwargs):
-        Path(kwargs["cwd"], "out.txt").write_text("implemented\n")  # simulate the edit
+        cwd = Path(kwargs["cwd"])
+        self.implement_cwd = cwd
+        # A clone owns a real .git directory; a linked worktree's .git is a file.
+        self.git_is_dir = (cwd / ".git").is_dir()
+        (cwd / "out.txt").write_text("implemented\n")  # simulate the edit
         return _result("done")
 
 
@@ -104,12 +118,13 @@ def _target_repo(tmp_path, gate_cmd):
     return repo
 
 
-def _wire(tmp_path, repo, pr_url="https://github.com/owner/demo/pull/1"):
+def _wire(tmp_path, repo, pr_url="https://github.com/owner/demo/pull/1", executor=None):
     saver = build_checkpointer(tmp_path / "ckpt.sqlite")
     graph = compile_graph(
         saver,
-        executor=FakeExecutor(),
-        worktree_manager=WorktreeManager(repo, base_dir=tmp_path / "wt"),
+        executor=executor or FakeExecutor(),
+        # The run is isolated in a throwaway local clone, NOT a linked worktree.
+        worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
         gate=run_gate,
         pr_runner=_fake_gh(pr_url),
     )
@@ -145,6 +160,44 @@ def test_e2e_fail_routes_to_human_halt(tmp_path):
     assert approver.gates == ["plan"]  # AC-6: never reaches the PR gate
     assert final.values["status"] == Status.HALTED
     assert final.values.get("pr_url") is None
+    saver.conn.close()
+
+
+def test_e2e_runs_in_clone_and_leaves_source_untouched(tmp_path):
+    """The run executes inside a clone (own local .git) and never touches the source repo
+    (WU-CLONE-WIRING): the self-targeting hazard is dead."""
+    repo = _target_repo(tmp_path, gate_cmd="true")  # gate passes
+    source_head_before = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    executor = FakeExecutor()
+    graph, saver = _wire(tmp_path, repo, executor=executor)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path), approver=approver, thread_id="clone")
+
+    assert final.values["status"] == Status.DONE
+    # The implement step ran inside a clone whose .git is a real local directory...
+    assert executor.git_is_dir is True
+    # ...located under the clone base dir, NOT in the source repo's working tree.
+    assert executor.implement_cwd is not None
+    assert executor.implement_cwd.resolve() != repo.resolve()
+    assert (tmp_path / "clones").resolve() in executor.implement_cwd.resolve().parents
+
+    # The SOURCE repo's working tree is untouched: the edit never leaked into it, and its
+    # HEAD/history did not move (no blacksmith commit landed in the source).
+    assert not (repo / "out.txt").exists()
+    source_head_after = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    assert source_head_after == source_head_before
+    source_log = subprocess.run(
+        ["git", "-C", str(repo), "log", "--all", "--oneline"],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    assert "WU-E1" not in source_log
     saver.conn.close()
 
 

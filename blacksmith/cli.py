@@ -28,7 +28,7 @@ from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.state import Status
-from blacksmith.worktree import WorktreeManager, normalize_remote_slug
+from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
 
 
 def load_dotenv(env_file: Path) -> None:
@@ -44,11 +44,18 @@ def load_dotenv(env_file: Path) -> None:
 
 
 def build_graph_for(config: BlacksmithConfig, checkpointer):
-    """Compile the graph wired with the real production dependencies."""
+    """Compile the graph wired with the real production dependencies.
+
+    The run is isolated in a throwaway local *clone* (CloneManager), not a linked
+    worktree: each run gets its own .git with origin pointed at the real remote, so the
+    agent works on a disposable copy and can never reach the source checkout (this kills
+    the self-targeting hazard). A push from the clone still targets the real GitHub remote,
+    so opening a PR works exactly as before from the caller's perspective.
+    """
     return compile_graph(
         checkpointer,
         executor=Executor(config),
-        worktree_manager=WorktreeManager(config.resolve_repo_path()),
+        worktree_manager=CloneManager(config.resolve_repo_path()),
         gate=run_gate,
     )
 

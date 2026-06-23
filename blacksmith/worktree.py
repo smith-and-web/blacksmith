@@ -9,6 +9,7 @@ the target's working tree), so the target repo needs no knowledge of blacksmith.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -103,6 +104,91 @@ class WorktreeManager:
     def _git(self, *args: str, check: bool = True) -> str:
         result = subprocess.run(
             ["git", "-C", str(self.repo_path), *args],
+            capture_output=True,
+            text=True,
+        )
+        if check and result.returncode != 0:
+            raise WorktreeError(
+                f"git {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}"
+            )
+        return result.stdout
+
+
+@dataclass(frozen=True)
+class Clone:
+    path: Path
+    branch: str
+    repo_path: Path
+
+
+class CloneManager:
+    """Create and clean up per-unit throwaway clones of one target repo.
+
+    Mirrors :class:`WorktreeManager`'s interface but isolates each run in a full
+    ``git clone --local`` rather than a linked worktree. Unlike a worktree — whose
+    ``.git`` is a file pointing back into the source repo's object store, so edits
+    and commits share history with the source — a clone owns its ``.git`` directory
+    outright. The clone's ``origin`` is repointed at the *source's* origin URL, so a
+    push from the clone targets the real GitHub remote, never the local source repo.
+    """
+
+    def __init__(self, repo_path: str | Path, *, base_dir: str | Path | None = None) -> None:
+        self.repo_path = Path(repo_path).resolve()
+        if base_dir is not None:
+            self.base_dir = Path(base_dir).resolve()
+        else:
+            self.base_dir = self.repo_path.parent / f"{self.repo_path.name}-clones"
+
+    def create(self, unit_id: str) -> Clone:
+        """Clone the source repo into an isolated dir on a fresh per-unit branch.
+
+        Uses ``git clone --local`` (fast, object-store hardlinks, own ``.git``), then
+        checks out a per-unit branch and repoints ``origin`` at the source's origin URL
+        so pushes reach the real remote instead of the local source clone.
+        """
+        branch = branch_for(unit_id)
+        path = self.base_dir / branch.replace("/", "-")
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._git(self.repo_path.parent, "clone", "--local", str(self.repo_path), str(path))
+        self._git(path, "checkout", "-b", branch)
+        source_origin = self._source_origin_url()
+        if source_origin is not None:
+            self._git(path, "remote", "set-url", "origin", source_origin)
+        return Clone(path=path, branch=branch, repo_path=self.repo_path)
+
+    def remove(self, clone: Clone) -> None:
+        """Delete the clone directory (it owns its own ``.git``, so this is total)."""
+        shutil.rmtree(clone.path, ignore_errors=True)
+
+    def remote_slug(self, remote: str = "origin") -> str | None:
+        """Canonical ``owner/name`` slug of the source repo's ``remote`` (default ``origin``).
+
+        Reads the *source* repo's remote — the real GitHub remote the clone's origin is
+        repointed at — and normalizes it (see :func:`normalize_remote_slug`). Returns
+        ``None`` when unconfigured or unrecognizable; never raises.
+        """
+        result = subprocess.run(
+            ["git", "-C", str(self.repo_path), "remote", "get-url", remote],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        return normalize_remote_slug(result.stdout)
+
+    def _source_origin_url(self) -> str | None:
+        result = subprocess.run(
+            ["git", "-C", str(self.repo_path), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    def _git(self, cwd: Path, *args: str, check: bool = True) -> str:
+        result = subprocess.run(
+            ["git", "-C", str(cwd), *args],
             capture_output=True,
             text=True,
         )

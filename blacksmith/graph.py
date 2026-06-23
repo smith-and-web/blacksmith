@@ -37,11 +37,26 @@ from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.planner import execution_order
 from blacksmith.state import BlacksmithState, Status
-from blacksmith.worktree import Worktree, WorktreeError, WorktreeManager, branch_for
+from blacksmith.worktree import (
+    Clone,
+    CloneManager,
+    Worktree,
+    WorktreeError,
+    WorktreeManager,
+    branch_for,
+)
 
 # A gate callable: (worktree_path, layer) -> GateResult. Injected so tests can
 # control pass/fail; production passes blacksmith.gate.run_gate.
 GateFn = Callable[[str, str | None], GateResult]
+
+# The run's isolation manager. In production this is a CloneManager (each run gets a
+# throwaway local clone with its own .git, which kills the self-targeting hazard — the
+# agent can never reach the real checkout), but a WorktreeManager (the prior linked-
+# worktree model) is still accepted and used by some tests. Both expose the surface the
+# graph needs — ``create(unit_id) -> obj(path, branch, repo_path)`` plus ``repo_path`` —
+# so prepare_worktree is identical for either; only cleanup_worktree differs.
+IsolationManager = WorktreeManager | CloneManager
 
 # --- placeholder nodes (real bodies arrive in WU-04..WU-10) ------------------
 # Each returns a partial state update; advancing `status` keeps the run inspectable.
@@ -63,16 +78,19 @@ def ingest_prd(state: BlacksmithState) -> dict:
 
 
 def prepare_worktree(
-    state: BlacksmithState, *, worktree_manager: WorktreeManager | None = None
+    state: BlacksmithState, *, worktree_manager: IsolationManager | None = None
 ) -> dict:
-    """Create the run's ONE shared worktree/branch and seed the topo execution order.
+    """Create the run's ONE shared clone/branch and seed the topo execution order.
 
-    Every unit is built sequentially on this single worktree (so each unit's committed
-    changes are visible to the next unit's implement step) and the run opens one combined
-    PR against its branch. The unit order comes from ``planner.execution_order``; the
-    implement->gate loop walks it via ``unit_cursor`` and re-enters ``implement`` (never
-    this node), so the worktree is created exactly once. A single-unit PRD reduces to the
-    prior behaviour: one unit, one worktree, one PR."""
+    In production the isolation manager is a CloneManager, so this creates a throwaway
+    local clone (own .git, origin pointed at the real remote) — the agent works there and
+    can never touch the source checkout. Every unit is built sequentially on this single
+    clone (so each unit's committed changes are visible to the next unit's implement step)
+    and the run opens one combined PR against its branch. The unit order comes from
+    ``planner.execution_order``; the implement->gate loop walks it via ``unit_cursor`` and
+    re-enters ``implement`` (never this node), so the clone is created exactly once. A
+    single-unit PRD reduces to the prior behaviour: one unit, one clone, one PR. The
+    isolation path is stored under ``worktree_path`` (the name predates the clone model)."""
     if worktree_manager is None:
         return {}  # skeleton pass-through
     prd = state.get("prd")
@@ -154,26 +172,43 @@ def human_halt(state: BlacksmithState) -> dict:
 
 
 def cleanup_worktree(
-    state: BlacksmithState, *, worktree_manager: WorktreeManager | None = None
+    state: BlacksmithState, *, worktree_manager: IsolationManager | None = None
 ) -> dict:
-    """Remove the unit's worktree on a terminal path (PRD §5). Keeps the branch when a
-    PR was opened (the PR needs it); deletes it otherwise so re-runs don't collide.
-    Cleanup must never fail the run."""
+    """Remove the run's isolation directory on a terminal path (PRD §5). Cleanup must
+    never fail the run.
+
+    For a CloneManager the clone owns its own .git, so removing the directory is total
+    cleanup — there is no source-repo branch to keep or delete (the branch lives only in
+    the clone and, once pushed, on the real remote). For the legacy WorktreeManager the
+    branch lives in the shared source repo, so the worktree's branch is kept when a PR
+    was opened (the PR needs it) and deleted otherwise so re-runs don't collide."""
     if worktree_manager is None:
         return {}
     worktree_path = state.get("worktree_path")
     unit = state.get("selected_unit")
     if not worktree_path or unit is None:
         return {}
-    worktree = Worktree(
-        path=Path(worktree_path),
-        # The run's one shared branch (multi-unit); falls back to the unit's branch for a
-        # state that predates the shared-branch field.
-        branch=state.get("branch") or branch_for(unit.id),
-        repo_path=worktree_manager.repo_path,
-    )
+    # The run's one shared branch (multi-unit); falls back to the unit's branch for a
+    # state that predates the shared-branch field.
+    branch = state.get("branch") or branch_for(unit.id)
     try:
-        worktree_manager.remove(worktree, delete_branch=not state.get("pr_url"))
+        if isinstance(worktree_manager, CloneManager):
+            worktree_manager.remove(
+                Clone(
+                    path=Path(worktree_path),
+                    branch=branch,
+                    repo_path=worktree_manager.repo_path,
+                )
+            )
+        else:
+            worktree_manager.remove(
+                Worktree(
+                    path=Path(worktree_path),
+                    branch=branch,
+                    repo_path=worktree_manager.repo_path,
+                ),
+                delete_branch=not state.get("pr_url"),
+            )
     except WorktreeError:
         pass
     return {}
@@ -261,7 +296,7 @@ def build_graph(
     *,
     pr_runner: Runner | None = None,
     executor: Executor | None = None,
-    worktree_manager: WorktreeManager | None = None,
+    worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology."""
@@ -369,7 +404,7 @@ def compile_graph(
     interrupt_before: Sequence[str] = (),
     pr_runner: Runner | None = None,
     executor: Executor | None = None,
-    worktree_manager: WorktreeManager | None = None,
+    worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
