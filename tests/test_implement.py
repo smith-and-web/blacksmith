@@ -6,15 +6,19 @@ the node logic with a fake executor.
 """
 
 import asyncio
+import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.nodes.implement import (
+    CommitError,
     _read_project_context,
+    _stage_and_commit,
     _system_prompt,
     implement,
     is_protected,
@@ -47,6 +51,24 @@ def _scratch_worktree(tmp_path):
     g("add", "-A")
     g("commit", "-m", "init")
     return WorktreeManager(repo, base_dir=tmp_path / "wt").create("WU-01")
+
+
+# --- commit safety -----------------------------------------------------------
+
+
+def test_stage_and_commit_raises_when_commit_fails(tmp_path, monkeypatch):
+    # Strip ambient git identity so `git commit` fails deterministically regardless of the
+    # machine's global config — mirrors a fresh clone with no propagated identity. The commit
+    # exit code must be checked: a silent failure here surfaces only later as an empty PR.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    repo = tmp_path / "noid"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init", "-b", "main"], check=True, capture_output=True)
+    (repo / "f.txt").write_text("x\n")  # a staged change but no identity to commit it
+    with pytest.raises(CommitError):
+        _stage_and_commit(str(repo), "should fail")
 
 
 # --- path matching -----------------------------------------------------------

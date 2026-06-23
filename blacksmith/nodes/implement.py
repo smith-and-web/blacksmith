@@ -142,7 +142,16 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
             "errors": [{"node": "implement", "message": f"implement call failed: {result.text}"}],
         }
 
-    files, diff_summary = _stage_and_commit(worktree_path, f"blacksmith: {unit.id} {unit.title}")
+    try:
+        commit_message = f"blacksmith: {unit.id} {unit.title}"
+        files, diff_summary = _stage_and_commit(worktree_path, commit_message)
+    except CommitError as exc:
+        return {
+            "status": Status.HALTED,
+            "errors": [
+                {"node": "implement", "message": f"failed to commit the unit's changes: {exc}"}
+            ],
+        }
     if not files and not guard.blocked:
         # The agent changed nothing — the unit wasn't implemented. Halt rather than
         # gate an unchanged tree and then fail on an empty-diff PR.
@@ -173,15 +182,31 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     return update
 
 
+class CommitError(Exception):
+    """Raised when committing the unit's staged changes fails (e.g. the worktree has no git
+    author identity). Surfacing it loudly stops a silent no-op from masquerading as a
+    successful implement and only failing later as an empty-diff PR."""
+
+
 def _stage_and_commit(worktree_path: str, message: str) -> tuple[list[str], str]:
-    """Stage all changes, capture the staged file list + diffstat, and commit if any."""
+    """Stage all changes, capture the staged file list + diffstat, and commit if any.
+
+    Raises ``CommitError`` if the commit fails. Previously the commit's exit code was
+    ignored, so a failed commit (e.g. a fresh clone with no author identity) looked like
+    success and surfaced only at PR time as "No commits between main and <branch>"."""
     _git(worktree_path, "add", "-A")
     files = [
         line for line in _git(worktree_path, "diff", "--cached", "--name-only").splitlines() if line
     ]
     diff_summary = _git(worktree_path, "diff", "--cached", "--stat")
     if files:
-        _git(worktree_path, "commit", "-m", message)
+        commit = subprocess.run(
+            ["git", "-C", str(worktree_path), "commit", "-m", message],
+            capture_output=True,
+            text=True,
+        )
+        if commit.returncode != 0:
+            raise CommitError(commit.stderr.strip() or commit.stdout.strip() or "git commit failed")
     return files, diff_summary
 
 
