@@ -15,12 +15,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 from langgraph.types import Command
 
 from blacksmith import __version__
 from blacksmith.config import BlacksmithConfig
+from blacksmith.contract import ContractError, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -109,7 +111,37 @@ def _report(snapshot) -> None:
         print(f"error [{err.get('node')}]: {err.get('message')}")
 
 
+def _validate(argv: list[str] | None = None) -> int:
+    """Dry-run a PRD against the contract: parse only, no model spend, no network I/O.
+
+    Builds no Executor and runs no graph — it just calls ``parse_prd`` and reports.
+    Returns 0 on a conforming PRD; 1 with the field-level ``ContractError`` message
+    (printed to stderr) on any contract failure or a missing file.
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith validate",
+        description="Validate a PRD against Contract v1 (offline dry run; zero model spend).",
+    )
+    parser.add_argument("prd_path", help="Path to a PRD markdown file to validate.")
+    args = parser.parse_args(argv)
+
+    try:
+        prd = parse_prd(args.prd_path)
+    except ContractError as exc:
+        print(f"validate: {exc}", file=sys.stderr)
+        return 1
+
+    contract = prd.contract
+    count = len(contract.work_units)
+    print(f"OK: {contract.component} — {count} work unit(s) — contract valid")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "validate":
+        return _validate(argv[1:])
+
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
