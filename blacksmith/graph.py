@@ -35,7 +35,7 @@ from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
-from blacksmith.planner import execution_order
+from blacksmith.planner import execution_levels
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import (
     Clone,
@@ -80,21 +80,24 @@ def ingest_prd(state: BlacksmithState) -> dict:
 def prepare_worktree(
     state: BlacksmithState, *, worktree_manager: IsolationManager | None = None
 ) -> dict:
-    """Create the run's ONE shared clone/branch and seed the topo execution order.
+    """Create the run's ONE shared clone/branch and seed the level execution plan.
 
     In production the isolation manager is a CloneManager, so this creates a throwaway
     local clone (own .git, origin pointed at the real remote) — the agent works there and
     can never touch the source checkout. Every unit is built sequentially on this single
     clone (so each unit's committed changes are visible to the next unit's implement step)
-    and the run opens one combined PR against its branch. The unit order comes from
-    ``planner.execution_order``; the implement->gate loop walks it via ``unit_cursor`` and
+    and the run opens one combined PR against its branch. The plan comes from
+    ``planner.execution_levels``; the implement->gate loop walks it level by level (and,
+    within a level, in declaration order) via ``level_cursor``/``unit_in_level`` and
     re-enters ``implement`` (never this node), so the clone is created exactly once. A
-    single-unit PRD reduces to the prior behaviour: one unit, one clone, one PR. The
-    isolation path is stored under ``worktree_path`` (the name predates the clone model)."""
+    single-unit PRD reduces to the prior behaviour: one level, one unit, one clone, one PR.
+    The isolation path is stored under ``worktree_path`` (the name predates the clone
+    model)."""
     if worktree_manager is None:
         return {}  # skeleton pass-through
     prd = state.get("prd")
-    units = execution_order(prd.contract) if prd is not None else []
+    levels = execution_levels(prd.contract) if prd is not None else []
+    units = [unit for level in levels for unit in level]
     unit = units[0] if units else state.get("selected_unit")
     if unit is None:
         return {
@@ -106,9 +109,11 @@ def prepare_worktree(
         "worktree_path": str(worktree.path),
         "branch": worktree.branch,
         "selected_unit": unit,
-        "unit_cursor": 0,
+        "level_cursor": 0,
+        "unit_in_level": 0,
     }
-    if units:
+    if levels:
+        update["execution_levels"] = levels
         update["work_units"] = units
     return update
 
@@ -151,18 +156,39 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
     return update
 
 
-def next_unit(state: BlacksmithState) -> dict:
-    """Advance to the next unit in topo order on the SAME shared worktree/branch.
+def _next_position(
+    levels: list[list[WorkUnit]], level: int, index: int
+) -> tuple[int, int] | None:
+    """The level engine's step: from ``(level, index)`` return the next unit's position,
+    or ``None`` when the plan is exhausted.
 
-    Reached only after the current unit's gate passed, so the previous unit's commits are
-    already in the shared worktree when the next unit's implement step runs."""
-    units = state.get("work_units") or []
-    cursor = state.get("unit_cursor", 0) + 1
-    if cursor >= len(units):  # defensive: routing only sends us here when a unit remains
+    It walks within the current level (declaration order) until that level is drained, then
+    advances to the next level. For a plan whose levels are all size 1 (every chain built
+    today) this degenerates to "advance to the next level", so the walk is identical to the
+    prior flat cursor — the behaviour-preserving property the swap relies on."""
+    if level < len(levels) and index + 1 < len(levels[level]):
+        return level, index + 1
+    if level + 1 < len(levels):
+        return level + 1, 0
+    return None
+
+
+def next_unit(state: BlacksmithState) -> dict:
+    """Advance the level engine to the next unit on the SAME shared worktree/branch.
+
+    Reached only after the current unit's gate passed, so the previous units' commits are
+    already in the shared worktree when the next unit's implement step runs. Within a level
+    the units are built sequentially in declaration order; once a level is drained the walk
+    moves to the next level."""
+    levels = state.get("execution_levels") or []
+    nxt = _next_position(levels, state.get("level_cursor", 0), state.get("unit_in_level", 0))
+    if nxt is None:  # defensive: routing only sends us here when a unit remains
         return {}
+    level, index = nxt
     return {
-        "unit_cursor": cursor,
-        "selected_unit": units[cursor],
+        "level_cursor": level,
+        "unit_in_level": index,
+        "selected_unit": levels[level][index],
         "status": Status.IMPLEMENTING,
     }
 
@@ -256,14 +282,15 @@ def route_after_implement(state: BlacksmithState) -> str:
 def route_after_test_gate(state: BlacksmithState) -> str:
     """Deterministic routing on the test result — a graph edge, not a model decision.
 
-    A failed gate halts. On a pass, loop to ``next_unit`` while units remain in topo
-    order (shared branch); on the last unit, proceed to the single PR-approval gate."""
+    A failed gate halts. On a pass, loop to ``next_unit`` while units remain in the level
+    plan (shared branch); on the last unit of the last level, proceed to the single
+    PR-approval gate."""
     results = state.get("test_results") or {}
     if not results.get("passed"):
         return "human_halt"
-    units = state.get("work_units") or []
-    cursor = state.get("unit_cursor", 0)
-    return "next_unit" if cursor + 1 < len(units) else "approve_pr"
+    levels = state.get("execution_levels") or []
+    nxt = _next_position(levels, state.get("level_cursor", 0), state.get("unit_in_level", 0))
+    return "next_unit" if nxt is not None else "approve_pr"
 
 
 # --- assembly ----------------------------------------------------------------

@@ -74,6 +74,34 @@ _ONE_UNIT = """\
     test_contract: "the gate command passes"
     depends_on: []"""
 
+# A diamond DAG: A (level 0); B,C depend on A (level 1); D depends on B,C (level 2).
+# execution_levels == [[A], [B, C], [D]]; flattened topo order == A, B, C, D.
+_DIAMOND = """\
+  - id: WU-A
+    title: "root"
+    layers: [py-logic]
+    target_modules: ["wu-a.txt"]
+    test_contract: "the gate command passes"
+    depends_on: []
+  - id: WU-B
+    title: "left"
+    layers: [py-logic]
+    target_modules: ["wu-b.txt"]
+    test_contract: "the gate command passes"
+    depends_on: [WU-A]
+  - id: WU-C
+    title: "right"
+    layers: [py-logic]
+    target_modules: ["wu-c.txt"]
+    test_contract: "the gate command passes"
+    depends_on: [WU-A]
+  - id: WU-D
+    title: "join"
+    layers: [py-logic]
+    target_modules: ["wu-d.txt"]
+    test_contract: "the gate command passes"
+    depends_on: [WU-B, WU-C]"""
+
 
 def _result(text):
     return ExecutorResult(
@@ -268,6 +296,41 @@ def test_single_unit_prd_is_unchanged_and_opens_one_pr(tmp_path):
     assert len(_pr_creates(gh)) == 1
     assert final.values["status"] == Status.DONE
     assert final.values["pr_url"].endswith("/pull/1")
+    assert approver.gates == ["plan", "pr"]
+    saver.conn.close()
+
+
+def test_diamond_dag_builds_all_levels_on_one_branch_to_one_pr(tmp_path):
+    # The level engine walks execution_levels in order: [[A], [B, C], [D]]. Every unit is
+    # built on ONE shared branch, a later level's unit sees earlier levels' commits, and
+    # the run opens ONE combined PR — exactly the behaviour a chain has, now over a DAG.
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/13")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path, _DIAMOND), approver=approver, thread_id="diamond")
+
+    # All four built in a VALID level order: A (level 0) first, the level-1 frontier B,C
+    # next in declaration order, D (level 2) last.
+    assert executor.implemented == ["WU-A", "WU-B", "WU-C", "WU-D"]
+    # ONE shared worktree/branch: every implement step ran in the same directory.
+    assert len(set(executor.cwds)) == 1
+    # A later level's unit sees ALL earlier levels' committed work on the shared branch:
+    assert executor.seen["WU-A"] == []
+    assert "wu-a.txt" in executor.seen["WU-B"]  # B (level 1) sees A (level 0)
+    assert "wu-a.txt" in executor.seen["WU-C"]
+    # D (level 2) sees A and BOTH of its level-1 deps committed before it builds.
+    assert {"wu-a.txt", "wu-b.txt", "wu-c.txt"} <= set(executor.seen["WU-D"])
+
+    # Exactly ONE combined PR, whose body names every unit built across the levels.
+    assert len(_pr_creates(gh)) == 1
+    body = _pr_body(gh)
+    assert all(uid in body for uid in ["WU-A", "WU-B", "WU-C", "WU-D"])
+    assert final.values["status"] == Status.DONE
+    assert final.values["pr_url"].endswith("/pull/13")
+    # One plan approval and one PR approval — the run is gated, not the per-unit loop.
     assert approver.gates == ["plan", "pr"]
     saver.conn.close()
 

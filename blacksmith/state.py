@@ -69,10 +69,17 @@ class BlacksmithState(TypedDict, total=False):
     prd_path: str
     prd: PRD
     work_units: list[WorkUnit]
+    # Dependency levels (frontiers) from blacksmith.planner.execution_levels: the level
+    # engine walks these in order and, within each level, builds the units sequentially in
+    # declaration order. Flattening them in order yields ``work_units`` (topo order).
+    execution_levels: list[list[WorkUnit]]
     selected_unit: WorkUnit
-    # Cursor into ``work_units`` (topo order, from blacksmith.planner.execution_order):
-    # which unit the sequential implement->gate loop is currently on (multi-unit run).
-    unit_cursor: int
+    # Level position the sequential implement->gate loop is currently on (multi-unit run):
+    # ``level_cursor`` indexes into ``execution_levels`` and ``unit_in_level`` into that
+    # level's units. Replaces the prior flat ``unit_cursor`` (level grouping lives in the
+    # planner, never in the contract).
+    level_cursor: int
+    unit_in_level: int
     plan: dict[str, Any]
     worktree_path: str
     # The single shared branch every unit's commits land on, so one combined PR can be
