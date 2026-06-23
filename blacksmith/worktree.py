@@ -20,6 +20,25 @@ class WorktreeError(Exception):
     """Raised when a git worktree operation fails."""
 
 
+def normalize_remote_slug(url: str) -> str | None:
+    """Reduce a git remote URL to its canonical ``owner/name`` slug, or ``None``.
+
+    SSH (``git@github.com:owner/name.git``), HTTPS
+    (``https://github.com/owner/name[.git]``), ``ssh://`` URLs, and a bare
+    ``owner/name`` all reduce to the same lowercase ``owner/name``, so the preflight
+    guard treats the two remote forms of one repo as equal. Returns ``None`` when the
+    URL is empty or has fewer than two path segments.
+    """
+    url = url.strip()
+    if url.endswith(".git"):
+        url = url[: -len(".git")]
+    url = url.rstrip("/")
+    parts = [part for part in re.split(r"[/:]", url) if part]
+    if len(parts) < 2:
+        return None
+    return "/".join(parts[-2:]).lower()
+
+
 @dataclass(frozen=True)
 class Worktree:
     path: Path
@@ -63,6 +82,23 @@ class WorktreeManager:
         out = self._git("worktree", "list", "--porcelain")
         prefix = "worktree "
         return [Path(line[len(prefix):]) for line in out.splitlines() if line.startswith(prefix)]
+
+    def remote_slug(self, remote: str = "origin") -> str | None:
+        """Canonical ``owner/name`` slug of the repo's ``remote`` (default ``origin``).
+
+        Reads the remote URL with ``git remote get-url`` (the existing git plumbing) and
+        normalizes it (see :func:`normalize_remote_slug`). Returns ``None`` when the
+        remote is unconfigured or its URL has no recognizable slug — never raises — so the
+        preflight guard can report a clear "no remote" message rather than a git failure.
+        """
+        result = subprocess.run(
+            ["git", "-C", str(self.repo_path), "remote", "get-url", remote],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        return normalize_remote_slug(result.stdout)
 
     def _git(self, *args: str, check: bool = True) -> str:
         result = subprocess.run(
