@@ -9,7 +9,7 @@ DAG, and raises a clear error on a cyclic graph rather than looping.
 import pytest
 
 from blacksmith.contract import PRDContract, WorkUnit
-from blacksmith.planner import PlannerError, execution_order
+from blacksmith.planner import PlannerError, execution_levels, execution_order
 
 
 def _unit(uid, depends_on=None):
@@ -104,3 +104,62 @@ def test_cyclic_graph_raises_rather_than_looping():
     contract = PRDContract.model_construct(work_units=cyclic)
     with pytest.raises(PlannerError):
         execution_order(contract)
+
+
+def _level_ids(levels):
+    return [_ids(level) for level in levels]
+
+
+def test_levels_diamond_groups_by_frontier():
+    # D depends on B and C, both depend on A.
+    units = [
+        _unit("A"),
+        _unit("B", ["A"]),
+        _unit("C", ["A"]),
+        _unit("D", ["B", "C"]),
+    ]
+    levels = execution_levels(_contract(units))
+    assert _level_ids(levels) == [["A"], ["B", "C"], ["D"]]
+
+
+def test_levels_fully_independent_set_is_one_level():
+    units = [_unit("A"), _unit("B"), _unit("C")]
+    levels = execution_levels(_contract(units))
+    assert _level_ids(levels) == [["A", "B", "C"]]
+
+
+def test_levels_chain_is_one_unit_per_level():
+    units = [
+        _unit("WU-01"),
+        _unit("WU-02", ["WU-01"]),
+        _unit("WU-03", ["WU-02"]),
+    ]
+    levels = execution_levels(_contract(units))
+    assert _level_ids(levels) == [["WU-01"], ["WU-02"], ["WU-03"]]
+
+
+def test_levels_within_a_level_keep_declaration_order():
+    # Declared C, B (both root) -> level 0 preserves that order, not sorted by id.
+    units = [_unit("C"), _unit("B"), _unit("A", ["C", "B"])]
+    levels = execution_levels(_contract(units))
+    assert _level_ids(levels) == [["C", "B"], ["A"]]
+
+
+def test_levels_flattened_match_execution_order():
+    units = [
+        _unit("A"),
+        _unit("B", ["A"]),
+        _unit("C", ["A"]),
+        _unit("D", ["B", "C"]),
+    ]
+    contract = _contract(units)
+    flattened = [unit for level in execution_levels(contract) for unit in level]
+    assert _ids(flattened) == _ids(execution_order(contract))
+    _appears_after_deps(flattened)
+
+
+def test_levels_cyclic_graph_raises_rather_than_looping():
+    cyclic = [_unit("WU-01", ["WU-02"]), _unit("WU-02", ["WU-01"])]
+    contract = PRDContract.model_construct(work_units=cyclic)
+    with pytest.raises(PlannerError):
+        execution_levels(contract)
