@@ -90,12 +90,30 @@ def open_pull_request(
 
 def open_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> dict:
     """Graph node: open a PR for the selected unit. Failures halt rather than crash."""
+    return _open_pr(state, runner=runner, draft=False, done=Status.DONE, node="open_pr")
+
+
+def open_draft_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> dict:
+    """Graph node: open a DRAFT PR for a human-gated unit that implemented successfully.
+
+    Mirrors ``open_pr`` but passes ``--draft`` and ends the run at ``AWAITING_QA`` (its
+    work parked behind a draft PR for manual QA), not ``DONE``. Because ``pr_url`` is set,
+    cleanup preserves the branch — the draft PR needs it. The QA itself happens on the
+    draft PR; this node opens no automated gate (PRD §4 human-gated routing)."""
+    return _open_pr(
+        state, runner=runner, draft=True, done=Status.AWAITING_QA, node="open_draft_pr"
+    )
+
+
+def _open_pr(
+    state: BlacksmithState, *, runner: Runner, draft: bool, done: Status, node: str
+) -> dict:
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
     if unit is None or not worktree_path:
         return {
             "status": Status.HALTED,
-            "errors": [{"node": "open_pr", "message": "missing selected_unit or worktree_path"}],
+            "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
     units = state.get("work_units") or [unit]
     try:
@@ -107,11 +125,12 @@ def open_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> di
             branch=state.get("branch") or branch_for(unit.id),
             title=_pr_title(units),
             body=_pr_body(state),
+            draft=draft,
             runner=runner,
         )
     except PRError as exc:
-        return {"status": Status.HALTED, "errors": [{"node": "open_pr", "message": str(exc)}]}
-    return {"pr_url": pr.url, "status": Status.DONE}
+        return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
+    return {"pr_url": pr.url, "status": done}
 
 
 def _pr_title(units: Sequence[WorkUnit]) -> str:

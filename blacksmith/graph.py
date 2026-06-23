@@ -34,7 +34,7 @@ from blacksmith.gate import GateError, GateResult
 from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
-from blacksmith.nodes.pr import Runner, open_pr
+from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.planner import execution_order
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import Worktree, WorktreeError, WorktreeManager, branch_for
@@ -189,13 +189,18 @@ def _route_or_halt(next_node: str) -> Callable[[BlacksmithState], str]:
 
 
 def route_after_implement(state: BlacksmithState) -> str:
-    """Human-gated units (integration/ui) bypass the automated gate (PRD §4)."""
+    """Route a just-implemented unit (PRD §4).
+
+    A failed implement (status HALTED) discards the work via ``human_halt``. A human-gated
+    unit (any ``human`` layer) that implemented successfully bypasses the automated gate and
+    instead opens a DRAFT PR for manual QA (``open_draft_pr`` -> AWAITING_QA, branch kept).
+    An auto-gated unit proceeds to the automated ``test_gate`` unchanged."""
     if state.get("status") == Status.HALTED:
         return "human_halt"
     prd = state.get("prd")
     unit = state.get("selected_unit")
     if prd is not None and unit is not None and prd.contract.gate_for(unit) == "human":
-        return "human_halt"
+        return "open_draft_pr"
     return "test_gate"
 
 
@@ -215,13 +220,13 @@ def route_after_test_gate(state: BlacksmithState) -> str:
 # --- assembly ----------------------------------------------------------------
 
 
-def _open_pr_node(pr_runner: Runner | None):
-    """Bind the PR command runner at build time (default subprocess; fake in tests)."""
+def _open_pr_node(fn, pr_runner: Runner | None):
+    """Bind a PR node's command runner at build time (default subprocess; fake in tests)."""
     if pr_runner is None:
-        return open_pr
+        return fn
 
     def node(state: BlacksmithState) -> dict:
-        return open_pr(state, runner=pr_runner)
+        return fn(state, runner=pr_runner)
 
     return node
 
@@ -258,7 +263,8 @@ def build_graph(
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
     graph.add_node("next_unit", next_unit)
     graph.add_node("approve_pr", approve_pr)
-    graph.add_node("open_pr", _open_pr_node(pr_runner))
+    graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner))
+    graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner))
     graph.add_node("human_halt", human_halt)
     graph.add_node(
         "cleanup_worktree", _node_with(cleanup_worktree, worktree_manager=worktree_manager)
@@ -286,7 +292,11 @@ def build_graph(
     graph.add_conditional_edges(
         "implement",
         route_after_implement,
-        {"test_gate": "test_gate", "human_halt": "human_halt"},
+        {
+            "test_gate": "test_gate",
+            "human_halt": "human_halt",
+            "open_draft_pr": "open_draft_pr",
+        },
     )
     graph.add_conditional_edges(
         "test_gate",
@@ -306,6 +316,8 @@ def build_graph(
         {"open_pr": "open_pr", "human_halt": "human_halt"},
     )
     graph.add_edge("open_pr", "cleanup_worktree")
+    # A human-gated unit's draft PR is terminal too: cleanup keeps the branch (pr_url set).
+    graph.add_edge("open_draft_pr", "cleanup_worktree")
     graph.add_edge("human_halt", "cleanup_worktree")
     graph.add_edge("cleanup_worktree", END)
 
