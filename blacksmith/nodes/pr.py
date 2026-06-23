@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from blacksmith.contract import WorkUnit
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
@@ -89,11 +90,15 @@ def open_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> di
             "status": Status.HALTED,
             "errors": [{"node": "open_pr", "message": "missing selected_unit or worktree_path"}],
         }
+    units = state.get("work_units") or [unit]
     try:
         pr = open_pull_request(
+            # One combined PR against the run's single shared branch, covering every unit
+            # built this run; falls back to the unit's own branch when the shared-branch
+            # field is absent (e.g. a single-unit node-level call in tests).
             worktree_path=worktree_path,
-            branch=branch_for(unit.id),
-            title=f"{unit.id}: {unit.title}",
+            branch=state.get("branch") or branch_for(unit.id),
+            title=_pr_title(units),
             body=_pr_body(state),
             runner=runner,
         )
@@ -102,13 +107,26 @@ def open_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> di
     return {"pr_url": pr.url, "status": Status.DONE}
 
 
+def _pr_title(units: Sequence[WorkUnit]) -> str:
+    """A single unit keeps the prior ``id: title`` form; multiple units name the span."""
+    if len(units) == 1:
+        return f"{units[0].id}: {units[0].title}"
+    return f"{len(units)} work units ({units[0].id}..{units[-1].id})"
+
+
 def _pr_body(state: BlacksmithState) -> str:
-    unit = state.get("selected_unit")
+    units = list(state.get("work_units") or [])
+    if not units and state.get("selected_unit") is not None:
+        units = [state["selected_unit"]]
     impl = state.get("implementation") or {}
     results = state.get("test_results") or {}
     lines: list[str] = []
-    if unit is not None:
-        lines.append(f"**Unit:** {unit.id} — {unit.title}")
+    if len(units) == 1:
+        lines.append(f"**Unit:** {units[0].id} — {units[0].title}")
+    elif units:
+        # All units reached here only because every one passed its gate — name each.
+        lines.append(f"**Units built ({len(units)}):**")
+        lines.extend(f"- {u.id} — {u.title}" for u in units)
     files = impl.get("files_touched")
     if files:
         lines.append("**Files touched:** " + ", ".join(files))

@@ -53,8 +53,14 @@ class BlacksmithState(TypedDict, total=False):
     prd: PRD
     work_units: list[WorkUnit]
     selected_unit: WorkUnit
+    # Cursor into ``work_units`` (topo order, from blacksmith.planner.execution_order):
+    # which unit the sequential implement->gate loop is currently on (multi-unit run).
+    unit_cursor: int
     plan: dict[str, Any]
     worktree_path: str
+    # The single shared branch every unit's commits land on, so one combined PR can be
+    # opened against it. Set once when the run's lone worktree is created.
+    branch: str
     implementation: dict[str, Any]
     test_results: TestResults
     pr_url: str | None
