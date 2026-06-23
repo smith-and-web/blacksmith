@@ -119,6 +119,39 @@ class BlockingFakeExecutor:
         return _result(text="blocked")
 
 
+class OutsideWorktreeFakeExecutor:
+    """Agent fumbles an absolute path outside the worktree (guard blocks it) but still
+    lands a real, in-worktree edit."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def run_implement(self, prompt, **kwargs):
+        self.calls.append(kwargs)
+        asyncio.run(
+            kwargs["can_use_tool"]("Write", {"file_path": "/Users/someone/realrepo/cli.py"}, None)
+        )
+        Path(kwargs["cwd"], "feature.txt").write_text("hello\n")
+        return _result()
+
+
+class MixedBlockFakeExecutor:
+    """Agent trips both guards — an out-of-worktree write and an untouchable write."""
+
+    def __init__(self):
+        self.calls: list[dict] = []
+
+    def run_implement(self, prompt, **kwargs):
+        self.calls.append(kwargs)
+        asyncio.run(
+            kwargs["can_use_tool"]("Write", {"file_path": "/Users/someone/realrepo/cli.py"}, None)
+        )
+        target = str(Path(kwargs["cwd"], "Cargo.lock"))
+        asyncio.run(kwargs["can_use_tool"]("Write", {"file_path": target}, None))
+        Path(kwargs["cwd"], "feature.txt").write_text("hello\n")
+        return _result()
+
+
 def test_implement_edits_captures_and_commits(tmp_path):
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
@@ -150,6 +183,45 @@ def test_implement_surfaces_blocked_untouchable(tmp_path):
 
     assert out["implementation"]["blocked"]
     assert "Cargo.lock" in out["errors"][0]["message"]  # surfaced for sign-off (AC-7)
+    assert "untouchable" in out["errors"][0]["message"]  # labeled as an untouchable block
+
+
+def test_implement_outside_worktree_block_is_audit_not_error(tmp_path):
+    # Out-of-worktree blocks are the isolation boundary working as intended: benign audit
+    # info, not a run error. With real committed changes the node proceeds to TESTING.
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    out = implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=OutsideWorktreeFakeExecutor(),
+    )
+
+    assert out["status"] == Status.TESTING
+    assert "errors" not in out  # benign — no implement error surfaced
+    blocked = out["implementation"]["blocked"]
+    assert blocked and blocked[0]["reason"] == "outside_worktree"  # recorded for audit
+
+
+def test_implement_mixed_blocks_label_each_by_real_reason(tmp_path):
+    # When both kinds of block occur, only the untouchable one is a run error, and the
+    # out-of-worktree path is never mislabeled as "untouchable".
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    out = implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=MixedBlockFakeExecutor(),
+    )
+
+    reasons = {b["reason"] for b in out["implementation"]["blocked"]}
+    assert reasons == {"outside_worktree", "untouchable"}
+    message = out["errors"][0]["message"]
+    assert "untouchable" in message and "Cargo.lock" in message
+    # the out-of-worktree path must not be dragged into the "untouchable" message
+    assert "realrepo" not in message
 
 
 def test_implement_missing_inputs_halts():
