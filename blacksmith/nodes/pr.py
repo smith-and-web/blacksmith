@@ -117,6 +117,12 @@ def _pr_body(state: BlacksmithState) -> str:
     if results:
         verdict = "passed" if results.get("passed") else "failed"
         lines.append(f"**Test gate:** {verdict} (`{results.get('command', '')}`)")
+    # If this run originated from a GitHub issue, link it so merging the PR closes it.
+    # blacksmith only *links* the issue here — it never auto-merges or auto-closes (§5).
+    issue_number = state.get("issue_number")
+    if issue_number:
+        lines.append("")
+        lines.append(f"Closes #{issue_number}")
     lines.append("")
     lines.append("Opened by blacksmith for review — not auto-merged.")
     return "\n".join(lines)

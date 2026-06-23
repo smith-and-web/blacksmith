@@ -26,6 +26,7 @@ from blacksmith.contract import ContractError, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
+from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.state import Status
 from blacksmith.worktree import WorktreeManager
 
@@ -126,15 +127,21 @@ def _drive_gates(graph, config, *, approver, on_node, result=None):
         result = _step(graph, Command(resume=approved), config, on_node=on_node)
 
 
-def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None):
+def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
     ``approver(payload, values) -> bool`` decides each gate. Returns the final state
     snapshot once the graph reaches END. ``on_node(node)``, when given, is called with
     each node's name as it runs (progress output); it never affects control flow.
+
+    ``issue_number``, when given, seeds the run state with the originating GitHub issue
+    so the opened PR links ``Closes #N`` in its body (it is never auto-merged/closed).
     """
     config = {"configurable": {"thread_id": thread_id}}
-    result = _step(graph, {"prd_path": str(prd_path)}, config, on_node=on_node)
+    payload = {"prd_path": str(prd_path)}
+    if issue_number is not None:
+        payload["issue_number"] = issue_number
+    result = _step(graph, payload, config, on_node=on_node)
     return _drive_gates(graph, config, approver=approver, on_node=on_node, result=result)
 
 
@@ -297,6 +304,34 @@ def _resume(argv: list[str] | None = None) -> int:
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
+def _scaffold_issue(issue_number: int, config: BlacksmithConfig) -> int:
+    """``blacksmith --issue N`` (no PRD): scaffold a Contract v1 PRD skeleton from issue N.
+
+    Fetches the issue via the existing ``gh`` CLI and writes a ``parse_prd``-valid
+    skeleton seeded with the issue's title/body, leaving ``target_modules`` /
+    ``test_contract`` as explicit human-TODO placeholders. No model spend, no graph run.
+    Returns 0 on success; 1 with a clear message if ``gh`` cannot fetch the issue.
+    """
+    repo_path = config.resolve_repo_path()
+    try:
+        path = scaffold_from_issue(
+            issue_number,
+            component=repo_path.name,
+            primary_target_repo=repo_path.name,
+            out_dir=repo_path,
+            cwd=repo_path,
+        )
+    except IssueError as exc:
+        print(f"issue: {exc}", file=sys.stderr)
+        return 1
+    print(f"Scaffolded PRD skeleton from issue #{issue_number}: {path}")
+    print(
+        "Complete the TODO markers (target_modules, test_contract), then run "
+        f"`blacksmith --issue {issue_number} {path}` so the PR links Closes #{issue_number}."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "validate":
@@ -308,7 +343,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
     )
-    parser.add_argument("prd_path", help="Path to a contract-conforming PRD markdown file.")
+    parser.add_argument(
+        "prd_path",
+        nargs="?",
+        help="Path to a contract-conforming PRD markdown file. Omit with --issue N to "
+        "scaffold a PRD skeleton from that GitHub issue.",
+    )
+    parser.add_argument(
+        "--issue",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Originating GitHub issue number. Without a PRD path, scaffold a skeleton "
+        "from issue N; with one, run it and link `Closes #N` in the opened PR.",
+    )
     parser.add_argument(
         "--config",
         default=None,
@@ -333,8 +381,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.prd_path is None and args.issue is None:
+        parser.error("a PRD path is required (or pass --issue N to scaffold one)")
+
     load_dotenv(Path.cwd() / ".env")
     config = _load_config(args.config)
+
+    if args.prd_path is None:
+        return _scaffold_issue(args.issue, config)
+
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
 
@@ -344,6 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         approver=_select_approver(args),
         thread_id=args.thread_id,
         on_node=_progress_emitter(args.quiet),
+        issue_number=args.issue,
     )
     _report(final)
     return 0 if final.values.get("status") == Status.DONE else 1
