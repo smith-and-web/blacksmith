@@ -52,14 +52,35 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
     )
 
 
-def drive(graph, prd_path, *, approver, thread_id: str = "run"):
+def _step(graph, payload, config, *, on_node):
+    """Run the graph until it next halts (an interrupt or END), streaming progress.
+
+    Uses LangGraph's built-in ``stream`` (stream_mode="updates") so each node update
+    arrives as it runs; ``on_node(node)`` is invoked per node for progress output. This
+    drives the same nodes in the same order as ``invoke`` — it only observes them. Returns
+    a dict carrying ``__interrupt__`` when the graph paused at a gate (matching ``invoke``).
+    """
+    interrupt = None
+    for chunk in graph.stream(payload, config, stream_mode="updates"):
+        if not isinstance(chunk, dict):
+            continue
+        for node, update in chunk.items():
+            if node == "__interrupt__":
+                interrupt = update
+            elif on_node is not None:
+                on_node(node)
+    return {"__interrupt__": interrupt} if interrupt is not None else {}
+
+
+def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
     ``approver(payload, values) -> bool`` decides each gate. Returns the final state
-    snapshot once the graph reaches END.
+    snapshot once the graph reaches END. ``on_node(node)``, when given, is called with
+    each node's name as it runs (progress output); it never affects control flow.
     """
     config = {"configurable": {"thread_id": thread_id}}
-    result = graph.invoke({"prd_path": str(prd_path)}, config)
+    result = _step(graph, {"prd_path": str(prd_path)}, config, on_node=on_node)
     while True:
         snapshot = graph.get_state(config)
         if not snapshot.next:  # reached END
@@ -67,7 +88,7 @@ def drive(graph, prd_path, *, approver, thread_id: str = "run"):
         interrupts = result.get("__interrupt__") if isinstance(result, dict) else None
         payload = interrupts[0].value if interrupts else {}
         approved = approver(payload, snapshot.values)
-        result = graph.invoke(Command(resume=approved), config)
+        result = _step(graph, Command(resume=approved), config, on_node=on_node)
 
 
 def _cli_approver(payload, values) -> bool:
@@ -100,6 +121,22 @@ def _select_approver(args):
     if args.approve is not None:
         return _auto_approver({g.strip() for g in args.approve.split(",") if g.strip()})
     return _cli_approver
+
+
+def _progress_emitter(quiet: bool):
+    """Build the per-node progress callback for ``drive``'s ``on_node`` hook.
+
+    Returns ``None`` when ``quiet`` is set (no progress stream). Otherwise returns a
+    callable that writes a concise line naming each node to STDERR, keeping stdout
+    reserved for the final machine-readable report.
+    """
+    if quiet:
+        return None
+
+    def emit(node: str) -> None:
+        print(f"blacksmith: {node}", file=sys.stderr)
+
+    return emit
 
 
 def _report(snapshot) -> None:
@@ -162,6 +199,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated gates to auto-approve (e.g. 'plan,pr'); unlisted gates "
         "are denied, halting the run there. Non-interactive.",
     )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress the per-node progress stream on STDERR (the final report still prints).",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv(Path.cwd() / ".env")
@@ -170,7 +212,11 @@ def main(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
 
     final = drive(
-        graph, args.prd_path, approver=_select_approver(args), thread_id=args.thread_id
+        graph,
+        args.prd_path,
+        approver=_select_approver(args),
+        thread_id=args.thread_id,
+        on_node=_progress_emitter(args.quiet),
     )
     _report(final)
     return 0 if final.values.get("status") == Status.DONE else 1
