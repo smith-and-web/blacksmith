@@ -212,6 +212,27 @@ def test_two_units_run_in_topo_order_on_one_branch_and_open_one_pr(tmp_path):
     saver.conn.close()
 
 
+def test_combined_pr_body_attributes_each_units_files_to_that_unit(tmp_path):
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/5")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    drive(graph, _write_prd(tmp_path, _TWO_UNITS), approver=approver, thread_id="attrib")
+
+    body = _pr_body(gh)
+    idx_a, idx_b = body.index("WU-A"), body.index("WU-B")
+    assert idx_a < idx_b  # listed in topo order
+    # Each unit's file is attributed to its OWN unit's section — wu-a.txt under WU-A,
+    # wu-b.txt under WU-B — not both lumped under the last unit (the bug being fixed).
+    assert "wu-a.txt" in body[idx_a:idx_b]
+    assert "wu-b.txt" not in body[idx_a:idx_b]
+    assert "wu-b.txt" in body[idx_b:]
+    assert "wu-a.txt" not in body[idx_b:]
+    saver.conn.close()
+
+
 def test_gate_failure_halts_naming_the_unit_and_opens_no_pr(tmp_path):
     repo = _target_repo(tmp_path, gate_cmd="true")  # unused: a fake gate is injected
     executor = FakeExecutor()
