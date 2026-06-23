@@ -212,6 +212,27 @@ def test_two_units_run_in_topo_order_on_one_branch_and_open_one_pr(tmp_path):
     saver.conn.close()
 
 
+def test_combined_pr_body_attributes_each_units_files_to_that_unit(tmp_path):
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/5")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    drive(graph, _write_prd(tmp_path, _TWO_UNITS), approver=approver, thread_id="attrib")
+
+    body = _pr_body(gh)
+    idx_a, idx_b = body.index("WU-A"), body.index("WU-B")
+    assert idx_a < idx_b  # listed in topo order
+    # Each unit's file is attributed to its OWN unit's section — wu-a.txt under WU-A,
+    # wu-b.txt under WU-B — not both lumped under the last unit (the bug being fixed).
+    assert "wu-a.txt" in body[idx_a:idx_b]
+    assert "wu-b.txt" not in body[idx_a:idx_b]
+    assert "wu-b.txt" in body[idx_b:]
+    assert "wu-a.txt" not in body[idx_b:]
+    saver.conn.close()
+
+
 def test_gate_failure_halts_naming_the_unit_and_opens_no_pr(tmp_path):
     repo = _target_repo(tmp_path, gate_cmd="true")  # unused: a fake gate is injected
     executor = FakeExecutor()
@@ -247,5 +268,52 @@ def test_single_unit_prd_is_unchanged_and_opens_one_pr(tmp_path):
     assert len(_pr_creates(gh)) == 1
     assert final.values["status"] == Status.DONE
     assert final.values["pr_url"].endswith("/pull/1")
+    assert approver.gates == ["plan", "pr"]
+    saver.conn.close()
+
+
+def _chain_units(n: int) -> str:
+    """Build YAML for ``n`` units forming a dependency chain WU-01 -> WU-02 -> ...
+
+    Each unit depends on its predecessor, so ``execution_order`` is fully determined and
+    the run exercises ``n`` sequential implement->gate super-steps on one branch.
+    """
+    ids = [f"WU-{i:02d}" for i in range(1, n + 1)]
+    blocks = []
+    for idx, uid in enumerate(ids):
+        dep = f"[{ids[idx - 1]}]" if idx else "[]"
+        blocks.append(
+            f'  - id: {uid}\n'
+            f'    title: "unit {idx + 1}"\n'
+            f'    layers: [py-logic]\n'
+            f'    target_modules: ["{uid.lower()}.txt"]\n'
+            f'    test_contract: "the gate command passes"\n'
+            f'    depends_on: {dep}'
+        )
+    return "\n".join(blocks)
+
+
+def test_twelve_units_run_to_one_pr_without_recursion_error(tmp_path):
+    # A 12-unit chain costs ~36 LangGraph super-steps — well past the default-25 ceiling
+    # that would raise GraphRecursionError. The raised recursion_limit lets it complete.
+    ids = [f"WU-{i:02d}" for i in range(1, 13)]
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/42")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(
+        graph, _write_prd(tmp_path, _chain_units(12)), approver=approver, thread_id="twelve"
+    )
+
+    # All 12 units built, in dependency order, on one shared branch to a single PR.
+    assert executor.implemented == ids
+    assert len(set(executor.cwds)) == 1
+    assert len(_pr_creates(gh)) == 1
+    body = _pr_body(gh)
+    assert all(uid in body for uid in ids)
+    assert final.values["status"] == Status.DONE
+    assert final.values["pr_url"].endswith("/pull/42")
     assert approver.gates == ["plan", "pr"]
     saver.conn.close()

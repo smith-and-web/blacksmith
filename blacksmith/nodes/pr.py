@@ -114,27 +114,55 @@ def _pr_title(units: Sequence[WorkUnit]) -> str:
     return f"{len(units)} work units ({units[0].id}..{units[-1].id})"
 
 
+def _change_lines(
+    files: Sequence[str] | None,
+    diff_summary: str | None,
+    results: dict | None,
+    *,
+    indent: str = "",
+) -> list[str]:
+    """Render the files/summary/test-gate lines for one unit's changes."""
+    lines: list[str] = []
+    if files:
+        lines.append(f"{indent}**Files touched:** " + ", ".join(files))
+    if diff_summary:
+        lines.append(f"{indent}**Summary:** {diff_summary}")
+    if results:
+        verdict = "passed" if results.get("passed") else "failed"
+        lines.append(f"{indent}**Test gate:** {verdict} (`{results.get('command', '')}`)")
+    return lines
+
+
 def _pr_body(state: BlacksmithState) -> str:
     units = list(state.get("work_units") or [])
     if not units and state.get("selected_unit") is not None:
         units = [state["selected_unit"]]
-    impl = state.get("implementation") or {}
-    results = state.get("test_results") or {}
     lines: list[str] = []
     if len(units) == 1:
+        # Single-unit body is unchanged: the last-write-wins implementation/test_results
+        # describe the lone unit.
+        impl = state.get("implementation") or {}
+        results = state.get("test_results") or {}
         lines.append(f"**Unit:** {units[0].id} — {units[0].title}")
+        lines.extend(_change_lines(impl.get("files_touched"), impl.get("diff_summary"), results))
     elif units:
-        # All units reached here only because every one passed its gate — name each.
+        # All units reached here only because every one passed its gate — summarize each
+        # from its OWN retained result (unit_results), so a unit's files/summary are
+        # attributed to that unit rather than lumped under the last unit's implementation.
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
         lines.append(f"**Units built ({len(units)}):**")
-        lines.extend(f"- {u.id} — {u.title}" for u in units)
-    files = impl.get("files_touched")
-    if files:
-        lines.append("**Files touched:** " + ", ".join(files))
-    if impl.get("diff_summary"):
-        lines.append(f"**Summary:** {impl['diff_summary']}")
-    if results:
-        verdict = "passed" if results.get("passed") else "failed"
-        lines.append(f"**Test gate:** {verdict} (`{results.get('command', '')}`)")
+        for u in units:
+            lines.append(f"- {u.id} — {u.title}")
+            result = by_id.get(u.id)
+            if result is not None:
+                lines.extend(
+                    _change_lines(
+                        result.get("files_touched"),
+                        result.get("diff_summary"),
+                        {"passed": True, "command": result.get("test_command", "")},
+                        indent="  ",
+                    )
+                )
     # If this run originated from a GitHub issue, link it so merging the PR closes it.
     # blacksmith only *links* the issue here — it never auto-merges or auto-closes (§5).
     issue_number = state.get("issue_number")

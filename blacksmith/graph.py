@@ -116,6 +116,20 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
         update["errors"] = [
             {"node": "test_gate", "message": f"gate failed for unit {unit.id}"}
         ]
+    else:
+        # Retain this unit's own result so the combined PR body can summarize each unit's
+        # changes. ``implementation`` is last-write-wins (only the latest unit), so capture
+        # the per-unit record here and append it via the unit_results reducer.
+        impl = state.get("implementation") or {}
+        update["unit_results"] = [
+            {
+                "unit_id": unit.id,
+                "title": unit.title,
+                "files_touched": list(impl.get("files_touched") or []),
+                "diff_summary": impl.get("diff_summary", ""),
+                "test_command": result.command,
+            }
+        ]
     return update
 
 

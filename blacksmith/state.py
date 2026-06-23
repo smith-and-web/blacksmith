@@ -45,6 +45,19 @@ class ErrorRecord(TypedDict):
     message: str
 
 
+class UnitResult(TypedDict, total=False):
+    """One unit's own outcome, retained so a multi-unit PR can summarize each unit's
+    changes (not just the last unit's). Appended to ``unit_results`` when a unit's gate
+    passes; ``implementation``/``test_results`` are last-write-wins and hold only the
+    most recent unit, which is why the per-unit record is captured here instead."""
+
+    unit_id: str
+    title: str
+    files_touched: list[str]
+    diff_summary: str
+    test_command: str
+
+
 class BlacksmithState(TypedDict, total=False):
     """State persisted per-run by the checkpointer. All keys optional — the graph
     fills them in as it advances."""
@@ -67,3 +80,7 @@ class BlacksmithState(TypedDict, total=False):
     approvals: Approvals
     status: Status
     errors: Annotated[list[ErrorRecord], operator.add]
+    # Per-unit results, accumulated (one record appended when each unit's gate passes)
+    # so a multi-unit PR body can attribute each unit's files/summary to that unit rather
+    # than lumping everything under the last unit's last-write-wins ``implementation``.
+    unit_results: Annotated[list[UnitResult], operator.add]
