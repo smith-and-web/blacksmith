@@ -52,6 +52,10 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
     )
 
 
+class ResumeError(Exception):
+    """Raised when a resume targets a thread-id with no persisted checkpoint."""
+
+
 def _step(graph, payload, config, *, on_node):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
@@ -72,6 +76,41 @@ def _step(graph, payload, config, *, on_node):
     return {"__interrupt__": interrupt} if interrupt is not None else {}
 
 
+def _gate_payload(result, snapshot) -> dict:
+    """Find the payload of the gate the graph is paused at.
+
+    Prefers the ``__interrupt__`` carried by the most recent ``_step`` (the fresh-run
+    path); falls back to the persisted snapshot's pending task, which is the only source
+    available when *resuming* after a process restart (no in-memory ``result`` exists).
+    """
+    interrupts = result.get("__interrupt__") if isinstance(result, dict) else None
+    if interrupts:
+        return interrupts[0].value
+    for task in getattr(snapshot, "tasks", ()) or ():
+        task_interrupts = getattr(task, "interrupts", ()) or ()
+        if task_interrupts:
+            return task_interrupts[0].value
+    return {}
+
+
+def _drive_gates(graph, config, *, approver, on_node, result=None):
+    """Drive the graph through its approval gates to END, consulting ``approver``.
+
+    Shared by a fresh ``drive`` and a ``resume``: each iteration reads the current
+    snapshot, halts the loop at END, otherwise asks ``approver`` to decide the pending
+    gate and injects that decision with ``Command(resume=...)``. ``result`` seeds the
+    first gate's payload for a fresh run; resume passes ``None`` and reads it from the
+    persisted snapshot instead.
+    """
+    while True:
+        snapshot = graph.get_state(config)
+        if not snapshot.next:  # reached END
+            return snapshot
+        payload = _gate_payload(result, snapshot)
+        approved = approver(payload, snapshot.values)
+        result = _step(graph, Command(resume=approved), config, on_node=on_node)
+
+
 def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
@@ -81,14 +120,26 @@ def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None):
     """
     config = {"configurable": {"thread_id": thread_id}}
     result = _step(graph, {"prd_path": str(prd_path)}, config, on_node=on_node)
-    while True:
-        snapshot = graph.get_state(config)
-        if not snapshot.next:  # reached END
-            return snapshot
-        interrupts = result.get("__interrupt__") if isinstance(result, dict) else None
-        payload = interrupts[0].value if interrupts else {}
-        approved = approver(payload, snapshot.values)
-        result = _step(graph, Command(resume=approved), config, on_node=on_node)
+    return _drive_gates(graph, config, approver=approver, on_node=on_node, result=result)
+
+
+def resume(graph, thread_id: str, *, approver, on_node=None):
+    """Continue an interrupted run from its persisted SQLite checkpoint (WU-RESUME).
+
+    Re-attaches to ``thread_id`` and drives the *existing* graph state to END. It sends
+    no fresh ``prd_path`` input, so the checkpointer replays already-completed nodes
+    (ingest/plan) from disk rather than re-running them — the run continues from the gate
+    it paused at, spending nothing on work already done. Raises ``ResumeError`` if no
+    checkpoint exists for ``thread_id`` (an unknown / never-started run).
+    """
+    config = {"configurable": {"thread_id": thread_id}}
+    snapshot = graph.get_state(config)
+    if getattr(snapshot, "created_at", None) is None:
+        raise ResumeError(
+            f"no checkpoint found for thread-id {thread_id!r}; nothing to resume "
+            "(start a run with `blacksmith <prd>` first)"
+        )
+    return _drive_gates(graph, config, approver=approver, on_node=on_node)
 
 
 def _cli_approver(payload, values) -> bool:
@@ -174,10 +225,67 @@ def _validate(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _resume(argv: list[str] | None = None) -> int:
+    """``blacksmith resume --thread-id X``: continue an interrupted run (WU-RESUME).
+
+    Re-attaches to the run's SQLite checkpoint and drives it from its paused gate to
+    END without re-running already-completed nodes. Returns 1 with a clear message if
+    the thread-id has no persisted checkpoint; otherwise mirrors the run path's exit
+    code (0 on DONE, 1 otherwise).
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith resume",
+        description="Continue an interrupted run from its SQLite checkpoint (by thread-id).",
+    )
+    parser.add_argument(
+        "--thread-id", required=True, help="Thread id of the run to resume."
+    )
+    parser.add_argument(
+        "--config", default="blacksmith.config.toml", help="blacksmith config path."
+    )
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Approve every gate non-interactively (headless/CI).",
+    )
+    parser.add_argument(
+        "--approve",
+        metavar="GATES",
+        help="Comma-separated gates to auto-approve (e.g. 'plan,pr'); unlisted gates "
+        "are denied, halting the run there. Non-interactive.",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress the per-node progress stream on STDERR (the final report still prints).",
+    )
+    args = parser.parse_args(argv)
+
+    load_dotenv(Path.cwd() / ".env")
+    config = BlacksmithConfig.load(args.config)
+    checkpointer = build_checkpointer(config.checkpointer.db_path)
+    graph = build_graph_for(config, checkpointer)
+
+    try:
+        final = resume(
+            graph,
+            args.thread_id,
+            approver=_select_approver(args),
+            on_node=_progress_emitter(args.quiet),
+        )
+    except ResumeError as exc:
+        print(f"resume: {exc}", file=sys.stderr)
+        return 1
+    _report(final)
+    return 0 if final.values.get("status") == Status.DONE else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "validate":
         return _validate(argv[1:])
+    if argv and argv[0] == "resume":
+        return _resume(argv[1:])
 
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
     parser.add_argument(
