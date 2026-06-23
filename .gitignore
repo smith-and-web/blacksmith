@@ -15,5 +15,8 @@ __pycache__/
 # Worktrees blacksmith creates against target repos
 /worktrees/
 
+# PRDs are local task inputs (work orders), not shipped source
+/prds/
+
 # OS
 .DS_Store
