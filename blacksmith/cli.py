@@ -27,7 +27,7 @@ from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.state import Status
-from blacksmith.worktree import WorktreeManager
+from blacksmith.worktree import WorktreeManager, normalize_remote_slug
 
 
 def load_dotenv(env_file: Path) -> None:
@@ -69,6 +69,38 @@ def _load_config(config_arg: str | None) -> BlacksmithConfig:
 
 class ResumeError(Exception):
     """Raised when a resume targets a thread-id with no persisted checkpoint."""
+
+
+class RepoConsistencyError(Exception):
+    """Raised when the target repo's git remote doesn't match the PRD's target repo."""
+
+
+def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str) -> str:
+    """Preflight: confirm the target repo's ``origin`` matches the PRD's primary_target_repo.
+
+    Runs BEFORE any worktree is created or model spend begins (PRD safety guard): it reads
+    the configured ``[target].repo_path``'s ``origin`` remote via the existing git plumbing
+    and compares its ``owner/name`` slug to the PRD's expected ``primary_target_repo``. SSH
+    and HTTPS forms of the same slug are treated as equal. Returns the matched slug on
+    success; raises ``RepoConsistencyError`` — naming both the configured remote slug and
+    the PRD's expected owner/repo — on a mismatch (or a missing remote), so a misdirected
+    run aborts non-zero without touching a worktree or the model.
+    """
+    expected = normalize_remote_slug(expected_repo)
+    actual = worktree_manager.remote_slug()
+    if actual is None:
+        raise RepoConsistencyError(
+            f"target repo {worktree_manager.repo_path} has no usable 'origin' git remote, "
+            f"so it cannot be confirmed to match the PRD's primary_target_repo "
+            f"{expected_repo!r} (expected slug {expected!r}). Refusing to run."
+        )
+    if actual != expected:
+        raise RepoConsistencyError(
+            f"target repo mismatch: the configured remote slug is {actual!r} but the PRD's "
+            f"primary_target_repo expects {expected!r} (from {expected_repo!r}). Refusing to "
+            "run against the wrong repository — no worktree created, no model spend."
+        )
+    return actual
 
 
 def _step(graph, payload, config, *, on_node):
@@ -335,6 +367,24 @@ def main(argv: list[str] | None = None) -> int:
 
     load_dotenv(Path.cwd() / ".env")
     config = _load_config(args.config)
+
+    # Preflight (runs before any worktree creation or model spend): a conforming PRD must
+    # target the repo blacksmith is pointed at. A non-conforming PRD is left for the graph's
+    # ingest node to reject with its field-level error (unchanged behaviour).
+    try:
+        prd = parse_prd(args.prd_path)
+    except ContractError:
+        prd = None
+    if prd is not None:
+        try:
+            check_repo_consistency(
+                WorktreeManager(config.resolve_repo_path()),
+                prd.contract.primary_target_repo,
+            )
+        except RepoConsistencyError as exc:
+            print(f"blacksmith: {exc}", file=sys.stderr)
+            return 1
+
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
 
