@@ -26,6 +26,10 @@ class Status(StrEnum):
     TESTING = "testing"
     AWAITING_PR_APPROVAL = "awaiting_pr_approval"
     HALTED = "halted"
+    # Terminal status for a human-GATED unit that implemented successfully: its work is
+    # parked behind a draft PR for manual QA, distinct from a failed/rejected HALTED run
+    # (work discarded) and from a fully-approved DONE run.
+    AWAITING_QA = "awaiting_qa"
     DONE = "done"
 
 
