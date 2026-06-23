@@ -34,10 +34,28 @@ uv run pytest            # run the test suite
 uv run ruff check        # lint
 ```
 
+### Global install
+
+Install `blacksmith` as a user-wide tool so it's on your `PATH` and runnable from
+inside any repo:
+
+```sh
+uv tool install .                                          # from a local clone
+uv tool install git+https://github.com/smith-and-web/blacksmith   # from the git URL
+```
+
+Once installed, `cd` into the target repo and run `blacksmith <prd>` directly (no
+`uv run` prefix). blacksmith discovers its `blacksmith.config.toml` by walking up from
+the current directory to the git root, and — when `[target].repo_path` is omitted —
+operates on **that** repo (the git root of where you're standing). See
+[Running](#running).
+
 ## Configuration
 
 - **`blacksmith.config.toml`** — blacksmith's own runtime config (model tiering,
   target repo, checkpointer, API auth). Parsed by [`blacksmith/config.py`](blacksmith/config.py).
+  It's discovered by walking up from the current directory to the git root, so a
+  globally-installed `blacksmith` works from any nested path inside the repo.
 - A separate **`blacksmith.toml`** lives in each *target* repo and defines that repo's
   toolchain — `test_cmd`, optional `lint_cmd`, and optional `setup_cmd` (a one-off
   provisioning step like `npm ci`, run before the gate) — read by the test gate.
@@ -49,15 +67,26 @@ blacksmith's metered spend isolated.
 ## Running
 
 ```sh
-uv run blacksmith <path/to/prd.md>          # run one work unit from a PRD
-uv run blacksmith <prd> --approve plan,pr   # non-interactive (CI / headless)
+# from inside the target repo, with blacksmith installed globally:
+blacksmith <path/to/prd.md>                 # run one work unit from a PRD
+blacksmith <prd> --approve plan,pr          # non-interactive (CI / headless)
+
+# from a clone of blacksmith itself, without a global install:
+uv run blacksmith <path/to/prd.md>
 ```
 
+**Run-inside-the-repo flow.** When `[target].repo_path` is omitted from
+`blacksmith.config.toml` (or the `[target]` section is dropped entirely), blacksmith
+operates on the git root of the directory you run it from. So you can `cd` into any
+repo, commit a `blacksmith.config.toml` (no `repo_path` needed) plus a `blacksmith.toml`,
+and run `blacksmith <prd>` from anywhere inside it. Setting an explicit absolute
+`[target].repo_path` still works unchanged and takes precedence.
+
 The PRD path is the single positional argument. `--config` points at a non-default
-`blacksmith.config.toml`; `--thread-id` names the checkpointer thread for the run.
-Interactive runs pause for a y/n at the plan and PR gates; `--auto-approve` approves
-both, and `--approve plan,pr` approves only the gates you name (an unlisted gate is
-denied, halting the run there).
+`blacksmith.config.toml` (otherwise it's discovered by walking up to the git root);
+`--thread-id` names the checkpointer thread for the run. Interactive runs pause for a
+y/n at the plan and PR gates; `--auto-approve` approves both, and `--approve plan,pr`
+approves only the gates you name (an unlisted gate is denied, halting the run there).
 
 ## Onboarding a new target repo
 
@@ -72,8 +101,10 @@ compiled into it, and the repo needs no prior setup beyond being a git clone.
 
 To point blacksmith at a new project:
 
-1. **Point blacksmith at the clone.** In `blacksmith.config.toml`, set
-   `[target] repo_path` to the local path and `default_branch`.
+1. **Point blacksmith at the clone.** Either set `[target] repo_path` in
+   `blacksmith.config.toml` to the local path, or omit `repo_path` and run blacksmith
+   from inside the repo — it then targets the git root of your current directory
+   (see [Running](#running)). Set `default_branch` if it isn't `main`.
 2. **Add a `blacksmith.toml` to the target repo** so the test gate knows its toolchain.
    Because the gate runs in a fresh worktree with no installed deps, a Node/TS target
    needs `setup_cmd` to install them — `test_cmd = "npm test"` alone dies with

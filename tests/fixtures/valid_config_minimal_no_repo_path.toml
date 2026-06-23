@@ -1,0 +1,4 @@
+# Conforming under WU-INSTALL: [target] is present but repo_path is omitted, so the
+# effective target repo is resolved at runtime to the git root of the cwd.
+[target]
+default_branch = "main"
