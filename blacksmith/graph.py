@@ -35,6 +35,7 @@ from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_pr
+from blacksmith.planner import execution_order
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import Worktree, WorktreeError, WorktreeManager, branch_for
 
@@ -64,16 +65,34 @@ def ingest_prd(state: BlacksmithState) -> dict:
 def prepare_worktree(
     state: BlacksmithState, *, worktree_manager: WorktreeManager | None = None
 ) -> dict:
+    """Create the run's ONE shared worktree/branch and seed the topo execution order.
+
+    Every unit is built sequentially on this single worktree (so each unit's committed
+    changes are visible to the next unit's implement step) and the run opens one combined
+    PR against its branch. The unit order comes from ``planner.execution_order``; the
+    implement->gate loop walks it via ``unit_cursor`` and re-enters ``implement`` (never
+    this node), so the worktree is created exactly once. A single-unit PRD reduces to the
+    prior behaviour: one unit, one worktree, one PR."""
     if worktree_manager is None:
         return {}  # skeleton pass-through
-    unit = state.get("selected_unit")
+    prd = state.get("prd")
+    units = execution_order(prd.contract) if prd is not None else []
+    unit = units[0] if units else state.get("selected_unit")
     if unit is None:
         return {
             "status": Status.HALTED,
             "errors": [{"node": "prepare_worktree", "message": "no selected_unit"}],
         }
     worktree = worktree_manager.create(unit.id)
-    return {"worktree_path": str(worktree.path)}
+    update: dict = {
+        "worktree_path": str(worktree.path),
+        "branch": worktree.branch,
+        "selected_unit": unit,
+        "unit_cursor": 0,
+    }
+    if units:
+        update["work_units"] = units
+    return update
 
 
 def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
@@ -91,7 +110,29 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
         result = gate(worktree_path, layer)
     except GateError as exc:
         return {"status": Status.HALTED, "errors": [{"node": "test_gate", "message": str(exc)}]}
-    return {"test_results": result.as_test_results(), "status": Status.TESTING}
+    update: dict = {"test_results": result.as_test_results(), "status": Status.TESTING}
+    if not result.passed:
+        # Name the failed unit so the halt message identifies which unit broke the run.
+        update["errors"] = [
+            {"node": "test_gate", "message": f"gate failed for unit {unit.id}"}
+        ]
+    return update
+
+
+def next_unit(state: BlacksmithState) -> dict:
+    """Advance to the next unit in topo order on the SAME shared worktree/branch.
+
+    Reached only after the current unit's gate passed, so the previous unit's commits are
+    already in the shared worktree when the next unit's implement step runs."""
+    units = state.get("work_units") or []
+    cursor = state.get("unit_cursor", 0) + 1
+    if cursor >= len(units):  # defensive: routing only sends us here when a unit remains
+        return {}
+    return {
+        "unit_cursor": cursor,
+        "selected_unit": units[cursor],
+        "status": Status.IMPLEMENTING,
+    }
 
 
 def human_halt(state: BlacksmithState) -> dict:
@@ -112,7 +153,9 @@ def cleanup_worktree(
         return {}
     worktree = Worktree(
         path=Path(worktree_path),
-        branch=branch_for(unit.id),
+        # The run's one shared branch (multi-unit); falls back to the unit's branch for a
+        # state that predates the shared-branch field.
+        branch=state.get("branch") or branch_for(unit.id),
         repo_path=worktree_manager.repo_path,
     )
     try:
@@ -157,9 +200,16 @@ def route_after_implement(state: BlacksmithState) -> str:
 
 
 def route_after_test_gate(state: BlacksmithState) -> str:
-    """Deterministic routing on the test result — a graph edge, not a model decision."""
+    """Deterministic routing on the test result — a graph edge, not a model decision.
+
+    A failed gate halts. On a pass, loop to ``next_unit`` while units remain in topo
+    order (shared branch); on the last unit, proceed to the single PR-approval gate."""
     results = state.get("test_results") or {}
-    return "approve_pr" if results.get("passed") else "human_halt"
+    if not results.get("passed"):
+        return "human_halt"
+    units = state.get("work_units") or []
+    cursor = state.get("unit_cursor", 0)
+    return "next_unit" if cursor + 1 < len(units) else "approve_pr"
 
 
 # --- assembly ----------------------------------------------------------------
@@ -206,6 +256,7 @@ def build_graph(
     )
     graph.add_node("implement", _node_with(implement, executor=executor))
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
+    graph.add_node("next_unit", next_unit)
     graph.add_node("approve_pr", approve_pr)
     graph.add_node("open_pr", _open_pr_node(pr_runner))
     graph.add_node("human_halt", human_halt)
@@ -240,8 +291,15 @@ def build_graph(
     graph.add_conditional_edges(
         "test_gate",
         route_after_test_gate,
-        {"approve_pr": "approve_pr", "human_halt": "human_halt"},
+        {
+            "approve_pr": "approve_pr",
+            "human_halt": "human_halt",
+            "next_unit": "next_unit",
+        },
     )
+    # Loop: the next unit is built on the same shared worktree/branch (no re-plan, no
+    # new worktree), so its implement step sees the prior units' committed changes.
+    graph.add_edge("next_unit", "implement")
     graph.add_conditional_edges(
         "approve_pr",
         route_after_approve_pr,
