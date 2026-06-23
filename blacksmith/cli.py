@@ -205,6 +205,24 @@ def _progress_emitter(quiet: bool):
     return emit
 
 
+def _total_cost_line(values) -> str:
+    """Build the run-end total-cost line summing the plan + implement ``cost_usd``.
+
+    Each node records its spend under its own state slice (``plan["cost_usd"]`` /
+    ``implementation["cost_usd"]``). A node that reports ``None`` (no executor wired, or
+    a model call that returned no cost) is excluded from the sum rather than crashing it.
+    If neither node reported a cost, the spend is unknown — say so plainly.
+    """
+    costs = [
+        (values.get("plan") or {}).get("cost_usd"),
+        (values.get("implementation") or {}).get("cost_usd"),
+    ]
+    known = [c for c in costs if c is not None]
+    if not known:
+        return "total cost: cost unavailable"
+    return f"total cost: ${sum(known):.2f}"
+
+
 def _report(snapshot) -> None:
     values = snapshot.values
     print(f"\nstatus: {values.get('status')}")
@@ -212,6 +230,7 @@ def _report(snapshot) -> None:
         print(f"PR: {values['pr_url']}")
     for err in values.get("errors", []):
         print(f"error [{err.get('node')}]: {err.get('message')}")
+    print(_total_cost_line(values))
 
 
 def _validate(argv: list[str] | None = None) -> int:

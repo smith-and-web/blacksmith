@@ -67,6 +67,7 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
             "target_modules": list(unit.target_modules),
             "test_contract": unit.test_contract,
             "steps": result.text,
+            "cost_usd": result.cost_usd,
         },
         "status": Status.AWAITING_PLAN_APPROVAL,
     }
