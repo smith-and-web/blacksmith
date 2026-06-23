@@ -74,7 +74,16 @@ def test_route_after_implement_uses_layer_gate():
     auto_unit = prd.contract.work_unit_by_id("WU-01")  # py-logic -> auto
     human_unit = prd.contract.work_unit_by_id("WU-06")  # py-logic + integration -> human
     assert route_after_implement({"prd": prd, "selected_unit": auto_unit}) == "test_gate"
-    assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "human_halt"
+    # A human-gated unit that implemented successfully opens a DRAFT PR for QA (WU-QA-WIRING),
+    # rather than discarding its work via human_halt.
+    assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "open_draft_pr"
+    # ...but a FAILED implement (status HALTED) still discards the work via human_halt.
+    assert (
+        route_after_implement(
+            {"prd": prd, "selected_unit": human_unit, "status": Status.HALTED}
+        )
+        == "human_halt"
+    )
     assert route_after_implement({}) == "test_gate"  # nothing selected -> default auto path
 
 
