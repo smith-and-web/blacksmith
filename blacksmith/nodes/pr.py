@@ -59,9 +59,14 @@ def open_pull_request(
     body: str,
     base: str | None = None,
     remote: str = "origin",
+    draft: bool = False,
     runner: Runner = subprocess_runner,
 ) -> PullRequest:
-    """Push ``branch`` to ``remote`` and open a PR via ``gh``; return its URL."""
+    """Push ``branch`` to ``remote`` and open a PR via ``gh``; return its URL.
+
+    Pass ``draft=True`` to open a draft PR (``gh pr create --draft``) — used for
+    human-gated units awaiting QA. The default opens a normal PR, unchanged.
+    """
     worktree = Path(worktree_path)
 
     push = runner(["git", "push", "-u", remote, branch], worktree)
@@ -71,6 +76,8 @@ def open_pull_request(
     argv = ["gh", "pr", "create", "--head", branch, "--title", title, "--body", body]
     if base:
         argv += ["--base", base]
+    if draft:
+        argv += ["--draft"]
     created = runner(argv, worktree)
     if created.returncode != 0:
         raise PRError(f"gh pr create failed: {created.stderr.strip() or created.stdout.strip()}")

@@ -69,6 +69,25 @@ def test_pushes_then_creates(tmp_path):
     assert "--head" in runner.calls[1] and "blacksmith/wu-01" in runner.calls[1]
 
 
+def test_draft_adds_flag(tmp_path):
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/7")
+    open_pull_request(
+        worktree_path=tmp_path,
+        branch="b",
+        title="T",
+        body="B",
+        draft=True,
+        runner=runner,
+    )
+    assert "--draft" in runner.calls[1]
+
+
+def test_default_omits_draft_flag(tmp_path):
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/8")
+    open_pull_request(worktree_path=tmp_path, branch="b", title="T", body="B", runner=runner)
+    assert "--draft" not in runner.calls[1]
+
+
 def test_push_failure_raises(tmp_path):
     runner = _recording_runner(push_rc=1)
     with pytest.raises(PRError, match="push"):
