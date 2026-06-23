@@ -151,6 +151,11 @@ class CloneManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._git(self.repo_path.parent, "clone", "--local", str(self.repo_path), str(path))
         self._git(path, "checkout", "-b", branch)
+        # `git clone` writes a fresh .git/config that does NOT inherit the source's *local*
+        # user.name/user.email. When the source's identity is local-only and this machine has
+        # no global identity, the clone has no author identity and every `git commit` fails
+        # ("Author identity unknown") — so propagate the source's resolved identity in.
+        self._propagate_identity(path)
         source_origin = self._source_origin_url()
         if source_origin is not None:
             self._git(path, "remote", "set-url", "origin", source_origin)
@@ -179,6 +184,27 @@ class CloneManager:
     def _source_origin_url(self) -> str | None:
         result = subprocess.run(
             ["git", "-C", str(self.repo_path), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    def _propagate_identity(self, clone_path: Path) -> None:
+        """Copy the source repo's resolved git author identity into the clone.
+
+        A fresh clone's .git/config inherits neither the source's *local* identity nor (on
+        this machine) any global one, so without this the clone cannot commit. If the source
+        has no identity either, there's nothing to copy and the clone is no worse off."""
+        for key in ("user.name", "user.email"):
+            value = self._source_config(key)
+            if value:
+                self._git(clone_path, "config", key, value)
+
+    def _source_config(self, key: str) -> str | None:
+        result = subprocess.run(
+            ["git", "-C", str(self.repo_path), "config", "--get", key],
             capture_output=True,
             text=True,
         )

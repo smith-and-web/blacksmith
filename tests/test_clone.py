@@ -82,8 +82,7 @@ def test_clone_origin_targets_real_remote(tmp_path):
     clone = mgr.create("WU-02")
 
     # A branch pushed from the clone appears in the bare remote — not the source.
-    _git(clone.path, "config", "user.email", "test@example.com")
-    _git(clone.path, "config", "user.name", "Test")
+    # No manual identity setup: create() propagates the source's identity into the clone.
     (clone.path / "new.txt").write_text("from clone\n")
     _git(clone.path, "add", "-A")
     _git(clone.path, "commit", "-m", "work in clone")
@@ -96,6 +95,24 @@ def test_clone_origin_targets_real_remote(tmp_path):
     assert not (repo / "new.txt").exists()
     source_log = _git(repo, "log", "--all", "--oneline")
     assert "work in clone" not in source_log
+
+
+def test_clone_propagates_source_identity_so_it_can_commit(tmp_path):
+    # A fresh clone's .git/config has no user.name/email; create() must copy the source's
+    # resolved identity in, or every `git commit` in the clone fails "Author identity unknown".
+    repo, _ = _source_with_remote(tmp_path)
+    _git(repo, "config", "user.email", "src@example.com")
+    _git(repo, "config", "user.name", "Source Dev")
+    mgr = CloneManager(repo, base_dir=tmp_path / "clones")
+    clone = mgr.create("WU-ID")
+
+    # The clone resolves to the SOURCE's identity (proves propagation, not a global fallback).
+    assert _git(clone.path, "config", "--get", "user.email").strip() == "src@example.com"
+    assert _git(clone.path, "config", "--get", "user.name").strip() == "Source Dev"
+    # ...and a commit succeeds with NO manual identity setup (_git uses check=True).
+    (clone.path / "x.txt").write_text("x\n")
+    _git(clone.path, "add", "-A")
+    _git(clone.path, "commit", "-m", "commits without manual identity")
 
 
 def test_remote_slug(tmp_path):
