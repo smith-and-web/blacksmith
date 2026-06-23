@@ -25,9 +25,47 @@ DEFAULT_PLAN_MODEL = "claude-sonnet-4-6"
 DEFAULT_IMPLEMENT_MODEL = "claude-opus-4-8"
 DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5"
 
+# Default name for blacksmith's runtime config, discovered by walking up to the
+# git root (WU-INSTALL) so a global install can be run from anywhere inside a repo.
+CONFIG_FILENAME = "blacksmith.config.toml"
+
 
 class ConfigError(Exception):
     """Raised when blacksmith's runtime config is missing, malformed, or invalid."""
+
+
+def find_git_root(start: str | Path | None = None) -> Path | None:
+    """Return the git repository root containing ``start`` (default: cwd), or ``None``.
+
+    Walks up from ``start`` looking for a ``.git`` entry (a directory in a normal
+    clone, a file inside a linked worktree). Returns the first directory that has one.
+    """
+    here = Path(start).resolve() if start is not None else Path.cwd().resolve()
+    for directory in (here, *here.parents):
+        if (directory / ".git").exists():
+            return directory
+    return None
+
+
+def find_config(
+    start: str | Path | None = None, *, filename: str = CONFIG_FILENAME
+) -> Path | None:
+    """Discover a blacksmith config by walking up from ``start`` to the git root.
+
+    Enables running a globally-installed ``blacksmith`` from any nested path inside a
+    repo: the config lives at the repo root and is found by climbing the directory
+    tree (stopping at the git root). Returns the config path, or ``None`` if none is
+    found at or below the git root.
+    """
+    here = Path(start).resolve() if start is not None else Path.cwd().resolve()
+    root = find_git_root(here)
+    for directory in (here, *here.parents):
+        candidate = directory / filename
+        if candidate.is_file():
+            return candidate
+        if root is not None and directory == root:
+            break
+    return None
 
 
 class _Strict(BaseModel):
@@ -45,9 +83,15 @@ class ModelTiers(_Strict):
 
 
 class TargetConfig(_Strict):
-    """The repository blacksmith operates on (e.g. Kindling)."""
+    """The repository blacksmith operates on (e.g. Kindling).
 
-    repo_path: Path
+    ``repo_path`` is optional: when omitted, the effective target repo is resolved at
+    runtime to the git root of the current working directory (WU-INSTALL), so a
+    globally-installed blacksmith can be run from inside the repo it should operate on.
+    An explicit absolute ``repo_path`` is still honoured unchanged (backward compatible).
+    """
+
+    repo_path: Path | None = None
     default_branch: str = "main"
 
 
@@ -67,7 +111,7 @@ class ApiConfig(_Strict):
 class BlacksmithConfig(_Strict):
     """Top-level blacksmith runtime config, loaded from a TOML file."""
 
-    target: TargetConfig
+    target: TargetConfig = Field(default_factory=TargetConfig)
     models: ModelTiers = Field(default_factory=ModelTiers)
     checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
@@ -106,6 +150,27 @@ class BlacksmithConfig(_Strict):
                 "environment or .env file."
             )
         return key
+
+    def resolve_repo_path(self, start: str | Path | None = None) -> Path:
+        """Return the effective target repo path (WU-INSTALL).
+
+        Uses an explicit ``[target].repo_path`` unchanged when set (backward
+        compatible). Otherwise defaults to the git root of ``start`` (the current
+        working directory), so a globally-installed blacksmith run from inside a repo
+        operates on that repo. Raises ``ConfigError`` if no path is configured and
+        ``start`` is not inside a git repository.
+        """
+        if self.target.repo_path is not None:
+            return self.target.repo_path
+        root = find_git_root(start)
+        if root is None:
+            raise ConfigError(
+                "[target].repo_path is not set and the current directory is not "
+                "inside a git repository, so the target repo cannot be determined. "
+                "Run blacksmith from inside the target repo, or set "
+                "[target].repo_path in blacksmith.config.toml."
+            )
+        return root
 
 
 def _format_validation_error(path: Path, err: ValidationError) -> str:

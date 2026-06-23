@@ -21,7 +21,7 @@ from pathlib import Path
 from langgraph.types import Command
 
 from blacksmith import __version__
-from blacksmith.config import BlacksmithConfig
+from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, find_config
 from blacksmith.contract import ContractError, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
@@ -47,9 +47,24 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
     return compile_graph(
         checkpointer,
         executor=Executor(config),
-        worktree_manager=WorktreeManager(config.target.repo_path),
+        worktree_manager=WorktreeManager(config.resolve_repo_path()),
         gate=run_gate,
     )
+
+
+def _load_config(config_arg: str | None) -> BlacksmithConfig:
+    """Load the runtime config, discovering it by walking up to the git root.
+
+    When ``--config`` is not given (``config_arg is None``), the config is discovered
+    from the current working directory up to the git root (WU-INSTALL), so a globally
+    installed ``blacksmith`` can be run from any nested path inside the repo. An
+    explicit ``--config`` path is honoured unchanged.
+    """
+    if config_arg is not None:
+        return BlacksmithConfig.load(config_arg)
+    discovered = find_config()
+    # Fall back to the default name so load() raises its clear not-found message.
+    return BlacksmithConfig.load(discovered or CONFIG_FILENAME)
 
 
 class ResumeError(Exception):
@@ -241,7 +256,9 @@ def _resume(argv: list[str] | None = None) -> int:
         "--thread-id", required=True, help="Thread id of the run to resume."
     )
     parser.add_argument(
-        "--config", default="blacksmith.config.toml", help="blacksmith config path."
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
     )
     parser.add_argument(
         "--auto-approve",
@@ -262,7 +279,7 @@ def _resume(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv(Path.cwd() / ".env")
-    config = BlacksmithConfig.load(args.config)
+    config = _load_config(args.config)
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
 
@@ -293,7 +310,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("prd_path", help="Path to a contract-conforming PRD markdown file.")
     parser.add_argument(
-        "--config", default="blacksmith.config.toml", help="blacksmith config path."
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
     )
     parser.add_argument("--thread-id", default="run", help="Checkpointer thread id for this run.")
     parser.add_argument(
@@ -315,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     load_dotenv(Path.cwd() / ".env")
-    config = BlacksmithConfig.load(args.config)
+    config = _load_config(args.config)
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
 
