@@ -104,6 +104,14 @@ def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str
     return actual
 
 
+# The sequential implement->gate loop spends ~3 LangGraph super-steps per unit, so the
+# default recursion_limit of 25 caps a run at roughly 7-8 units before LangGraph raises
+# GraphRecursionError. 150 sits comfortably above ~3 super-steps/unit (~50 units of
+# headroom), letting large multi-unit DAGs run to completion. This only raises the
+# ceiling — it never changes which nodes run or in what order.
+RECURSION_LIMIT = 150
+
+
 def _step(graph, payload, config, *, on_node):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
@@ -111,7 +119,11 @@ def _step(graph, payload, config, *, on_node):
     arrives as it runs; ``on_node(node)`` is invoked per node for progress output. This
     drives the same nodes in the same order as ``invoke`` — it only observes them. Returns
     a dict carrying ``__interrupt__`` when the graph paused at a gate (matching ``invoke``).
+
+    The graph-invocation ``config`` is augmented with ``RECURSION_LIMIT`` so large
+    multi-unit DAGs don't trip LangGraph's default-25 super-step ceiling.
     """
+    config = {**config, "recursion_limit": RECURSION_LIMIT}
     interrupt = None
     for chunk in graph.stream(payload, config, stream_mode="updates"):
         if not isinstance(chunk, dict):
