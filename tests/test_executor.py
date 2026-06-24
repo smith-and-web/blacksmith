@@ -116,6 +116,39 @@ def test_run_can_suppress_error_raising(monkeypatch):
     assert r.text == "boom"
 
 
+class RaisingQuery:
+    """Stand-in for the SDK that raises mid-stream, the way it signals "max turns"."""
+
+    def __init__(self, message):
+        self.message = message
+
+    def __call__(self, *, prompt, options, transport=None):
+        return self._gen()
+
+    async def _gen(self):
+        raise Exception(self.message)
+        yield  # pragma: no cover - makes this an async generator
+
+
+def test_sdk_raise_becomes_error_result(monkeypatch):
+    # The SDK raises (rather than emitting a ResultMessage) on "Reached maximum number of
+    # turns"; that must surface as a structured is_error result, not a raw traceback.
+    fake = RaisingQuery("Claude Code returned an error result: Reached maximum number of turns (8)")
+    ex = Executor(_config(monkeypatch), query_fn=fake)
+    r = ex.run("p", model="claude-sonnet-4-6", raise_on_error=False)
+    assert r.is_error is True
+    assert "maximum number of turns" in r.text
+    assert r.cost_usd is None
+
+
+def test_sdk_raise_with_raise_on_error_raises_executor_error(monkeypatch):
+    # raise_on_error=True callers still get a typed ExecutorError (not the bare SDK Exception).
+    fake = RaisingQuery("Reached maximum number of turns (8)")
+    ex = Executor(_config(monkeypatch), query_fn=fake)
+    with pytest.raises(ExecutorError):
+        ex.run("p", model="claude-sonnet-4-6")
+
+
 def test_missing_api_key_raises(monkeypatch):
     monkeypatch.delenv("BLACKSMITH_ANTHROPIC_API_KEY", raising=False)
     config = BlacksmithConfig.load(FIXTURES / "valid_config.toml")

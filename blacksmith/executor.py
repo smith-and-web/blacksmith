@@ -131,15 +131,34 @@ class Executor:
 
     async def _collect(self, prompt: str, options: ClaudeAgentOptions) -> ExecutorResult:
         default_model = options.model or self._config.models.implement
-        if options.can_use_tool is not None:
-            # A can_use_tool guard needs a persistent bidirectional connection: the
-            # one-shot query() closes its input stream before the permission round-trip
-            # (the agent sees "Tool permission request failed: Stream closed"). The
-            # ClaudeSDKClient keeps the connection open for the duration of the turn.
-            async with ClaudeSDKClient(options=options) as client:
-                await client.query(prompt)
-                return await self._aggregate(client.receive_response(), default_model)
-        return await self._aggregate(self._query(prompt=prompt, options=options), default_model)
+        try:
+            if options.can_use_tool is not None:
+                # A can_use_tool guard needs a persistent bidirectional connection: the
+                # one-shot query() closes its input stream before the permission round-trip
+                # (the agent sees "Tool permission request failed: Stream closed"). The
+                # ClaudeSDKClient keeps the connection open for the duration of the turn.
+                async with ClaudeSDKClient(options=options) as client:
+                    await client.query(prompt)
+                    return await self._aggregate(client.receive_response(), default_model)
+            return await self._aggregate(self._query(prompt=prompt, options=options), default_model)
+        except Exception as exc:
+            # The Agent SDK signals some failures — notably "Reached maximum number of turns",
+            # but also CLI/stream errors — by RAISING during message iteration rather than
+            # emitting a ResultMessage with is_error=True. Left unhandled, that bubbles up as a
+            # raw traceback and kills the whole run. Convert it into a structured is_error
+            # result instead: nodes that pass raise_on_error=False (implement) can HALT cleanly,
+            # and raise_on_error=True callers still get a typed ExecutorError (not a bare
+            # Exception). BaseException (KeyboardInterrupt, CancelledError) is deliberately not
+            # caught, so Ctrl-C and task cancellation still propagate.
+            return ExecutorResult(
+                text=str(exc),
+                model=default_model,
+                is_error=True,
+                num_turns=0,
+                cost_usd=None,
+                usage=None,
+                session_id=None,
+            )
 
     async def _aggregate(self, messages, default_model: str) -> ExecutorResult:
         texts: list[str] = []

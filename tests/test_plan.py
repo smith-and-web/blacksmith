@@ -94,6 +94,30 @@ def test_plan_node_missing_prd_halts():
     assert out["errors"][0]["node"] == "plan"
 
 
+class ErroringExecutor:
+    """A plan executor whose call fails (e.g. max-turns) — surfaced as an is_error result
+    by the executor wrapper rather than a raised exception."""
+
+    def run_plan(self, prompt, **kwargs):
+        return ExecutorResult(
+            text="Reached maximum number of turns (20)",
+            model="claude-sonnet-4-6",
+            is_error=True,
+            num_turns=20,
+            cost_usd=None,
+            usage=None,
+            session_id="s1",
+        )
+
+
+def test_plan_node_halts_on_executor_error():
+    out = plan({"prd": parse_prd(VENDORED_PRD)}, executor=ErroringExecutor())
+    assert out["status"] == Status.HALTED
+    assert out["errors"][0]["node"] == "plan"
+    assert "max" in out["errors"][0]["message"].lower()
+    assert "selected_unit" not in out  # halted before producing a plan
+
+
 # --- graph integration -------------------------------------------------------
 
 
