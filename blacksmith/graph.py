@@ -35,6 +35,7 @@ from langgraph.types import Send
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import GateError, GateResult
+from blacksmith.memory import current_store, record_lesson, repo_namespace
 from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
@@ -141,17 +142,24 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
         result = gate(worktree_path, layer)
     except GateError as exc:
         return {"status": Status.HALTED, "errors": [{"node": "test_gate", "message": str(exc)}]}
+    impl = state.get("implementation") or {}
     update: dict = {"test_results": result.as_test_results(), "status": Status.TESTING}
     if not result.passed:
         # Name the failed unit so the halt message identifies which unit broke the run.
         update["errors"] = [
             {"node": "test_gate", "message": f"gate failed for unit {unit.id}"}
         ]
+        # Record a lesson only on the path that actually halts the run: a first-attempt
+        # failure that can still escalate (pre_implement_ref set, not yet escalated) is
+        # retried, not halted, so it is not a lesson. Memory is optional and additive —
+        # it never changes routing (see route_after_test_gate for the mirrored condition).
+        will_escalate = bool(state.get("pre_implement_ref")) and not state.get("escalated")
+        if not will_escalate:
+            _record_gate_lesson(state, unit, result, impl)
     else:
         # Retain this unit's own result so the combined PR body can summarize each unit's
         # changes. ``implementation`` is last-write-wins (only the latest unit), so capture
         # the per-unit record here and append it via the unit_results reducer.
-        impl = state.get("implementation") or {}
         update["unit_results"] = [
             {
                 "unit_id": unit.id,
@@ -162,6 +170,30 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
             }
         ]
     return update
+
+
+def _record_gate_lesson(
+    state: BlacksmithState, unit: WorkUnit, result: GateResult, impl: dict
+) -> None:
+    """Write a concise gate-failure lesson to the long-term Store, scoped to this repo.
+
+    No-op when no Store is configured or the PRD/contract is unavailable, so a store-less
+    run behaves exactly as today. Failures here never affect the run's outcome."""
+    store = current_store()
+    prd = state.get("prd")
+    if store is None or prd is None:
+        return
+    reason = (result.output or "").strip() or f"gate failed for unit {unit.id}"
+    lesson = {
+        "unit_id": unit.id,
+        "title": unit.title,
+        "reason": reason,
+        "files_touched": list(impl.get("files_touched") or []),
+    }
+    try:
+        record_lesson(store, repo_namespace(prd.contract), lesson)
+    except Exception:
+        pass
 
 
 def _next_position(

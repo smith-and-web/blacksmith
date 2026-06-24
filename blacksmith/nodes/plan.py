@@ -18,7 +18,11 @@ from typing import Any
 
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
+from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.state import BlacksmithState, Status
+
+# How many prior gate-failure lessons to surface to the planner (most recent first).
+_LESSONS_LIMIT = 5
 
 
 def usage_breakdown(usage: dict[str, Any] | None) -> dict[str, int] | None:
@@ -76,7 +80,7 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
 
     result = executor.run_plan(
         _plan_prompt(unit),
-        system_prompt=_system_prompt(prd.contract),
+        system_prompt=_system_prompt(prd.contract, _prior_lessons(prd.contract)),
         allowed_tools=_PLAN_READ_ONLY,
         disallowed_tools=_PLAN_BLOCKED,
         max_turns=_PLAN_MAX_TURNS,
@@ -114,11 +118,40 @@ def _plan_prompt(unit: WorkUnit) -> str:
     )
 
 
-def _system_prompt(contract: PRDContract) -> str:
-    untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
+def _prior_lessons(contract: PRDContract) -> list[dict]:
+    """Recent gate-failure lessons for this repo, or ``[]`` when no store is configured.
+
+    Memory is optional: with no Store bound (``current_store()`` returns ``None``) or an
+    empty Store, this returns ``[]`` and the system prompt is byte-for-byte what it was
+    before this unit existed.
+    """
+    store = current_store()
+    if store is None:
+        return []
+    return recent_lessons(store, repo_namespace(contract), _LESSONS_LIMIT)
+
+
+def _render_lesson(lesson: dict) -> str:
+    files = ", ".join(lesson.get("files_touched") or []) or "—"
     return (
+        f"- [{lesson.get('unit_id', '?')}] {lesson.get('title', '')}: "
+        f"{lesson.get('reason', '')} (files touched: {files})"
+    )
+
+
+def _system_prompt(contract: PRDContract, lessons: list[dict] | None = None) -> str:
+    untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
+    prompt = (
         f"You are blacksmith's planner for the {contract.component} project "
         f"({contract.primary_target_repo}). Plan precisely and minimally.\n\n"
         "CONSTITUTION — these are inviolable; never plan work that touches them without "
         f"explicit human sign-off:\n{untouchables}"
     )
+    if lessons:
+        rendered = "\n".join(_render_lesson(lesson) for lesson in lessons)
+        prompt += (
+            "\n\nPRIOR LESSONS ON THIS REPO — gate failures from earlier runs against "
+            "this repo; learn from them and avoid repeating these mistakes:\n"
+            f"{rendered}"
+        )
+    return prompt
