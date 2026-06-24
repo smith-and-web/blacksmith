@@ -4,22 +4,29 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Agentic development orchestrator — a [LangGraph](https://langchain-ai.github.io/langgraph/)
-state machine that drives a single work unit through
+state machine that drives a PRD's work units, in dependency order, each through
 **plan → implement → test-gate → review → PR**, with durable checkpointed state and
 human approval gates. The [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview)
-is the per-node execution engine; blacksmith operates *on* a target repository
-(Kindling) via git worktrees, `cargo`, and `gh`.
+is the per-node execution engine; blacksmith operates *on* a target repository via
+isolated git clones, the repo's own test/lint toolchain, and `gh`.
 
-The point of v0 is to bootstrap a working, inspectable understanding of LangGraph's
-state-machine / checkpoint / human-in-the-loop model — Kindling is the dogfood;
-LangGraph fluency is the deliverable. See [`blacksmith-v0-prd.md`](blacksmith-v0-prd.md)
-for the full spec. Writing your own PRD? The [PRD authoring guide](docs/prd-authoring-guide.md)
-documents the contract every PRD must conform to.
+The deliverable is LangGraph fluency — a working, inspectable grasp of its
+state-machine / checkpoint / human-in-the-loop model. blacksmith now drives most of
+its own development: it builds its features from Contract v1 PRDs, on itself. See
+[`blacksmith-v0-prd.md`](blacksmith-v0-prd.md) for the original spec. Writing your own
+PRD? The [PRD authoring guide](docs/prd-authoring-guide.md) documents the contract
+every PRD must conform to.
 
-**Status:** v0 spine complete — all 11 work units built and test-gated (108 tests).
-Two live dogfoods passed end to end (plan → implement → test-gate → PR): blacksmith
-against its own repo, and against an external Node/TypeScript target. The live
-agent-edit path is confirmed working — not aspirational.
+**Status:** well past the v0 spine — blacksmith builds its own features end to end, and
+nearly everything below was shipped that way (write a PRD → blacksmith builds it → review
+the PR). Current on `main`: **multi-unit execution** of a PRD's whole `depends_on` DAG
+(units run in topological order — independent ones in parallel within a dependency level —
+accumulating onto one branch that opens a single combined PR); **clone-based isolation**
+(each run/unit works in a throwaway `git clone`, never the real checkout); a **human-QA
+path** (a `human`-gated unit opens a *draft* PR and ends `AWAITING_QA` with its branch
+preserved); **tiered models** (implement on Sonnet first, escalate to Opus only on a gate
+failure); per-node progress, per-run token/cache instrumentation, and an org cost reporter.
+200+ tests, CI-green. Proven against its own repo and an external Node/TypeScript target.
 
 ## Stack
 
@@ -84,9 +91,19 @@ and run `blacksmith <prd>` from anywhere inside it. Setting an explicit absolute
 
 The PRD path is the single positional argument. `--config` points at a non-default
 `blacksmith.config.toml` (otherwise it's discovered by walking up to the git root);
-`--thread-id` names the checkpointer thread for the run. Interactive runs pause for a
-y/n at the plan and PR gates; `--auto-approve` approves both, and `--approve plan,pr`
-approves only the gates you name (an unlisted gate is denied, halting the run there).
+`--thread-id` names the checkpointer thread for the run (**use a fresh one per run**).
+Interactive runs pause for a y/n at the plan and PR gates; `--auto-approve` approves
+both, and `--approve plan,pr` approves only the gates you name (an unlisted gate is
+denied, halting the run there). `--quiet` silences the per-node progress stream.
+
+Other entry points:
+
+```sh
+blacksmith validate <prd>            # offline contract check — field-level errors, zero model spend
+blacksmith resume --thread-id <id>   # continue an interrupted run from its SQLite checkpoint
+blacksmith --issue <N>               # scaffold a PRD skeleton from GitHub issue #N (PR links Closes #N)
+blacksmith costs                     # org usage + cost from the Admin API (read-only; needs an admin key)
+```
 
 ## Onboarding a new target repo
 
@@ -126,9 +143,11 @@ To point blacksmith at a new project:
    always override the repo's own guidance.
 4. **Write a Contract v1 PRD** for the work — see
    [`docs/prd-authoring-guide.md`](docs/prd-authoring-guide.md). Set `primary_target_repo`,
-   declare `layers`, list `untouchables`, and define `work_units`. v0 runs exactly one
-   **root** unit, so make the unit you want built first `depends_on: []` (and an `auto`
-   layer if you want the gate to decide it end to end).
+   declare `layers`, list `untouchables`, and define `work_units`. blacksmith runs the
+   **whole** `work_units` DAG in dependency order on one shared branch and opens a single
+   combined PR — use `depends_on` to order them (independent units at the same level run
+   in parallel). Use an `auto` layer where the test gate should decide pass/fail end to
+   end; a `human` layer instead opens a draft PR for manual QA.
 5. **Have the `claude` CLI on `PATH`** — the Agent SDK spawns it for live runs.
 6. **Run it** — `uv run blacksmith path/to/your-prd.md` — then approve at the plan and
    PR gates (or run headless with `--approve`; see [Running](#running)).
@@ -154,3 +173,13 @@ To point blacksmith at a new project:
 - [x] **WU-09** — plan node
 - [x] **WU-10** — implement node *(guard + diff/commit auto-tested; live agent-edit confirmed via dogfood)*
 - [x] **WU-11** — end-to-end wiring (happy path + human-halt-on-fail) + CLI
+
+### Beyond the v0 spine — built by blacksmith on itself
+
+- **Multi-unit DAG execution** — topological ordering + parallel fan-out within a dependency level, accumulating onto one combined PR.
+- **Clone-based isolation** — a throwaway `git clone` per run/unit; the real checkout is never touched.
+- **Human-QA path** — a `human`-gated unit opens a *draft* PR and ends `AWAITING_QA`, branch preserved for manual review.
+- **Tiered models** — implement on Sonnet first, escalate to Opus only on a gate failure.
+- **More CLIs** — `validate` (offline contract check), `resume` (continue from a checkpoint), `--issue N` (scaffold from a GitHub issue), `costs` (org Admin-API usage/cost), and global `uv tool install`.
+- **Cost visibility** — end-of-run cost total plus per-run token + cache-hit instrumentation.
+- **Robustness** — repo-consistency preflight, reason-accurate guard-block reporting, and a per-node progress stream (`--quiet` to silence).
