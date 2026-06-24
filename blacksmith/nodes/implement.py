@@ -25,7 +25,7 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.nodes.plan import usage_breakdown
+from blacksmith.nodes.plan import cost_event, usage_breakdown
 from blacksmith.state import BlacksmithState, Status
 
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
@@ -183,6 +183,11 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
             "cost_usd": result.cost_usd,
             "usage": usage_breakdown(result.usage),
         },
+        # Append-only ledger event for THIS attempt (WU-COST-EVENTS). The escalation retry
+        # is a separate implement invocation that reaches here too, so each attempt
+        # contributes exactly one event — the multi-unit/escalation spend is no longer lost
+        # to the last-write-wins ``implementation`` slice.
+        "cost_events": [cost_event("implement", unit.id, result)],
         "status": Status.TESTING,
     }
     # Record the pre-attempt ref so a gate failure can reset to exactly here — discarding only

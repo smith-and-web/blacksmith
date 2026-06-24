@@ -140,3 +140,11 @@ class BlacksmithState(TypedDict, total=False):
     # so a multi-unit PR body can attribute each unit's files/summary to that unit rather
     # than lumping everything under the last unit's last-write-wins ``implementation``.
     unit_results: Annotated[list[UnitResult], operator.add]
+    # Append-only per-call cost/usage ledger (WU-COST-EVENTS). One event per model call —
+    # the plan node and EVERY implement attempt (including the escalation retry) append
+    # exactly one record. A reducer key (like ``errors``/``unit_results``) so the events
+    # accumulate across nodes rather than being clobbered last-write-wins. The run-end
+    # report sums THIS ledger, so a multi-unit run reports every unit's (and every
+    # escalation attempt's) spend instead of only plan + the final unit's
+    # last-write-wins ``implementation`` slice.
+    cost_events: Annotated[list[dict], operator.add]

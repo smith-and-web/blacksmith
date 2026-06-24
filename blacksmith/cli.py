@@ -340,19 +340,49 @@ def _progress_emitter(quiet: bool, renderer: Renderer | None = None):
     return emit
 
 
-def _total_cost_line(values) -> str:
-    """Build the run-end total-cost line summing the plan + implement ``cost_usd``.
+def _cost_usds(values) -> list:
+    """Per-call ``cost_usd`` figures to sum for the run total (WU-COST-EVENTS).
 
-    Each node records its spend under its own state slice (``plan["cost_usd"]`` /
-    ``implementation["cost_usd"]``). A node that reports ``None`` (no executor wired, or
-    a model call that returned no cost) is excluded from the sum rather than crashing it.
-    If neither node reported a cost, the spend is unknown — say so plainly.
+    Reads the append-only ``cost_events`` ledger — one record per model call, so a
+    multi-unit run (and every escalation attempt) is counted, not just plan + the final
+    unit's last-write-wins ``implementation`` slice. Falls back to those slices only when
+    no ledger is present (e.g. a skeleton run with no executor wired).
     """
-    costs = [
+    events = values.get("cost_events")
+    if events:
+        return [e.get("cost_usd") for e in events]
+    return [
         (values.get("plan") or {}).get("cost_usd"),
         (values.get("implementation") or {}).get("cost_usd"),
     ]
-    known = [c for c in costs if c is not None]
+
+
+def _usages(values) -> list:
+    """Per-call usage breakdowns to sum for the token line (WU-COST-EVENTS).
+
+    Like ``_cost_usds``, this reads the append-only ``cost_events`` ledger so every call's
+    tokens are counted across a multi-unit run, falling back to the per-node slices only
+    when no ledger is present."""
+    events = values.get("cost_events")
+    if events:
+        return [e.get("usage") for e in events]
+    return [
+        (values.get("plan") or {}).get("usage"),
+        (values.get("implementation") or {}).get("usage"),
+    ]
+
+
+def _total_cost_line(values) -> str:
+    """Build the run-end total-cost line summing every model call's ``cost_usd``.
+
+    The figures come from the append-only ``cost_events`` ledger (WU-COST-EVENTS), so a
+    multi-unit run reports the SUM of all units' (and all escalation attempts') spend —
+    fixing the prior undercount where only plan + the last-write-wins ``implementation``
+    slice were counted. A call that reports ``None`` (no executor wired, or a model call
+    that returned no cost) is excluded from the sum rather than crashing it. If nothing
+    reported a cost, the spend is unknown — say so plainly.
+    """
+    known = [c for c in _cost_usds(values) if c is not None]
     if not known:
         return "total cost: cost unavailable"
     return f"total cost: ${sum(known):.2f}"
@@ -361,18 +391,14 @@ def _total_cost_line(values) -> str:
 def _token_line(values) -> str:
     """Build the run-end token line from the per-node usage breakdowns (WU-COST-INSTRUMENT).
 
-    Each model-calling node records a ``usage`` breakdown (input/output + cache counters)
-    under its state slice alongside ``cost_usd``. This sums those across the plan + implement
-    nodes and reports total input, total output, and a cache-hit rate —
-    ``cache_read / (input + cache_read + cache_creation)``. A node whose usage is ``None``
-    (no executor wired, or a call with no usage) is skipped; if no node reported usage the
+    Each model call records a ``usage`` breakdown (input/output + cache counters) in the
+    append-only ``cost_events`` ledger alongside ``cost_usd`` (WU-COST-EVENTS). This sums
+    those across every call and reports total input, total output, and a cache-hit rate —
+    ``cache_read / (input + cache_read + cache_creation)``. A call whose usage is ``None``
+    (no executor wired, or a call with no usage) is skipped; if nothing reported usage the
     figure is unknown — say so plainly rather than crash the report.
     """
-    usages = [
-        (values.get("plan") or {}).get("usage"),
-        (values.get("implementation") or {}).get("usage"),
-    ]
-    known = [u for u in usages if u]
+    known = [u for u in _usages(values) if u]
     if not known:
         return "tokens: unavailable"
     total_input = sum(u.get("input_tokens", 0) for u in known)
