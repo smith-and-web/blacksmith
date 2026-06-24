@@ -29,6 +29,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
@@ -761,6 +762,7 @@ def compile_graph(
     executor: Executor | None = None,
     worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
+    store: BaseStore | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -769,6 +771,10 @@ def compile_graph(
     the parameter remains for tests or extra inspection points. The dependency params
     (``executor``, ``worktree_manager``, ``gate``, ``pr_runner``) are injected by the
     CLI in production and faked in tests; unset ones leave that node a pass-through.
+
+    ``store`` is an optional persistent long-term memory Store (WU-STORE-WIRING),
+    forwarded to ``.compile(store=...)``. It is a SEPARATE, additive channel from the
+    checkpointer; ``store=None`` (the default) compiles exactly as before.
     """
     return build_graph(
         pr_runner=pr_runner,
@@ -778,4 +784,5 @@ def compile_graph(
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),
+        store=store,
     )

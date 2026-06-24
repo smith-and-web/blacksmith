@@ -110,6 +110,17 @@ class CheckpointerConfig(_Strict):
     db_path: Path = Path(".blacksmith/checkpoints.sqlite")
 
 
+class StoreConfig(_Strict):
+    """Persistent long-term memory Store settings (WU-STORE-WIRING).
+
+    A SEPARATE, additive persistence channel from the per-thread ``[checkpointer]``:
+    its own ``db_path`` backs the cross-thread memory Store and never shares a file
+    with the checkpointer.
+    """
+
+    db_path: Path = Path(".blacksmith/store.sqlite")
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -130,6 +141,7 @@ class BlacksmithConfig(_Strict):
     target: TargetConfig = Field(default_factory=TargetConfig)
     models: ModelTiers = Field(default_factory=ModelTiers)
     checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
+    store: StoreConfig = Field(default_factory=StoreConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
 
     @classmethod

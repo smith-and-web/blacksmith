@@ -28,6 +28,7 @@ from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
+from blacksmith.memory import build_store
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
 
@@ -58,6 +59,7 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         executor=Executor(config),
         worktree_manager=CloneManager(config.resolve_repo_path()),
         gate=run_gate,
+        store=build_store(config.store.db_path),
     )
 
 
