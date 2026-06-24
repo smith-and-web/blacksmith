@@ -29,6 +29,7 @@ from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
+from blacksmith.render import Renderer
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
 
@@ -288,18 +289,30 @@ def _select_approver(args):
     return _cli_approver
 
 
-def _progress_emitter(quiet: bool):
+def _build_renderer(args) -> Renderer:
+    """Build the presentation-layer Renderer from CLI flags + environment.
+
+    ``--plain`` (``args.plain``) and the ``NO_COLOR`` convention both force plain output;
+    otherwise the rendering decision is made per-stream by the layer (rich only on a real
+    TTY). Built once per command so the TTY-vs-plain choice is decided a single time.
+    """
+    return Renderer(plain=getattr(args, "plain", False), no_color=bool(os.environ.get("NO_COLOR")))
+
+
+def _progress_emitter(quiet: bool, renderer: Renderer | None = None):
     """Build the per-node progress callback for ``drive``'s ``on_node`` hook.
 
     Returns ``None`` when ``quiet`` is set (no progress stream). Otherwise returns a
-    callable that writes a concise line naming each node to STDERR, keeping stdout
-    reserved for the final machine-readable report.
+    callable that renders a concise per-node phase indicator to STDERR via the rendering
+    layer, keeping stdout reserved for the final machine-readable report. In plain /
+    non-TTY mode that degrades to a flat ``blacksmith: <node>`` line.
     """
     if quiet:
         return None
+    renderer = renderer if renderer is not None else Renderer()
 
     def emit(node: str) -> None:
-        print(f"blacksmith: {node}", file=sys.stderr)
+        renderer.progress(node)
 
     return emit
 
@@ -351,15 +364,22 @@ def _token_line(values) -> str:
     )
 
 
-def _report(snapshot) -> None:
+def _report(snapshot, renderer: Renderer | None = None) -> None:
+    """Render the run-end status summary via the presentation layer.
+
+    Computes the cost / token lines (unchanged) and hands the status, PR url, errors and
+    those lines to the rendering layer, which color-codes a status panel on a TTY and
+    prints the same parseable lines in plain / non-TTY mode.
+    """
+    renderer = renderer if renderer is not None else Renderer()
     values = snapshot.values
-    print(f"\nstatus: {values.get('status')}")
-    if values.get("pr_url"):
-        print(f"PR: {values['pr_url']}")
-    for err in values.get("errors", []):
-        print(f"error [{err.get('node')}]: {err.get('message')}")
-    print(_total_cost_line(values))
-    print(_token_line(values))
+    renderer.report(
+        status=values.get("status"),
+        pr_url=values.get("pr_url"),
+        errors=values.get("errors", []),
+        cost_line=_total_cost_line(values),
+        token_line=_token_line(values),
+    )
 
 
 def _validate(argv: list[str] | None = None) -> int:
@@ -424,24 +444,31 @@ def _resume(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Suppress the per-node progress stream on STDERR (the final report still prints).",
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Force plain, ANSI-free output even on a TTY (rendering is otherwise enabled "
+        "only on a real terminal with NO_COLOR unset).",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv(Path.cwd() / ".env")
     config = _load_config(args.config)
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
+    renderer = _build_renderer(args)
 
     try:
         final = resume(
             graph,
             args.thread_id,
             approver=_select_approver(args),
-            on_node=_progress_emitter(args.quiet),
+            on_node=_progress_emitter(args.quiet, renderer),
         )
     except ResumeError as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
-    _report(final)
+    _report(final, renderer)
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
@@ -557,6 +584,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Suppress the per-node progress stream on STDERR (the final report still prints).",
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help="Force plain, ANSI-free output even on a TTY (rendering is otherwise enabled "
+        "only on a real terminal with NO_COLOR unset).",
+    )
     args = parser.parse_args(argv)
 
     if args.prd_path is None and args.issue is None:
@@ -587,6 +620,7 @@ def main(argv: list[str] | None = None) -> int:
 
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
+    renderer = _build_renderer(args)
 
     try:
         final = drive(
@@ -594,13 +628,13 @@ def main(argv: list[str] | None = None) -> int:
             args.prd_path,
             approver=_select_approver(args),
             thread_id=args.thread_id,
-            on_node=_progress_emitter(args.quiet),
+            on_node=_progress_emitter(args.quiet, renderer),
             issue_number=args.issue,
         )
     except FreshRunError as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1
-    _report(final)
+    _report(final, renderer)
     return 0 if final.values.get("status") == Status.DONE else 1
 
 

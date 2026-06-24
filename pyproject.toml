@@ -10,6 +10,7 @@ dependencies = [
     "claude-agent-sdk>=0.2.105",
     "pydantic>=2.11",
     "pyyaml>=6.0.3",
+    "rich>=13.7",
 ]
 
 [project.scripts]
