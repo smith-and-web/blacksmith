@@ -16,6 +16,7 @@ an empty store, behaves exactly as today.
 
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from pathlib import Path
 
@@ -72,14 +73,33 @@ def current_store() -> BaseStore | None:
         return None
 
 
-def record_lesson(store: BaseStore, namespace: tuple[str, ...], lesson: dict) -> None:
-    """Persist one concise gate-failure ``lesson`` under ``namespace`` (per repo).
+def prd_discriminator(contract: PRDContract) -> str:
+    """A stable per-PRD tag used to scope lessons so two DIFFERENT PRDs that reuse a
+    unit-id against the SAME repo cannot overwrite each other, while a re-run of the SAME
+    PRD still de-dupes by unit-id.
 
-    The lesson is keyed by its ``unit_id`` (latest failure per unit wins) inside a
-    ``lessons`` sub-namespace of the repo namespace. It is a purely additive audit
-    record: writing it never changes the run's control flow.
+    Derived purely from the contract: its ``version`` plus a stable hash of its work-unit
+    ids (sorted, so unit ordering is irrelevant). Same contract -> same tag; a PRD that
+    differs in version or in its set of unit-ids -> a different tag.
     """
-    key = str(lesson.get("unit_id") or "lesson")
+    ids = ",".join(sorted(unit.id for unit in contract.work_units))
+    digest = hashlib.sha256(ids.encode("utf-8")).hexdigest()[:12]
+    return f"{contract.version}-{digest}"
+
+
+def record_lesson(store: BaseStore, contract: PRDContract, lesson: dict) -> None:
+    """Persist one concise gate-failure ``lesson`` for this repo, scoped per PRD.
+
+    The lesson lives in the ``lessons`` sub-namespace of the repo namespace
+    (``repo_namespace``) and is keyed by a per-PRD discriminator plus its ``unit_id`` —
+    so a re-run of the SAME PRD overwrites the prior failure for that unit (latest wins),
+    while a DIFFERENT PRD reusing the same unit-id against the same repo records its own
+    lesson instead of clobbering the first. It is a purely additive audit record: writing
+    it never changes the run's control flow.
+    """
+    namespace = repo_namespace(contract)
+    unit_id = str(lesson.get("unit_id") or "lesson")
+    key = f"{prd_discriminator(contract)}:{unit_id}"
     store.put((*namespace, _LESSONS), key, lesson)
 
 

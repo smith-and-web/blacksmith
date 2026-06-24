@@ -18,7 +18,7 @@ from blacksmith.cli import drive
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.gate import GateResult
-from blacksmith.graph import build_checkpointer, compile_graph
+from blacksmith.graph import _will_escalate, build_checkpointer, compile_graph
 from blacksmith.memory import build_store, recent_lessons, record_lesson, repo_namespace
 from blacksmith.nodes.plan import _system_prompt
 from blacksmith.nodes.pr import CommandResult
@@ -59,10 +59,62 @@ done.
 """
 
 
+# A SECOND, DIFFERENT PRD that targets the SAME repo (owner/demo) and reuses unit-id
+# WU-S, but declares an extra unit (WU-T) — so its set of unit-ids differs. This is the
+# cross-PRD case the per-PRD discriminator must keep from clobbering.
+_PRD_VARIANT = """\
+---
+contract_version: 1
+component: demo
+version: v0
+primary_target_repo: owner/demo
+layers:
+  py-logic: auto
+untouchables:
+  - "do not touch the brand files"
+work_units:
+  - id: WU-S
+    title: "solo unit"
+    layers: [py-logic]
+    target_modules: ["wu-s.txt"]
+    test_contract: "the gate command passes"
+    depends_on: []
+  - id: WU-T
+    title: "second unit"
+    layers: [py-logic]
+    target_modules: ["wu-t.txt"]
+    test_contract: "the gate command passes"
+    depends_on: []
+---
+# Demo PRD (variant)
+
+## 1. Purpose
+demo.
+
+## 2. Scope fences
+demo.
+
+## 7. Untouchables
+none.
+
+## 10. Acceptance criteria
+done.
+"""
+
+
 def _write_prd(tmp_path) -> Path:
     path = tmp_path / "prd.md"
     path.write_text(_PRD_TEMPLATE)
     return path
+
+
+def _lesson(reason: str) -> dict:
+    return {
+        "unit_id": "WU-S",
+        "title": "solo unit",
+        "reason": reason,
+        "files_touched": [],
+    }
 
 
 def _result(text="done"):
@@ -190,7 +242,7 @@ def test_plan_surfaces_stored_lesson(tmp_path):
     store = build_store(tmp_path / "store.sqlite")
     record_lesson(
         store,
-        repo_namespace(_contract(prd)),
+        _contract(prd),
         {
             "unit_id": "WU-S",
             "title": "solo unit",
@@ -223,3 +275,55 @@ def test_empty_store_and_no_store_match_pre_unit_prompt(tmp_path):
     assert without == baseline  # store-less compile -> no lessons section
     assert "PRIOR LESSONS" not in with_empty
     empty_store.conn.close()
+
+
+# --- (4) lessons are scoped per PRD: no cross-PRD clobber on a shared repo -----
+
+
+def test_distinct_prds_sharing_unit_id_do_not_clobber(tmp_path):
+    store = build_store(tmp_path / "store.sqlite")
+    prd_a = tmp_path / "a.md"
+    prd_a.write_text(_PRD_TEMPLATE)
+    prd_b = tmp_path / "b.md"
+    prd_b.write_text(_PRD_VARIANT)
+    contract_a = _contract(prd_a)
+    contract_b = _contract(prd_b)
+
+    # Same target repo (same namespace), and both reuse unit-id WU-S.
+    assert repo_namespace(contract_a) == repo_namespace(contract_b)
+
+    record_lesson(store, contract_a, _lesson("boom A"))
+    record_lesson(store, contract_b, _lesson("boom B"))
+
+    lessons = recent_lessons(store, repo_namespace(contract_a), limit=10)
+    wu_s = [lesson for lesson in lessons if lesson["unit_id"] == "WU-S"]
+    assert len(wu_s) == 2  # the second PRD did NOT overwrite the first
+    assert {lesson["reason"] for lesson in wu_s} == {"boom A", "boom B"}
+    store.conn.close()
+
+
+def test_same_prd_rerun_overwrites_by_unit_id(tmp_path):
+    store = build_store(tmp_path / "store.sqlite")
+    prd = _write_prd(tmp_path)
+    contract = _contract(prd)
+
+    record_lesson(store, contract, _lesson("first attempt"))
+    record_lesson(store, contract, _lesson("second attempt"))  # same PRD + unit -> overwrite
+
+    lessons = recent_lessons(store, repo_namespace(contract), limit=10)
+    wu_s = [lesson for lesson in lessons if lesson["unit_id"] == "WU-S"]
+    assert len(wu_s) == 1  # de-duped by unit-id as today
+    assert wu_s[0]["reason"] == "second attempt"  # latest failure wins
+    store.conn.close()
+
+
+# --- (5) the shared escalation helper is a pure refactor of the inline checks --
+
+
+def test_will_escalate_matches_the_inline_condition():
+    # ``pre_implement_ref and not escalated`` — the exact boolean both call sites used.
+    assert _will_escalate({"pre_implement_ref": "abc123"}) is True
+    assert _will_escalate({"pre_implement_ref": "abc123", "escalated": False}) is True
+    assert _will_escalate({"pre_implement_ref": "abc123", "escalated": True}) is False
+    assert _will_escalate({"escalated": False}) is False  # no ref -> cannot escalate
+    assert _will_escalate({}) is False
