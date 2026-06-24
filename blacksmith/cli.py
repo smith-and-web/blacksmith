@@ -21,8 +21,9 @@ from pathlib import Path
 from langgraph.types import Command
 
 from blacksmith import __version__
-from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, find_config
+from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, find_config
 from blacksmith.contract import ContractError, parse_prd
+from blacksmith.costs import run_costs
 from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -404,6 +405,41 @@ def _resume(argv: list[str] | None = None) -> int:
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
+def _costs(argv: list[str] | None = None) -> int:
+    """``blacksmith costs``: org-level usage + cost from the Admin API (read-only).
+
+    An additive, offline-of-the-graph reporting subcommand with no model spend: it reads
+    a SEPARATE org-scoped Admin API key from its own configured env var and issues only
+    GET requests to api.anthropic.com. Returns 0 on success; 1 with a clear message
+    naming the env var when the admin key is unset.
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith costs",
+        description="Report org-level usage + cost from the Anthropic Admin API (read-only).",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="Size of the reporting window in days, ending today (default: 30).",
+    )
+    args = parser.parse_args(argv)
+
+    load_dotenv(Path.cwd() / ".env")
+    config = _load_config(args.config)
+    try:
+        run_costs(config, days=args.days)
+    except ConfigError as exc:
+        print(f"costs: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _scaffold_issue(issue_number: int, config: BlacksmithConfig) -> int:
     """``blacksmith --issue N`` (no PRD): scaffold a Contract v1 PRD skeleton from issue N.
 
@@ -438,6 +474,8 @@ def main(argv: list[str] | None = None) -> int:
         return _validate(argv[1:])
     if argv and argv[0] == "resume":
         return _resume(argv[1:])
+    if argv and argv[0] == "costs":
+        return _costs(argv[1:])
 
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
     parser.add_argument(

@@ -111,9 +111,16 @@ class CheckpointerConfig(_Strict):
 
 
 class ApiConfig(_Strict):
-    """Anthropic auth + caching policy (PRD §8 / §12 decision 3)."""
+    """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
+
+    ``admin_key_env_var`` names a SEPARATE credential used only by the read-only
+    ``blacksmith costs`` reporter (org-scoped Admin API). It is distinct from the
+    dedicated run key (``key_env_var``) — never reuse one for the other, and the admin
+    key is never persisted.
+    """
 
     key_env_var: str = "BLACKSMITH_ANTHROPIC_API_KEY"
+    admin_key_env_var: str = "BLACKSMITH_ANTHROPIC_ADMIN_KEY"
     prompt_caching: bool = True
 
 
@@ -157,6 +164,23 @@ class BlacksmithConfig(_Strict):
                 f"API key env var {self.api.key_env_var!r} is unset; blacksmith "
                 "requires a dedicated Anthropic API key (PRD §8). Set it in your "
                 "environment or .env file."
+            )
+        return key
+
+    def resolve_admin_key(self) -> str:
+        """Return the org-scoped Anthropic Admin API key from its own configured env var.
+
+        Used solely by the read-only ``blacksmith costs`` reporter. Raises
+        ``ConfigError`` naming the env var if it is unset — the admin key is a SEPARATE
+        credential from blacksmith's dedicated run key and is never reused or persisted.
+        """
+        key = os.environ.get(self.api.admin_key_env_var)
+        if not key:
+            raise ConfigError(
+                f"Admin API key env var {self.api.admin_key_env_var!r} is unset; "
+                "`blacksmith costs` requires a SEPARATE Anthropic Admin API key, "
+                "distinct from the dedicated run key. Set it in your environment "
+                "or .env file."
             )
         return key
 
