@@ -251,6 +251,10 @@ def test_cli_costs_missing_key_exits_nonzero(monkeypatch, capsys, tmp_path):
 
     cfg = _config()
     monkeypatch.delenv(cfg.api.admin_key_env_var, raising=False)
+    # cli.main calls load_dotenv(.env), which would re-populate the key from a real local
+    # .env (setdefault) — undoing the delenv above and, worse, making a live billed Admin
+    # API call. Neutralize the .env reload so the key is genuinely absent for this test.
+    monkeypatch.setattr(cli, "load_dotenv", lambda _p: None)
     monkeypatch.setattr(cli, "_load_config", lambda _arg: cfg)
     code = cli.main(["costs"])
     assert code == 1

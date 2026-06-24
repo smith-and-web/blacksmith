@@ -41,8 +41,11 @@ def usage_breakdown(usage: dict[str, Any] | None) -> dict[str, int] | None:
 
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
 # finishes in one) but block all writes — at plan time there is no worktree yet, so
-# the agent's cwd would be blacksmith's own repo.
-_PLAN_MAX_TURNS = 8
+# the agent's cwd would be blacksmith's own repo. 8 was too tight for PRDs that span
+# large files (cli.py + state.py + resume/checkpointer reading) — the planner ran out
+# mid-exploration and the SDK raised "Reached maximum number of turns". Read-only
+# Sonnet turns are cheap, so the budget is generous.
+_PLAN_MAX_TURNS = 20
 _PLAN_READ_ONLY = ["Read", "Glob", "Grep"]
 _PLAN_BLOCKED = ["Write", "Edit", "Bash"]  # known write/exec tool names
 
@@ -77,7 +80,13 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
         allowed_tools=_PLAN_READ_ONLY,
         disallowed_tools=_PLAN_BLOCKED,
         max_turns=_PLAN_MAX_TURNS,
+        raise_on_error=False,  # surface failures (e.g. max-turns) into state, don't crash the graph
     )
+    if result.is_error:
+        return {
+            "status": Status.HALTED,
+            "errors": [{"node": "plan", "message": f"plan call failed: {result.text}"}],
+        }
     return {
         "work_units": list(prd.contract.work_units),
         "selected_unit": unit,
