@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import functools
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -30,7 +31,7 @@ from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
-from blacksmith.metrics import build_metrics_store, record_run
+from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
 from blacksmith.render import Renderer
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
@@ -466,6 +467,137 @@ def _record_metrics(
         pass
 
 
+_NO_RUNS_MESSAGE = "no runs recorded yet"
+
+
+def _fmt_cost(value) -> str:
+    return f"${value:.2f}" if isinstance(value, (int, float)) else "-"
+
+
+def _fmt_rate(value) -> str:
+    return f"{value:.1%}" if isinstance(value, (int, float)) else "-"
+
+
+def _fmt_duration(value) -> str:
+    return f"{value:.1f}" if isinstance(value, (int, float)) else "-"
+
+
+def _print_table(headers: list[str], rows: list[list[str]]) -> None:
+    """Print a plain, ANSI-free, whitespace-aligned table to stdout (parseable)."""
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+    line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    print(line.rstrip())
+    for row in rows:
+        print("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+
+
+def _print_run_list(runs: list[dict]) -> None:
+    headers = [
+        "thread_id", "status", "total_cost", "cache_hit", "duration_s", "units", "pr_url"
+    ]
+    rows = [
+        [
+            str(run.get("thread_id") or "-"),
+            str(run.get("status") or "-"),
+            _fmt_cost(run.get("total_cost")),
+            _fmt_rate(run.get("cache_hit_rate")),
+            _fmt_duration(run.get("duration_s")),
+            str(run.get("units_count") if run.get("units_count") is not None else "-"),
+            str(run.get("pr_url") or "-"),
+        ]
+        for run in runs
+    ]
+    _print_table(headers, rows)
+
+
+def _print_run_detail(run: dict, units: list[dict]) -> None:
+    print(f"run {run.get('thread_id')} — {run.get('status') or '-'}")
+    print(f"total cost: {_fmt_cost(run.get('total_cost'))}")
+    print(f"cache-hit: {_fmt_rate(run.get('cache_hit_rate'))}")
+    print(f"duration: {_fmt_duration(run.get('duration_s'))}s")
+    print(f"units: {run.get('units_count') if run.get('units_count') is not None else '-'}")
+    print(f"pr: {run.get('pr_url') or '-'}")
+    print("")
+    headers = ["unit_id", "title", "models", "cost", "turns", "gate_result", "files", "diff_size"]
+    rows = [
+        [
+            str(u.get("unit_id") or "-"),
+            str(u.get("title") or "-"),
+            str(u.get("models") or "-"),
+            _fmt_cost(u.get("cost")),
+            str(u.get("turns") if u.get("turns") is not None else "-"),
+            str(u.get("gate_result") or "-"),
+            str(u.get("files_count") if u.get("files_count") is not None else "-"),
+            str(u.get("diff_size") if u.get("diff_size") is not None else "-"),
+        ]
+        for u in units
+    ]
+    _print_table(headers, rows)
+
+
+def _runs(argv: list[str] | None = None) -> int:
+    """``blacksmith runs``: list recorded run history, or drill into one run (READ-ONLY).
+
+    Reads the local metrics SQLite sink (``[metrics] db_path``) with a strictly read-only
+    connection — it never writes, and the metrics DB is never read back into the graph. An
+    empty or absent store prints a friendly message and exits 0. ``runs <thread_id>`` prints
+    that run's summary plus its per-unit rows. Output is plain text (no control codes).
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith runs",
+        description="List recorded run history, or drill into one run by thread-id (read-only).",
+    )
+    parser.add_argument(
+        "thread_id",
+        nargs="?",
+        help="Show this run's summary and per-unit rows instead of the run list.",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of runs to list, most-recent first (default: 20).",
+    )
+    args = parser.parse_args(argv)
+
+    load_dotenv(Path.cwd() / ".env")
+    config = _load_config(args.config)
+    db_path = Path(config.metrics.db_path)
+    if not db_path.is_file():
+        print(_NO_RUNS_MESSAGE)
+        return 0
+
+    store = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        if args.thread_id:
+            run, units = get_run(store, args.thread_id)
+            if run is None:
+                print(f"no run recorded for thread-id {args.thread_id!r}")
+                return 0
+            _print_run_detail(run, units)
+            return 0
+        runs = list_runs(store, args.limit)
+        if not runs:
+            print(_NO_RUNS_MESSAGE)
+            return 0
+        _print_run_list(runs)
+        return 0
+    except sqlite3.OperationalError:
+        # A file that exists but isn't a populated metrics DB (no schema yet) reads as empty.
+        print(_NO_RUNS_MESSAGE)
+        return 0
+    finally:
+        store.close()
+
+
 def _validate(argv: list[str] | None = None) -> int:
     """Dry-run a PRD against the contract: parse only, no model spend, no network I/O.
 
@@ -643,6 +775,8 @@ def main(argv: list[str] | None = None) -> int:
         return _resume(argv[1:])
     if argv and argv[0] == "costs":
         return _costs(argv[1:])
+    if argv and argv[0] == "runs":
+        return _runs(argv[1:])
 
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
     parser.add_argument(

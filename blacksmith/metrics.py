@@ -194,6 +194,42 @@ def _unit_rows(values: dict) -> list[dict]:
     return rows
 
 
+def _rows(cursor: sqlite3.Cursor) -> list[dict]:
+    """Materialise a cursor's rows as plain ``column -> value`` dicts."""
+    cols = [c[0] for c in cursor.description]
+    return [dict(zip(cols, row, strict=True)) for row in cursor.fetchall()]
+
+
+def list_runs(store: sqlite3.Connection, limit: int = 20) -> list[dict]:
+    """Return recorded run rows, most-recent first (READ-ONLY).
+
+    A pure SELECT over ``run_metrics`` ordered by end time descending and capped at
+    ``limit``. This never writes — it is the read model over the metrics sink, which is
+    never read back into the graph.
+    """
+    cursor = store.execute(
+        "SELECT * FROM run_metrics ORDER BY ended_at DESC, started_at DESC LIMIT ?",
+        (limit,),
+    )
+    return _rows(cursor)
+
+
+def get_run(store: sqlite3.Connection, thread_id: str) -> tuple[dict | None, list[dict]]:
+    """Return ``(run_row, [unit_rows])`` for one thread (READ-ONLY).
+
+    ``run_row`` is ``None`` when the thread has no recorded run. The unit rows are ordered
+    by ``unit_id``. Both are pure SELECTs — nothing is written.
+    """
+    run_cursor = store.execute(
+        "SELECT * FROM run_metrics WHERE thread_id = ?", (thread_id,)
+    )
+    run_rows = _rows(run_cursor)
+    unit_cursor = store.execute(
+        "SELECT * FROM unit_metrics WHERE thread_id = ? ORDER BY unit_id", (thread_id,)
+    )
+    return (run_rows[0] if run_rows else None), _rows(unit_cursor)
+
+
 def record_run(
     store: sqlite3.Connection,
     snapshot: Any,
