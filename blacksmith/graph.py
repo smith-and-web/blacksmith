@@ -19,7 +19,9 @@ Conditional edges are real:
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
+import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -27,6 +29,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Send
 
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
@@ -111,6 +114,10 @@ def prepare_worktree(
         "selected_unit": unit,
         "level_cursor": 0,
         "unit_in_level": 0,
+        # Only a CloneManager can clone a per-unit build clone from the combined-branch
+        # tip, so fan-out is gated on it. A WorktreeManager run leaves this False and a
+        # multi-unit level is still built sequentially on the one shared worktree.
+        "fanout": isinstance(worktree_manager, CloneManager),
     }
     if levels:
         update["execution_levels"] = levels
@@ -191,6 +198,192 @@ def next_unit(state: BlacksmithState) -> dict:
         "selected_unit": levels[level][index],
         "status": Status.IMPLEMENTING,
     }
+
+
+# --- parallel fan-out (WU-PARALLEL-FANOUT) -----------------------------------
+# A multi-unit level is built concurrently: the engine fans out one ``build_unit`` per
+# unit via LangGraph ``Send``, each in its OWN clone of the combined-branch tip; the
+# ``join_level`` barrier then cherry-picks the passing units' commits onto the shared
+# combined branch in declaration order. A size-1 level (every chain built today) skips
+# all of this and stays on the sequential implement->gate path — the behaviour-preserving
+# property the existing suite pins down.
+
+
+def build_unit(
+    state: BlacksmithState,
+    *,
+    executor: Executor | None = None,
+    gate: GateFn | None = None,
+    worktree_manager: IsolationManager | None = None,
+) -> dict:
+    """Fan-out worker: build ONE unit of a multi-unit level in its OWN clone and gate it
+    there. Returns only the reducer key ``level_builds`` (never a last-write-wins field),
+    so the concurrent workers in a level never race on the shared state.
+
+    The per-unit clone is taken from the run's shared clone at its combined-branch tip
+    (``shared_clone_path``), so the unit sees every prior level's merged changes while
+    writing to a working tree no sibling touches. The existing ``implement`` and
+    ``test_gate`` bodies are reused against a per-unit sub-state; their outcome is recorded
+    for the join to cherry-pick (on pass) or halt on (on fail)."""
+    unit = state["selected_unit"]
+    level = state.get("level_cursor", 0)
+    shared = state["shared_clone_path"]
+    record: dict = {"unit_id": unit.id, "title": unit.title, "level": level}
+    try:
+        clone = worktree_manager.create_from(shared, unit.id)
+    except WorktreeError as exc:
+        record.update(ok=False, error=f"unit {unit.id}: could not create build clone: {exc}")
+        return {"level_builds": [record]}
+
+    record["clone_path"] = str(clone.path)
+    record["branch"] = clone.branch
+    sub: dict = {
+        "prd": state["prd"],
+        "selected_unit": unit,
+        "worktree_path": str(clone.path),
+        "branch": clone.branch,
+    }
+    impl = implement(sub, executor=executor)
+    impl_data = impl.get("implementation") or {}
+    record["files_touched"] = list(impl_data.get("files_touched") or [])
+    record["diff_summary"] = impl_data.get("diff_summary", "")
+    if impl.get("status") == Status.HALTED:
+        message = impl["errors"][0]["message"] if impl.get("errors") else "implement failed"
+        record.update(ok=False, error=f"unit {unit.id}: {message}")
+        return {"level_builds": [record]}
+
+    sub["implementation"] = impl_data
+    gate_update = test_gate(sub, gate=gate)
+    results = gate_update.get("test_results") or {}
+    record["test_command"] = results.get("command", "")
+    if not results.get("passed"):
+        record.update(ok=False, error=f"gate failed for unit {unit.id}")
+        return {"level_builds": [record]}
+
+    record["ok"] = True
+    return {"level_builds": [record]}
+
+
+def _git_run(cwd: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+
+
+def _cleanup_builds(builds: list[dict]) -> None:
+    """Remove the per-unit build clones (best effort) once the level is joined."""
+    for build in builds:
+        path = build.get("clone_path")
+        if path:
+            shutil.rmtree(path, ignore_errors=True)
+
+
+def _conflict_message(
+    level: int, unit_id: str, conflicted: list[str], placed: dict[str, str], picked: list[str]
+) -> str:
+    """A clear halt message that names BOTH clashing units AND the file(s) they fought
+    over, so a human can see exactly which two same-level units collided."""
+    files = ", ".join(conflicted) if conflicted else "a shared file"
+    others = [placed[f] for f in conflicted if f in placed]
+    if not others:
+        others = picked  # fall back to every already-applied unit in the level
+    other = ", ".join(dict.fromkeys(others)) or "an earlier unit"
+    return (
+        f"level {level} cherry-pick conflict on {files}: units {other} and {unit_id} "
+        "changed the same file(s) — the run halts and opens no PR."
+    )
+
+
+def join_level(state: BlacksmithState) -> dict:
+    """Fan-out barrier: cherry-pick each passing unit's commit onto the shared combined
+    branch in declaration order, then advance the level engine.
+
+    Runs once, after all of the level's ``build_unit`` workers complete (so no concurrent
+    write to the shared branch). If ANY unit failed its implement/gate the whole level
+    halts with nothing cherry-picked (no partial level lands); if two units changed the
+    same file the cherry-pick conflicts and the run halts naming both units and the file."""
+    levels = state.get("execution_levels") or []
+    level = state.get("level_cursor", 0)
+    level_units = levels[level] if level < len(levels) else []
+    order = {unit.id: index for index, unit in enumerate(level_units)}
+    builds = [b for b in (state.get("level_builds") or []) if b.get("level") == level]
+    builds.sort(key=lambda b: order.get(b["unit_id"], len(order)))
+
+    # (3) Any failed implement/gate halts the level BEFORE any cherry-pick — nothing lands.
+    failed = [b for b in builds if not b.get("ok")]
+    if failed:
+        _cleanup_builds(builds)
+        names = ", ".join(b["unit_id"] for b in failed)
+        detail = "; ".join(b.get("error", b["unit_id"]) for b in failed)
+        return {
+            "status": Status.HALTED,
+            "errors": [
+                {"node": "join_level", "message": f"level {level} halted: {names} ({detail})"}
+            ],
+        }
+
+    shared = state["worktree_path"]
+    picked: list[str] = []
+    placed: dict[str, str] = {}
+    for build in builds:
+        fetch = _git_run(shared, "fetch", build["clone_path"], build["branch"])
+        if fetch.returncode != 0:
+            _cleanup_builds(builds)
+            return {
+                "status": Status.HALTED,
+                "errors": [
+                    {
+                        "node": "join_level",
+                        "message": f"level {level}: could not fetch unit "
+                        f"{build['unit_id']}'s commit: {fetch.stderr.strip()}",
+                    }
+                ],
+            }
+        cherry = _git_run(shared, "cherry-pick", "FETCH_HEAD")
+        if cherry.returncode != 0:
+            conflicted = [
+                line
+                for line in _git_run(shared, "diff", "--name-only", "--diff-filter=U")
+                .stdout.splitlines()
+                if line
+            ]
+            _git_run(shared, "cherry-pick", "--abort")
+            _cleanup_builds(builds)
+            return {
+                "status": Status.HALTED,
+                "errors": [
+                    {
+                        "node": "join_level",
+                        "message": _conflict_message(
+                            level, build["unit_id"], conflicted, placed, picked
+                        ),
+                    }
+                ],
+            }
+        picked.append(build["unit_id"])
+        for changed in build.get("files_touched", []):
+            placed[changed] = build["unit_id"]
+
+    _cleanup_builds(builds)
+    unit_results = [
+        {
+            "unit_id": b["unit_id"],
+            "title": b["title"],
+            "files_touched": list(b.get("files_touched") or []),
+            "diff_summary": b.get("diff_summary", ""),
+            "test_command": b.get("test_command", ""),
+        }
+        for b in builds
+    ]
+    update: dict = {
+        "unit_results": unit_results,
+        "status": Status.TESTING,
+        "level_cursor": level + 1,
+    }
+    # Seed the next level's sequential state so a size-1 level after this fan-out runs its
+    # implement step on the shared clone unchanged (the fan-out router ignores these).
+    if level + 1 < len(levels):
+        update["selected_unit"] = levels[level + 1][0]
+        update["unit_in_level"] = 0
+    return update
 
 
 def human_halt(state: BlacksmithState) -> dict:
@@ -293,6 +486,73 @@ def route_after_test_gate(state: BlacksmithState) -> str:
     return "next_unit" if nxt is not None else "approve_pr"
 
 
+def _is_fanout_level(state: BlacksmithState, level: int) -> bool:
+    """A level is built in parallel only when fan-out is enabled (CloneManager) AND the
+    level holds more than one unit. A size-1 level always takes the sequential path."""
+    if not state.get("fanout"):
+        return False
+    levels = state.get("execution_levels") or []
+    return 0 <= level < len(levels) and len(levels[level]) > 1
+
+
+def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
+    """One ``Send`` per unit in the level: each carries the unit plus the shared clone's
+    combined-branch tip, so its ``build_unit`` worker clones an isolated build tree."""
+    levels = state.get("execution_levels") or []
+    return [
+        Send(
+            "build_unit",
+            {
+                "prd": state.get("prd"),
+                "selected_unit": unit,
+                "level_cursor": level,
+                "shared_clone_path": state.get("worktree_path"),
+                "combined_branch": state.get("branch"),
+            },
+        )
+        for unit in levels[level]
+    ]
+
+
+def _route_to_level(state: BlacksmithState) -> str | list[Send]:
+    """Build the level at ``level_cursor``: fan out (multi-unit + CloneManager), run the
+    sequential ``implement`` path (size-1 level), or finish at ``approve_pr`` when the plan
+    is exhausted. Shared by every level entry point so the decision lives in one place."""
+    levels = state.get("execution_levels") or []
+    # No level plan seeded (the skeleton / dependency-free graph tests, where
+    # prepare_worktree is a pass-through): fall through to the sequential implement path
+    # exactly as before — the level engine only engages once a plan exists.
+    if not levels:
+        return "implement"
+    level = state.get("level_cursor", 0)
+    if level >= len(levels):
+        return "approve_pr"
+    if _is_fanout_level(state, level):
+        return _fanout_sends(state, level)
+    return "implement"
+
+
+def route_after_prepare(state: BlacksmithState) -> str | list[Send]:
+    """Enter the first level (or halt if prepare_worktree errored)."""
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
+    return _route_to_level(state)
+
+
+def route_after_next_unit(state: BlacksmithState) -> str | list[Send]:
+    """The sequential engine advanced to a new position; build it sequentially or, when it
+    crossed into a multi-unit level under CloneManager, fan that level out instead."""
+    return _route_to_level(state)
+
+
+def route_after_join(state: BlacksmithState) -> str | list[Send]:
+    """After a fan-out level joins: halt on conflict/failure, else build the next level
+    (fan-out or sequential) or finish at the PR-approval gate."""
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
+    return _route_to_level(state)
+
+
 # --- assembly ----------------------------------------------------------------
 
 
@@ -337,6 +597,13 @@ def build_graph(
     )
     graph.add_node("implement", _node_with(implement, executor=executor))
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
+    graph.add_node(
+        "build_unit",
+        _node_with(
+            build_unit, executor=executor, gate=gate, worktree_manager=worktree_manager
+        ),
+    )
+    graph.add_node("join_level", join_level)
     graph.add_node("next_unit", next_unit)
     graph.add_node("approve_pr", approve_pr)
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner))
@@ -362,8 +629,13 @@ def build_graph(
     )
     graph.add_conditional_edges(
         "prepare_worktree",
-        _route_or_halt("implement"),
-        {"implement": "implement", "human_halt": "human_halt"},
+        route_after_prepare,
+        {
+            "implement": "implement",
+            "build_unit": "build_unit",
+            "approve_pr": "approve_pr",
+            "human_halt": "human_halt",
+        },
     )
     graph.add_conditional_edges(
         "implement",
@@ -383,9 +655,31 @@ def build_graph(
             "next_unit": "next_unit",
         },
     )
-    # Loop: the next unit is built on the same shared worktree/branch (no re-plan, no
-    # new worktree), so its implement step sees the prior units' committed changes.
-    graph.add_edge("next_unit", "implement")
+    # Loop: a size-1 next level builds on the same shared worktree/branch (no re-plan, no
+    # new worktree), so its implement step sees the prior units' committed changes. A
+    # multi-unit next level (CloneManager) instead fans out into per-unit build clones.
+    graph.add_conditional_edges(
+        "next_unit",
+        route_after_next_unit,
+        {
+            "implement": "implement",
+            "build_unit": "build_unit",
+            "approve_pr": "approve_pr",
+        },
+    )
+    # Fan-out: each build_unit worker reports its outcome; the join barrier runs once and
+    # cherry-picks the passing units onto the combined branch (or halts on conflict/fail).
+    graph.add_edge("build_unit", "join_level")
+    graph.add_conditional_edges(
+        "join_level",
+        route_after_join,
+        {
+            "implement": "implement",
+            "build_unit": "build_unit",
+            "approve_pr": "approve_pr",
+            "human_halt": "human_halt",
+        },
+    )
     graph.add_conditional_edges(
         "approve_pr",
         route_after_approve_pr,

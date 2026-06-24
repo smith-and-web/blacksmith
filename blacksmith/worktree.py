@@ -161,6 +161,28 @@ class CloneManager:
             self._git(path, "remote", "set-url", "origin", source_origin)
         return Clone(path=path, branch=branch, repo_path=self.repo_path)
 
+    def create_from(self, source_path: str | Path, unit_id: str) -> Clone:
+        """Clone from an ARBITRARY local source repo (not the run's source) on a fresh
+        per-unit branch — used by the parallel fan-out.
+
+        Each unit in a multi-unit level is built in its OWN clone taken from the run's
+        shared clone at its *combined-branch tip* (``source_path``), so concurrently-built
+        siblings never share a working tree and each one still sees every prior level's
+        merged changes. The build-clone directory carries a ``-build`` suffix so it never
+        collides with the run's shared clone (which may be named after the same unit, e.g.
+        when a fan-out level is the run's first level). ``checkout -B`` (create-or-reset)
+        is used so a per-unit branch that happens to equal the source's checked-out branch
+        does not error.
+        """
+        source = Path(source_path).resolve()
+        branch = branch_for(unit_id)
+        path = self.base_dir / f"{branch.replace('/', '-')}-build"
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._git(self.base_dir, "clone", "--local", str(source), str(path))
+        self._git(path, "checkout", "-B", branch)
+        self._propagate_identity(path)
+        return Clone(path=path, branch=branch, repo_path=self.repo_path)
+
     def remove(self, clone: Clone) -> None:
         """Delete the clone directory (it owns its own ``.git``, so this is total)."""
         shutil.rmtree(clone.path, ignore_errors=True)

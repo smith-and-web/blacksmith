@@ -1,0 +1,381 @@
+"""Parallel fan-out of a multi-unit level (WU-PARALLEL-FANOUT).
+
+A level with >1 unit is built concurrently: the engine fans out one ``build_unit`` per
+unit via LangGraph ``Send``, each in its OWN clone taken from the combined-branch tip
+(``CloneManager.create_from``), and gates it there; a ``join_level`` barrier then
+CHERRY-PICKS each passing unit's commit onto the one shared combined branch in
+declaration order, so the run still opens exactly ONE combined PR.
+
+Driven hermetically through the real CLI ``drive`` loop and the real graph against a
+REAL local source repo, with the executor and ``gh`` mocked but a REAL ``CloneManager``
+providing per-unit clone isolation and the REAL ``run_gate`` (over a ``true``/``false``
+stand-in command) unless a unit-failing fake gate is injected.
+
+Covers:
+(1) two INDEPENDENT disjoint-file units in one level build in DISTINCT clones and BOTH
+    land on one combined branch via cherry-pick -> one combined PR;
+(2) two same-level units writing CONFLICTING content to the SAME file -> the run HALTS
+    naming BOTH units AND the file, with no PR;
+(3) a level unit whose test gate FAILS -> the run HALTS, nothing is cherry-picked, no PR;
+(4) a dependent level's units build from the prior level's MERGED combined tip;
+(5) regression: a single-unit run and an all-size-1-level chain still use the run's ONE
+    shared clone (no per-unit clone, no cherry-pick) and behave as before.
+"""
+
+import re
+import subprocess
+from pathlib import Path
+
+from blacksmith.cli import drive
+from blacksmith.executor import ExecutorResult
+from blacksmith.gate import GateResult, run_gate
+from blacksmith.graph import build_checkpointer, compile_graph
+from blacksmith.nodes.pr import CommandResult
+from blacksmith.state import Status
+from blacksmith.worktree import CloneManager
+
+_PRD_TEMPLATE = """\
+---
+contract_version: 1
+component: demo
+version: v0
+primary_target_repo: owner/demo
+layers:
+  py-logic: auto
+untouchables:
+  - "do not touch the brand files"
+work_units:
+{units}
+---
+# Demo PRD
+
+## 1. Purpose
+demo.
+
+## 2. Scope fences
+demo.
+
+## 7. Untouchables
+none.
+
+## 10. Acceptance criteria
+done.
+"""
+
+
+def _unit(uid, title, target, deps):
+    dep = "[" + ", ".join(deps) + "]"
+    return (
+        f"  - id: {uid}\n"
+        f'    title: "{title}"\n'
+        f"    layers: [py-logic]\n"
+        f'    target_modules: ["{target}"]\n'
+        f'    test_contract: "the gate command passes"\n'
+        f"    depends_on: {dep}"
+    )
+
+
+# (1) Two roots, one level, disjoint files -> a parallel fan-out level.
+_TWO_INDEPENDENT = "\n".join(
+    [_unit("WU-X", "first", "wu-x.txt", []), _unit("WU-Y", "second", "wu-y.txt", [])]
+)
+
+# (2) Two roots in one level both writing the SAME file -> a cherry-pick conflict.
+_TWO_CONFLICTING = "\n".join(
+    [_unit("WU-X", "first", "out.txt", []), _unit("WU-Y", "second", "out.txt", [])]
+)
+
+# (4) A size-1 root level, then a size-2 dependent level: A and B must see ROOT's file.
+_ROOT_THEN_FANOUT = "\n".join(
+    [
+        _unit("WU-ROOT", "root", "root.txt", []),
+        _unit("WU-A", "left", "a.txt", ["WU-ROOT"]),
+        _unit("WU-B", "right", "b.txt", ["WU-ROOT"]),
+    ]
+)
+
+# (5) An all-size-1-level chain: every level has one unit, so nothing ever fans out.
+_CHAIN = "\n".join(
+    [
+        _unit("WU-1", "one", "wu-1.txt", []),
+        _unit("WU-2", "two", "wu-2.txt", ["WU-1"]),
+        _unit("WU-3", "three", "wu-3.txt", ["WU-2"]),
+    ]
+)
+
+_ONE_UNIT = _unit("WU-S", "solo", "wu-s.txt", [])
+
+
+def _result(text):
+    return ExecutorResult(
+        text=text, model="claude-opus-4-8", is_error=False, num_turns=1,
+        cost_usd=0.01, usage={}, session_id="s",
+    )
+
+
+class FakeExecutor:
+    """Records the cwd each unit built in and the files visible at implement time, and
+    writes each unit's target module so the gate/cherry-pick has a real diff to work on."""
+
+    def __init__(self):
+        self.cwds: dict[str, str] = {}
+        self.seen: dict[str, list[str]] = {}
+
+    def run_plan(self, prompt, **kwargs):
+        return _result("1. do the thing")
+
+    def run_implement(self, prompt, **kwargs):
+        cwd = Path(kwargs["cwd"])
+        unit_id = re.search(r"^Unit (\S+):", prompt, re.M).group(1)
+        target = re.search(r"^Target modules: (.+)$", prompt, re.M).group(1).split(",")[0].strip()
+        self.cwds[unit_id] = str(cwd)
+        self.seen[unit_id] = sorted(p.name for p in cwd.glob("*.txt"))
+        (cwd / target).write_text(f"content from {unit_id}\n")
+        return _result("done")
+
+
+class FailUnitGate:
+    """Real-shaped gate that fails for any unit whose clone path contains ``fail_substr``
+    (the per-unit build clone is named after the unit), and passes everyone else."""
+
+    def __init__(self, fail_substr: str):
+        self.fail_substr = fail_substr
+
+    def __call__(self, worktree_path, layer):
+        passed = self.fail_substr not in str(worktree_path)
+        return GateResult(passed=passed, output="ok" if passed else "boom", command="pytest")
+
+
+def _recording_gh(url):
+    def run(argv, cwd=None):
+        run.calls.append(list(argv))
+        if argv[:2] == ["git", "push"] and cwd is not None:
+            # Capture the combined branch's history at push time, proving which units'
+            # commits actually landed on it (the cherry-pick result).
+            log = subprocess.run(
+                ["git", "-C", str(cwd), "log", "--format=%s"], capture_output=True, text=True
+            ).stdout
+            run.push_logs.append(log)
+        if argv and argv[0] == "gh":
+            return CommandResult(0, url + "\n", "")
+        return CommandResult(0, "", "")  # git push etc. succeed without a real remote
+
+    run.calls = []
+    run.push_logs = []
+    return run
+
+
+def _pr_creates(gh):
+    return [c for c in gh.calls if c[:3] == ["gh", "pr", "create"]]
+
+
+def _git_pushes(gh):
+    return [c for c in gh.calls if c[:2] == ["git", "push"]]
+
+
+def _pr_body(gh):
+    create = _pr_creates(gh)[0]
+    return create[create.index("--body") + 1]
+
+
+def _recording_approver(decision=True):
+    def approve(payload, values):
+        approve.gates.append(payload.get("gate"))
+        return decision
+
+    approve.gates = []
+    return approve
+
+
+def _target_repo(tmp_path, gate_cmd):
+    repo = tmp_path / "target"
+    repo.mkdir()
+
+    def g(*args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
+
+    g("init", "-b", "main")
+    g("config", "user.email", "t@example.com")
+    g("config", "user.name", "Test")
+    (repo / "README.md").write_text("x\n")
+    (repo / "blacksmith.toml").write_text(f'test_cmd = "{gate_cmd}"\n')
+    g("add", "-A")
+    g("commit", "-m", "init")
+    return repo
+
+
+def _wire(tmp_path, repo, *, executor, gh, gate=run_gate):
+    saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+    graph = compile_graph(
+        saver,
+        executor=executor,
+        worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+        gate=gate,
+        pr_runner=gh,
+    )
+    return graph, saver
+
+
+def _write_prd(tmp_path, units):
+    path = tmp_path / "prd.md"
+    path.write_text(_PRD_TEMPLATE.format(units=units))
+    return path
+
+
+def _build_clone_dirs(tmp_path):
+    base = tmp_path / "clones"
+    return sorted(p.name for p in base.glob("*-build")) if base.exists() else []
+
+
+def test_independent_level_builds_in_distinct_clones_to_one_pr(tmp_path):
+    # (1) Two independent units in one level fan out into DISTINCT clones and BOTH land on
+    # one combined branch via cherry-pick -> exactly one combined PR.
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path, _TWO_INDEPENDENT), approver=approver, thread_id="ind")
+
+    # Both units built, each in its OWN per-unit build clone (distinct paths).
+    assert set(executor.cwds) == {"WU-X", "WU-Y"}
+    assert executor.cwds["WU-X"] != executor.cwds["WU-Y"]
+    assert executor.cwds["WU-X"].endswith("-build")
+    assert executor.cwds["WU-Y"].endswith("-build")
+
+    # Exactly ONE combined PR, and at push time the combined branch carried BOTH commits
+    # (the cherry-picks landed both units on the one branch).
+    assert len(_pr_creates(gh)) == 1
+    assert len(gh.push_logs) == 1
+    assert "WU-X" in gh.push_logs[0] and "WU-Y" in gh.push_logs[0]
+    body = _pr_body(gh)
+    assert "WU-X" in body and "WU-Y" in body
+    assert "wu-x.txt" in body and "wu-y.txt" in body
+
+    assert final.values["status"] == Status.DONE
+    assert final.values["pr_url"].endswith("/pull/7")
+    assert approver.gates == ["plan", "pr"]  # one plan + one PR approval, not per-unit
+    saver.conn.close()
+
+
+def test_conflicting_level_halts_naming_both_units_and_file(tmp_path):
+    # (2) Two same-level units writing the SAME file conflict at cherry-pick -> HALT.
+    repo = _target_repo(tmp_path, gate_cmd="true")  # both gates pass; the clash is at join
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/9")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path, _TWO_CONFLICTING), approver=approver, thread_id="cf")
+
+    assert final.values["status"] == Status.HALTED
+    assert final.values.get("pr_url") is None
+    assert _pr_creates(gh) == []  # no PR
+    assert _git_pushes(gh) == []  # nothing was pushed
+    # The halt error names BOTH clashing units AND the file they fought over.
+    messages = " ".join(e["message"] for e in final.values["errors"])
+    assert "WU-X" in messages and "WU-Y" in messages
+    assert "out.txt" in messages
+    assert approver.gates == ["plan"]  # never reached the PR-approval gate
+    saver.conn.close()
+
+
+def test_level_gate_failure_halts_with_no_cherry_pick_and_no_pr(tmp_path):
+    # (3) One unit's gate fails inside its own clone -> the whole level halts with nothing
+    # cherry-picked onto the combined branch and no PR.
+    repo = _target_repo(tmp_path, gate_cmd="true")  # unused: a unit-failing gate is injected
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/11")
+    gate = FailUnitGate(fail_substr="wu-y")  # WU-Y's build clone fails its gate
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path, _TWO_INDEPENDENT), approver=approver, thread_id="gf")
+
+    assert final.values["status"] == Status.HALTED
+    assert final.values.get("pr_url") is None
+    assert _pr_creates(gh) == []  # no PR
+    assert _git_pushes(gh) == []  # nothing cherry-picked nor pushed
+    assert any("WU-Y" in e["message"] for e in final.values["errors"])  # the failed unit named
+    assert approver.gates == ["plan"]
+    saver.conn.close()
+
+
+def test_dependent_level_builds_from_prior_levels_merged_tip(tmp_path):
+    # (4) A size-1 root level, then a size-2 fan-out level: A and B both build from the
+    # combined tip that already carries ROOT's commit, so each sees root.txt.
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/13")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(
+        graph, _write_prd(tmp_path, _ROOT_THEN_FANOUT), approver=approver, thread_id="dep"
+    )
+
+    # ROOT built sequentially on the shared clone (no -build suffix); A and B fanned out.
+    assert not executor.cwds["WU-ROOT"].endswith("-build")
+    assert executor.cwds["WU-A"].endswith("-build")
+    assert executor.cwds["WU-B"].endswith("-build")
+    assert executor.cwds["WU-A"] != executor.cwds["WU-B"]
+    # The dependent level's units see the prior level's MERGED change (root.txt).
+    assert "root.txt" in executor.seen["WU-A"]
+    assert "root.txt" in executor.seen["WU-B"]
+    assert executor.seen["WU-ROOT"] == []  # ROOT saw nothing before it
+
+    # One combined PR naming every unit across both levels; the combined branch carried all.
+    assert len(_pr_creates(gh)) == 1
+    assert all(uid in gh.push_logs[0] for uid in ["WU-ROOT", "WU-A", "WU-B"])
+    body = _pr_body(gh)
+    assert all(uid in body for uid in ["WU-ROOT", "WU-A", "WU-B"])
+    assert final.values["status"] == Status.DONE
+    assert final.values["pr_url"].endswith("/pull/13")
+    assert approver.gates == ["plan", "pr"]
+    saver.conn.close()
+
+
+def test_single_unit_uses_shared_clone_without_fanout(tmp_path):
+    # (5a) A single-unit run uses the run's ONE shared clone — no per-unit build clone.
+    repo = _target_repo(tmp_path, gate_cmd="true")
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/1")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path, _ONE_UNIT), approver=approver, thread_id="solo")
+
+    assert set(executor.cwds) == {"WU-S"}
+    assert not executor.cwds["WU-S"].endswith("-build")  # the shared clone, not a build clone
+    assert _build_clone_dirs(tmp_path) == []  # no per-unit clone was ever created
+    assert len(_pr_creates(gh)) == 1
+    assert final.values["status"] == Status.DONE
+    assert final.values["pr_url"].endswith("/pull/1")
+    assert approver.gates == ["plan", "pr"]
+    saver.conn.close()
+
+
+def test_all_size_one_level_chain_stays_on_shared_clone(tmp_path):
+    # (5b) An all-size-1-level chain builds every unit sequentially on the ONE shared clone:
+    # no fan-out, no per-unit clone, no cherry-pick — exactly the pre-fan-out behaviour.
+    repo = _target_repo(tmp_path, gate_cmd="true")
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/3")
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+    approver = _recording_approver(decision=True)
+
+    final = drive(graph, _write_prd(tmp_path, _CHAIN), approver=approver, thread_id="chain")
+
+    assert set(executor.cwds) == {"WU-1", "WU-2", "WU-3"}
+    # Every unit built in the SAME shared clone directory, none a -build clone.
+    assert len(set(executor.cwds.values())) == 1
+    assert not any(cwd.endswith("-build") for cwd in executor.cwds.values())
+    assert _build_clone_dirs(tmp_path) == []
+    # Later units saw earlier units' committed work on the shared branch (sequential).
+    assert "wu-1.txt" in executor.seen["WU-2"]
+    assert {"wu-1.txt", "wu-2.txt"} <= set(executor.seen["WU-3"])
+    assert len(_pr_creates(gh)) == 1
+    assert final.values["status"] == Status.DONE
+    assert approver.gates == ["plan", "pr"]
+    saver.conn.close()
