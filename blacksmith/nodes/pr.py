@@ -115,7 +115,7 @@ def _open_pr(
             "status": Status.HALTED,
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
-    units = state.get("work_units") or [unit]
+    units = _built_units(state)
     try:
         pr = open_pull_request(
             # One combined PR against the run's single shared branch, covering every unit
@@ -124,13 +124,35 @@ def _open_pr(
             worktree_path=worktree_path,
             branch=state.get("branch") or branch_for(unit.id),
             title=_pr_title(units),
-            body=_pr_body(state),
+            body=_pr_body(state, units),
             draft=draft,
             runner=runner,
         )
     except PRError as exc:
         return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
     return {"pr_url": pr.url, "status": done}
+
+
+def _built_units(state: BlacksmithState) -> list[WorkUnit]:
+    """The units actually built this run, in declaration order.
+
+    Derived from the built-set signal — the accumulated ``unit_results`` (one record per
+    unit whose gate passed) plus the current ``selected_unit`` (the human-gated unit being
+    drafted, which skips the auto gate and so is absent from ``unit_results``) — NOT the
+    full ``work_units`` DAG. So a mid-DAG draft PR names only the units really built, never
+    later units that were never reached. At the terminal auto-PR every unit has passed its
+    gate (and the last is ``selected_unit``), so this still yields the whole DAG.
+
+    Falls back to the lone ``selected_unit`` when ``work_units`` is absent (a single-unit
+    node-level call in tests)."""
+    selected = state.get("selected_unit")
+    built_ids = {r.get("unit_id") for r in state.get("unit_results") or []}
+    if selected is not None:
+        built_ids.add(selected.id)
+    units = [u for u in (state.get("work_units") or []) if u.id in built_ids]
+    if units:
+        return units
+    return [selected] if selected is not None else []
 
 
 def _pr_title(units: Sequence[WorkUnit]) -> str:
@@ -159,10 +181,8 @@ def _change_lines(
     return lines
 
 
-def _pr_body(state: BlacksmithState) -> str:
-    units = list(state.get("work_units") or [])
-    if not units and state.get("selected_unit") is not None:
-        units = [state["selected_unit"]]
+def _pr_body(state: BlacksmithState, units: Sequence[WorkUnit] | None = None) -> str:
+    units = list(_built_units(state) if units is None else units)
     lines: list[str] = []
     if len(units) == 1:
         # Single-unit body is unchanged: the last-write-wins implementation/test_results
@@ -172,9 +192,10 @@ def _pr_body(state: BlacksmithState) -> str:
         lines.append(f"**Unit:** {units[0].id} — {units[0].title}")
         lines.extend(_change_lines(impl.get("files_touched"), impl.get("diff_summary"), results))
     elif units:
-        # All units reached here only because every one passed its gate — summarize each
-        # from its OWN retained result (unit_results), so a unit's files/summary are
-        # attributed to that unit rather than lumped under the last unit's implementation.
+        # Summarize each built unit from its OWN retained result (unit_results), so a unit's
+        # files/summary are attributed to that unit rather than lumped under the last unit's
+        # implementation. A mid-DAG draft PR's human-gated unit has no retained result yet
+        # (it skipped the auto gate), so it appears as a bare bullet — which is correct.
         by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
         lines.append(f"**Units built ({len(units)}):**")
         for u in units:
