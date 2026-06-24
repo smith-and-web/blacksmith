@@ -16,6 +16,7 @@ metrics disabled or a metrics write that fails behaves exactly as today.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections import Counter, OrderedDict
 from pathlib import Path
@@ -193,6 +194,19 @@ def _categorize_failure(status: str, errors: list[dict]) -> str:
     return "none" if not errors else "gate_fail"
 
 
+def _parse_diff_size(diff_summary: str) -> int:
+    """Insertions + deletions parsed from a ``git diff --stat`` summary line.
+
+    The stat output ends with e.g. ``2 files changed, 95 insertions(+), 7 deletions(-)``;
+    either count may be absent. Returns their sum — the magnitude of the change — rather
+    than the length of the stat STRING (which conflated long filenames with large diffs).
+    Returns 0 when nothing matches (no summary captured).
+    """
+    insertions = sum(int(n) for n in re.findall(r"(\d+) insertion", diff_summary))
+    deletions = sum(int(n) for n in re.findall(r"(\d+) deletion", diff_summary))
+    return insertions + deletions
+
+
 def _title_map(values: dict) -> dict[str, str]:
     """Best-effort unit-id -> title lookup from the PRD contract (when present)."""
     prd = values.get("prd")
@@ -207,7 +221,10 @@ def _unit_rows(values: dict) -> list[dict]:
     attempts per unit), enriched with the unit's retained ``unit_results`` record.
 
     A unit that escalated has >1 implement event, so its ``models``, ``cost``, ``turns``
-    and tokens sum across both attempts and its gate is reported as ``escalated``.
+    and tokens sum across both attempts. Its ``gate_result`` reflects the OUTCOME, not the
+    fact of escalation: an escalated unit that then PASSED (recorded in ``unit_results``) is
+    ``escalated``, but one that escalated and still HALTED (absent from ``unit_results``, so
+    ``passed`` is false) is reported as ``failed`` — not mislabelled a success.
     """
     events = values.get("cost_events") or []
     results = {r.get("unit_id"): r for r in (values.get("unit_results") or [])}
@@ -225,7 +242,7 @@ def _unit_rows(values: dict) -> list[dict]:
         models = list(dict.fromkeys(e.get("model") for e in unit_events if e.get("model")))
         attempts = len(unit_events)
         passed = unit_id in results
-        if attempts > 1:
+        if attempts > 1 and passed:
             gate_result = "escalated"
         elif passed:
             gate_result = "passed"
@@ -243,7 +260,7 @@ def _unit_rows(values: dict) -> list[dict]:
                 "turns": sum(int(e.get("num_turns") or 0) for e in unit_events),
                 "gate_result": gate_result,
                 "files_count": len(result.get("files_touched") or []),
-                "diff_size": len(diff_summary),
+                "diff_size": _parse_diff_size(diff_summary),
             }
         )
     return rows
@@ -314,12 +331,19 @@ def record_run(
     started_at: float,
     ended_at: float,
     transcripts_dir: str | Path | None = None,
+    approval_wait_s: float = 0.0,
 ) -> None:
     """Write ONE run row (UPSERT keyed by ``thread_id``) plus N unit rows.
 
     Derived entirely from the final snapshot's ``cost_events`` / ``unit_results`` /
     ``status`` / ``errors`` / ``pr_url``. A resumed thread re-derives and UPSERTs the SAME
     rows. This is a write-only sink: nothing here is ever read back into the graph.
+
+    ``duration_s`` is PIPELINE time: ``ended_at - started_at`` minus ``approval_wait_s``
+    (the wall-clock spent blocked awaiting human approval at the gates), so the figure
+    measures work the pipeline actually did rather than how long a human took to answer.
+    ``approval_wait_s`` defaults to 0.0 — under ``--auto-approve`` there is no wait, and a
+    direct caller that doesn't measure it gets plain wall-clock.
 
     ``transcripts_dir`` (the configured transcripts directory) resolves the run's
     per-call ``session_id`` references into ``<dir>/<session_id>.jsonl`` paths recorded
@@ -348,7 +372,7 @@ def record_run(
         "input_tokens": _usage_sum(events, "input_tokens"),
         "output_tokens": _usage_sum(events, "output_tokens"),
         "cache_hit_rate": _cache_hit_rate(events),
-        "duration_s": ended_at - started_at,
+        "duration_s": ended_at - started_at - approval_wait_s,
         "success": 1 if status == Status.DONE.value else 0,
         "failure_reason": _categorize_failure(status, errors),
         "escalation_count": escalation_count,

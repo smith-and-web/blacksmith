@@ -173,7 +173,7 @@ def _gate_payload(result, snapshot) -> dict:
     return {}
 
 
-def _drive_gates(graph, config, *, approver, on_node, result=None):
+def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None):
     """Drive the graph through its approval gates to END, consulting ``approver``.
 
     Shared by a fresh ``drive`` and a ``resume``: each iteration reads the current
@@ -181,13 +181,21 @@ def _drive_gates(graph, config, *, approver, on_node, result=None):
     gate and injects that decision with ``Command(resume=...)``. ``result`` seeds the
     first gate's payload for a fresh run; resume passes ``None`` and reads it from the
     persisted snapshot instead.
+
+    ``on_wait(seconds)``, when given, is called with the wall-clock spent BLOCKED in each
+    ``approver`` call — the time a human took to answer a gate. The caller accumulates it
+    to subtract from the run's recorded ``duration_s`` so that figure measures pipeline
+    work, not idle approval wait. It never affects control flow.
     """
     while True:
         snapshot = graph.get_state(config)
         if not snapshot.next:  # reached END
             return snapshot
         payload = _gate_payload(result, snapshot)
+        wait_start = time.monotonic()
         approved = approver(payload, snapshot.values)
+        if on_wait is not None:
+            on_wait(time.monotonic() - wait_start)
         result = _step(graph, Command(resume=approved), config, on_node=on_node)
 
 
@@ -220,7 +228,10 @@ def _isolate_fresh_run(graph, config, thread_id: str) -> None:
     graph.checkpointer.delete_thread(thread_id)
 
 
-def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None):
+def drive(
+    graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None,
+    on_wait=None,
+):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
     ``approver(payload, values) -> bool`` decides each gate. Returns the final state
@@ -240,10 +251,12 @@ def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None, is
     if issue_number is not None:
         payload["issue_number"] = issue_number
     result = _step(graph, payload, config, on_node=on_node)
-    return _drive_gates(graph, config, approver=approver, on_node=on_node, result=result)
+    return _drive_gates(
+        graph, config, approver=approver, on_node=on_node, result=result, on_wait=on_wait
+    )
 
 
-def resume(graph, thread_id: str, *, approver, on_node=None):
+def resume(graph, thread_id: str, *, approver, on_node=None, on_wait=None):
     """Continue an interrupted run from its persisted SQLite checkpoint (WU-RESUME).
 
     Re-attaches to ``thread_id`` and drives the *existing* graph state to END. It sends
@@ -259,7 +272,9 @@ def resume(graph, thread_id: str, *, approver, on_node=None):
             f"no checkpoint found for thread-id {thread_id!r}; nothing to resume "
             "(start a run with `blacksmith <prd>` first)"
         )
-    return _drive_gates(graph, config, approver=approver, on_node=on_node)
+    return _drive_gates(
+        graph, config, approver=approver, on_node=on_node, on_wait=on_wait
+    )
 
 
 def _cli_approver(
@@ -444,6 +459,7 @@ def _record_metrics(
     prd_path: str | Path,
     started_at: float,
     ended_at: float,
+    approval_wait_s: float = 0.0,
 ) -> None:
     """Record run + per-unit metrics rows to the local metrics SQLite (WU-METRICS-RECORD).
 
@@ -463,6 +479,7 @@ def _record_metrics(
                 started_at=started_at,
                 ended_at=ended_at,
                 transcripts_dir=config.transcripts.dir,
+                approval_wait_s=approval_wait_s,
             )
         finally:
             store.close()
@@ -736,6 +753,12 @@ def _resume(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
     renderer = _build_renderer(args)
 
+    approval_wait = 0.0
+
+    def _track_wait(seconds: float) -> None:
+        nonlocal approval_wait
+        approval_wait += seconds
+
     started_at = time.time()
     try:
         final = resume(
@@ -743,6 +766,7 @@ def _resume(argv: list[str] | None = None) -> int:
             args.thread_id,
             approver=_resolve_approver(args, renderer),
             on_node=_progress_emitter(args.quiet, renderer),
+            on_wait=_track_wait,
         )
     except ResumeError as exc:
         print(f"resume: {exc}", file=sys.stderr)
@@ -756,6 +780,7 @@ def _resume(argv: list[str] | None = None) -> int:
         prd_path=final.values.get("prd_path") or "",
         started_at=started_at,
         ended_at=ended_at,
+        approval_wait_s=approval_wait,
     )
     return 0 if final.values.get("status") == Status.DONE else 1
 
@@ -920,6 +945,12 @@ def main(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
     renderer = _build_renderer(args)
 
+    approval_wait = 0.0
+
+    def _track_wait(seconds: float) -> None:
+        nonlocal approval_wait
+        approval_wait += seconds
+
     started_at = time.time()
     try:
         final = drive(
@@ -929,6 +960,7 @@ def main(argv: list[str] | None = None) -> int:
             thread_id=args.thread_id,
             on_node=_progress_emitter(args.quiet, renderer),
             issue_number=args.issue,
+            on_wait=_track_wait,
         )
     except FreshRunError as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
@@ -942,6 +974,7 @@ def main(argv: list[str] | None = None) -> int:
         prd_path=args.prd_path,
         started_at=started_at,
         ended_at=ended_at,
+        approval_wait_s=approval_wait,
     )
     return 0 if final.values.get("status") == Status.DONE else 1
 
