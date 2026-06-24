@@ -49,6 +49,28 @@ class ErrorRecord(TypedDict):
     message: str
 
 
+class LevelBuild(TypedDict, total=False):
+    """One unit's fan-out build outcome, produced by a ``build_unit`` worker and appended
+    to ``level_builds`` (a reducer key — the only thing a parallel worker writes, so
+    concurrent workers never race on a last-write-wins field). The join reads these to
+    cherry-pick each unit's commit onto the combined branch in declaration order.
+
+    ``ok`` is False when the unit's implement or test gate failed (the join then halts the
+    whole level without cherry-picking anything). ``level`` tags which level the build
+    belongs to, so a later level's join filters out an earlier level's records."""
+
+    unit_id: str
+    title: str
+    level: int
+    clone_path: str
+    branch: str
+    files_touched: list[str]
+    diff_summary: str
+    test_command: str
+    ok: bool
+    error: str
+
+
 class UnitResult(TypedDict, total=False):
     """One unit's own outcome, retained so a multi-unit PR can summarize each unit's
     changes (not just the last unit's). Appended to ``unit_results`` when a unit's gate
@@ -69,10 +91,28 @@ class BlacksmithState(TypedDict, total=False):
     prd_path: str
     prd: PRD
     work_units: list[WorkUnit]
+    # Dependency levels (frontiers) from blacksmith.planner.execution_levels: the level
+    # engine walks these in order and, within each level, builds the units sequentially in
+    # declaration order. Flattening them in order yields ``work_units`` (topo order).
+    execution_levels: list[list[WorkUnit]]
     selected_unit: WorkUnit
-    # Cursor into ``work_units`` (topo order, from blacksmith.planner.execution_order):
-    # which unit the sequential implement->gate loop is currently on (multi-unit run).
-    unit_cursor: int
+    # Level position the sequential implement->gate loop is currently on (multi-unit run):
+    # ``level_cursor`` indexes into ``execution_levels`` and ``unit_in_level`` into that
+    # level's units. Replaces the prior flat ``unit_cursor`` (level grouping lives in the
+    # planner, never in the contract).
+    level_cursor: int
+    unit_in_level: int
+    # True when the run's isolation manager is a CloneManager, which is what enables the
+    # parallel fan-out (cloning a per-unit build clone from the combined-branch tip). A
+    # legacy WorktreeManager run leaves this unset and stays on the sequential path, so a
+    # multi-unit level there is still built one unit at a time on the shared worktree.
+    fanout: bool
+    # Per-unit fan-out build outcomes for the current multi-unit level, appended by the
+    # parallel ``build_unit`` workers and drained by ``join_level`` (which cherry-picks the
+    # passing units' commits onto the combined branch). A reducer key so concurrent workers
+    # never collide; each record is tagged with its ``level`` so a later join ignores
+    # earlier levels' records.
+    level_builds: Annotated[list[LevelBuild], operator.add]
     plan: dict[str, Any]
     worktree_path: str
     # The single shared branch every unit's commits land on, so one combined PR can be

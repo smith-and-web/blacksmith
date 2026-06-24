@@ -61,3 +61,49 @@ def execution_order(contract: PRDContract) -> list[WorkUnit]:
             "dependency cycle among work units: " + ", ".join(unplaced)
         )
     return result
+
+
+def execution_levels(contract: PRDContract) -> list[list[WorkUnit]]:
+    """Group work units into dependency levels (frontiers) for level-based scheduling.
+
+    Level 0 is the roots (units with no ``depends_on``). Level ``k`` holds every
+    unit all of whose dependencies are satisfied by earlier levels (``< k``). Units
+    within a level keep their PRD declaration order, so the result is deterministic
+    and stable. Flattening the levels in order yields a valid topological order — it
+    is exactly ``execution_order`` for the same contract.
+
+    This is a pure function that READS the contract and never mutates the graph.
+    Raises ``PlannerError`` if the dependency graph contains a cycle.
+    """
+    units = list(contract.work_units)
+    order = {unit.id: index for index, unit in enumerate(units)}
+
+    remaining = {unit.id: len(unit.depends_on) for unit in units}
+    dependents: dict[str, list[str]] = {unit.id: [] for unit in units}
+    for unit in units:
+        for dep in unit.depends_on:
+            dependents[dep].append(unit.id)
+
+    by_id = {unit.id: unit for unit in units}
+    # Current frontier: units with no outstanding dependencies, in declaration order.
+    frontier = sorted((uid for uid, count in remaining.items() if count == 0), key=order.get)
+    levels: list[list[WorkUnit]] = []
+    placed = 0
+
+    while frontier:
+        levels.append([by_id[uid] for uid in frontier])
+        placed += len(frontier)
+        next_frontier: list[str] = []
+        for uid in frontier:
+            for dependent in dependents[uid]:
+                remaining[dependent] -= 1
+                if remaining[dependent] == 0:
+                    next_frontier.append(dependent)
+        frontier = sorted(next_frontier, key=order.get)
+
+    if placed != len(units):
+        unplaced = sorted((uid for uid in remaining if remaining[uid] > 0), key=order.get)
+        raise PlannerError(
+            "dependency cycle among work units: " + ", ".join(unplaced)
+        )
+    return levels
