@@ -31,7 +31,15 @@ from blacksmith.state import BlacksmithState, Status
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
 _WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 _ALLOWED_TOOLS = ["Read", "Glob", "Grep"]  # auto-allowed read-only tools
-_DISALLOWED_TOOLS = ["Bash"]  # no shell escape around the guard in v0
+# The implementer writes code; it must not reach for a shell or escape its tool surface.
+# The can_use_tool guard only gates Write/Edit and allows everything else, so any tool that
+# could run commands or spawn a shell-capable helper is denied here explicitly: Bash (+ its
+# helpers), sub-agent spawning (Agent/Task), tool discovery (ToolSearch — it was observed
+# searching for a Bash tool), and web tools. A run that exhausts its turns hunting for a way
+# to run tests is exactly the failure this prevents — the test gate runs the suite, not the agent.
+_DISALLOWED_TOOLS = [
+    "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
+]
 _IMPLEMENT_MAX_TURNS = 40
 
 # The target repo's CLAUDE.md (if committed) is injected into the implementer's system
@@ -258,7 +266,13 @@ def _implement_prompt(unit: WorkUnit) -> str:
         "once the target modules exist on disk with the required content.\n\n"
         "Work ONLY within the current working directory, using paths relative to it. Never "
         "edit a file by an absolute path or outside this directory — it is an isolated "
-        "worktree, not the canonical repo.\n\n"
+        "clone, not the canonical repo.\n\n"
+        "You have NO shell and CANNOT run commands, tests, builds, or programs, and must not "
+        "spawn sub-agents or search for tools to do so. Do NOT try to run the tests, the build, "
+        "or the code to verify your work — an automated test gate runs the project's own "
+        "test/lint commands after you finish. Make the code correct by reading and reasoning, "
+        "and write any tests the unit requires, but never execute anything. Spend every turn "
+        "implementing — do not waste turns looking for a way to run commands.\n\n"
         f"Unit {unit.id}: {unit.title}\n"
         f"Layers: {', '.join(unit.layers)}\n"
         f"Target modules: {', '.join(unit.target_modules)}\n"
