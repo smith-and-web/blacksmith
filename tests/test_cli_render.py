@@ -16,11 +16,31 @@ without changing any graph / gate decision.
 from __future__ import annotations
 
 import io
+import re
 from types import SimpleNamespace
 
 from blacksmith.cli import _build_renderer, _progress_emitter, _report
 from blacksmith.render import Renderer
 from blacksmith.state import Status
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+_PLAN_PAYLOAD = {
+    "gate": "plan",
+    "unit": {"id": "WU-DEMO", "title": "Demo unit"},
+    "plan": {
+        "steps": "Do STEP-ALPHA first, then the rest.",
+        "target_modules": ["mod_alpha.py", "mod_beta.py"],
+        "test_contract": "CONTRACT-OMEGA verbatim from the PRD.",
+        "cost_usd": 0.01,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    },
+}
 
 
 class _TTYStringIO(io.StringIO):
@@ -99,6 +119,46 @@ def test_errors_appear_in_plain_report():
     text = out.getvalue()
     assert "error [test_gate]: boom" in text
     assert "\x1b" not in text
+
+
+# -- plan gate: contract de-emphasised so the plan leads ---------------------
+
+
+def test_plan_gate_rendered_leads_with_steps_and_modules_before_contract():
+    out = _TTYStringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    assert renderer.rendered is True
+
+    renderer.gate(_PLAN_PAYLOAD)
+    raw = out.getvalue()
+    plain = _strip_ansi(raw)
+
+    # The plan STEPS and target modules LEAD; the contract trails them.
+    steps_at = plain.index("STEP-ALPHA")
+    mod_at = plain.index("mod_alpha.py")
+    contract_at = plain.index("CONTRACT-OMEGA")
+    assert steps_at < contract_at
+    assert mod_at < contract_at
+
+    # The contract gets a DE-EMPHASIZED (dim) secondary treatment, not a co-equal panel.
+    contract_line = next(line for line in raw.splitlines() if "CONTRACT-OMEGA" in line)
+    assert "\x1b[2m" in contract_line  # dim style applied to the contract line
+
+
+def test_plan_gate_plain_keeps_full_contract_text_with_zero_escapes():
+    out = io.StringIO()  # not a TTY → plain path
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    assert renderer.rendered is False
+
+    renderer.gate(_PLAN_PAYLOAD)
+    text = out.getvalue()
+
+    assert "\x1b" not in text  # machine path stays ANSI-free
+    # the full contract text remains present + parseable in plain mode
+    assert "CONTRACT-OMEGA verbatim from the PRD." in text
+    # steps + modules still lead in plain mode too
+    assert text.index("STEP-ALPHA") < text.index("CONTRACT-OMEGA")
+    assert text.index("mod_alpha.py") < text.index("CONTRACT-OMEGA")
 
 
 # -- per-node progress -------------------------------------------------------

@@ -196,6 +196,39 @@ def test_sdk_error_stream_still_writes_partial_transcript(monkeypatch, tmp_path)
     assert "result" not in types  # call errored mid-stream — no terminal result event
 
 
+def test_sdk_error_carries_session_id_so_partial_transcript_links(monkeypatch, tmp_path):
+    out = tmp_path / "transcripts"
+    cfg = _config(monkeypatch, transcripts_dir=out)
+    # A session_id was surfaced before the SDK raised (max-turns) mid-stream.
+    stream = [
+        _assistant(text="partial work", session_id="sess-err"),
+        _assistant(tool=("Edit", {"file_path": "x.py"}), session_id="sess-err"),
+    ]
+    result = Executor(cfg, query_fn=RaisingAfterQuery(stream)).run(
+        "p", model="claude-sonnet-4-6", raise_on_error=False
+    )
+
+    assert result.is_error is True  # still a structured result, not a crash
+    # The is_error result carries the session_id captured from the stream, so the failed
+    # call's cost_event links the PARTIAL transcript already on disk (instead of None).
+    assert result.session_id == "sess-err"
+    assert (out / "sess-err.jsonl").is_file()
+    event = cost_event("implement", "WU-01", result)
+    assert event["session_id"] == "sess-err"
+
+
+def test_sdk_error_without_surfaced_session_id_degrades_cleanly(monkeypatch, tmp_path):
+    out = tmp_path / "transcripts"
+    cfg = _config(monkeypatch, transcripts_dir=out)
+    # The SDK raises before surfacing any session_id at all.
+    result = Executor(cfg, query_fn=RaisingAfterQuery([])).run(
+        "p", model="claude-sonnet-4-6", raise_on_error=False
+    )
+
+    assert result.is_error is True  # no crash
+    assert result.session_id is None  # nothing surfaced -> degrades cleanly
+
+
 # --- the ref lives in cost_events; transcript content never enters state -----
 
 

@@ -35,7 +35,7 @@ from langgraph.types import Send
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import GateError, GateResult
-from blacksmith.memory import current_store, record_lesson, repo_namespace
+from blacksmith.memory import current_store, record_lesson
 from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
@@ -152,9 +152,8 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
         # Record a lesson only on the path that actually halts the run: a first-attempt
         # failure that can still escalate (pre_implement_ref set, not yet escalated) is
         # retried, not halted, so it is not a lesson. Memory is optional and additive —
-        # it never changes routing (see route_after_test_gate for the mirrored condition).
-        will_escalate = bool(state.get("pre_implement_ref")) and not state.get("escalated")
-        if not will_escalate:
+        # it never changes routing (``_will_escalate`` is the SAME condition routing uses).
+        if not _will_escalate(state):
             _record_gate_lesson(state, unit, result, impl)
     else:
         # Retain this unit's own result so the combined PR body can summarize each unit's
@@ -191,9 +190,21 @@ def _record_gate_lesson(
         "files_touched": list(impl.get("files_touched") or []),
     }
     try:
-        record_lesson(store, repo_namespace(prd.contract), lesson)
+        record_lesson(store, prd.contract, lesson)
     except Exception:
         pass
+
+
+def _will_escalate(state: BlacksmithState) -> bool:
+    """Whether a gate failure on THIS attempt will escalate-and-retry rather than halt.
+
+    True for a first-attempt failure that can still escalate: the executor recorded a
+    ``pre_implement_ref`` (so it is able to re-implement with the stronger model) and the
+    unit has not escalated yet. The single source of truth for both the escalation ROUTING
+    (``route_after_test_gate``) and the lesson-recording guard (``test_gate``) — a pure
+    refactor of the previously duplicated inline check, with identical behavior.
+    """
+    return bool(state.get("pre_implement_ref")) and not state.get("escalated")
 
 
 def _next_position(
@@ -540,7 +551,7 @@ def route_after_test_gate(state: BlacksmithState) -> str:
     escalate), halts with no PR."""
     results = state.get("test_results") or {}
     if not results.get("passed"):
-        if state.get("pre_implement_ref") and not state.get("escalated"):
+        if _will_escalate(state):
             return "escalate"
         return "human_halt"
     levels = state.get("execution_levels") or []

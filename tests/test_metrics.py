@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import subprocess
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -332,4 +333,122 @@ def test_resumed_thread_upserts_the_same_row(tmp_path):
     assert len(runs) == 1  # one run row keyed by thread_id, updated in place
     assert runs[0]["duration_s"] == 9.0  # the latest recording won
     assert len(_unit_rows(store)) == 2  # unit rows replaced, not duplicated
+    store.close()
+
+
+# --- per-unit gate_result distinguishes escalated-passed from escalated-failed ----------
+
+
+def _implement_event(unit_id, *, model, cost, turns):
+    return {
+        "node": "implement", "unit_id": unit_id, "model": model,
+        "cost_usd": cost, "usage": USAGE, "num_turns": turns,
+    }
+
+
+def test_escalated_then_halted_unit_is_not_labelled_escalated(tmp_path):
+    # WU-X escalated (TWO implement attempts) but never passed -> absent from unit_results.
+    # Its row must read as failing, NOT a plain `passed`/`escalated` success.
+    snap = SimpleNamespace(values={
+        "status": Status.HALTED,
+        "errors": [],
+        "cost_events": [
+            _implement_event("WU-X", model="m1", cost=0.10, turns=3),
+            _implement_event("WU-X", model="m2", cost=0.20, turns=4),
+        ],
+        "unit_results": [],  # WU-X never passed (the gate halted the run)
+    })
+    store = build_metrics_store(tmp_path / "halt.sqlite")
+    record_run(store, snap, thread_id="t", prd_path="x.md", started_at=0.0, ended_at=1.0)
+    row = _unit_rows(store)[0]
+    assert row["gate_result"] == "failed"
+    assert row["gate_result"] not in ("escalated", "passed")
+    store.close()
+
+
+def test_escalated_then_passed_unit_is_labelled_escalated(tmp_path):
+    # WU-X escalated (TWO attempts) and then passed (present in unit_results) -> `escalated`.
+    snap = SimpleNamespace(values={
+        "status": Status.DONE,
+        "errors": [],
+        "cost_events": [
+            _implement_event("WU-X", model="m1", cost=0.10, turns=3),
+            _implement_event("WU-X", model="m2", cost=0.20, turns=4),
+        ],
+        "unit_results": [{
+            "unit_id": "WU-X", "title": "x", "files_touched": ["a"],
+            "diff_summary": "1 file changed, 2 insertions(+)",
+        }],
+    })
+    store = build_metrics_store(tmp_path / "esc.sqlite")
+    record_run(store, snap, thread_id="t", prd_path="x.md", started_at=0.0, ended_at=1.0)
+    row = _unit_rows(store)[0]
+    assert row["gate_result"] == "escalated"
+    store.close()
+
+
+# --- diff_size is the parsed insertions+deletions, not the stat string length ------------
+
+
+def test_diff_size_is_parsed_insertions_plus_deletions(tmp_path):
+    diff = (
+        " blacksmith/render.py | 90 ++++++\n"
+        " blacksmith/cli.py | 12 +-\n"
+        " 2 files changed, 95 insertions(+), 7 deletions(-)"
+    )
+    snap = SimpleNamespace(values={
+        "status": Status.DONE,
+        "errors": [],
+        "cost_events": [_implement_event("WU-X", model="m", cost=0.10, turns=1)],
+        "unit_results": [{
+            "unit_id": "WU-X", "title": "x", "files_touched": ["a", "b"],
+            "diff_summary": diff,
+        }],
+    })
+    store = build_metrics_store(tmp_path / "diff.sqlite")
+    record_run(store, snap, thread_id="t", prd_path="x.md", started_at=0.0, ended_at=1.0)
+    row = _unit_rows(store)[0]
+    assert row["diff_size"] == 95 + 7  # parsed magnitude of the change...
+    assert row["diff_size"] != len(diff)  # ...NOT the length of the stat STRING
+    store.close()
+
+
+# --- duration excludes time blocked awaiting human approval ------------------------------
+
+
+def test_duration_excludes_approval_wait(tmp_path):
+    # An interactive run blocks at each gate waiting for a human. That idle wait must be
+    # subtracted from the recorded pipeline duration_s (measured around the approver calls).
+    repo = _target_repo(tmp_path)
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    graph, saver = _wire(tmp_path, repo, executor=FakeExecutor(), gh=gh)
+    prd = _write_prd(tmp_path, _TWO_UNITS)
+
+    wait_per_gate = 0.2
+
+    def slow_approver(payload, values):
+        time.sleep(wait_per_gate)
+        return True
+
+    waited = []
+    start = time.monotonic()
+    final = drive(
+        graph, prd, approver=slow_approver, thread_id="wu",
+        on_wait=lambda seconds: waited.append(seconds),
+    )
+    elapsed = time.monotonic() - start
+    saver.conn.close()
+    assert final.values["status"] == Status.DONE
+
+    approval_wait = sum(waited)
+    assert approval_wait >= wait_per_gate  # at least one gate's wait was measured
+
+    store = build_metrics_store(tmp_path / "dur.sqlite")
+    record_run(
+        store, final, thread_id="wu", prd_path=prd,
+        started_at=0.0, ended_at=elapsed, approval_wait_s=approval_wait,
+    )
+    run = _run_rows(store)[0]
+    assert run["duration_s"] == elapsed - approval_wait  # approval wait subtracted
+    assert run["duration_s"] < elapsed  # strictly less than wall-clock
     store.close()

@@ -114,6 +114,32 @@ _AUTO = {
 }
 
 
+# A 3-unit chain: WU-A (auto) -> WU-B (human) -> WU-C (auto, depends on WU-B). The run
+# builds WU-A, then WU-B, and opens a DRAFT PR at WU-B — WU-C is never reached.
+_THREE = {
+    "layers": "  py-logic: auto\n  qa: human",
+    "units": """\
+  - id: WU-A
+    title: "auto unit A"
+    layers: [py-logic]
+    target_modules: ["out.txt"]
+    test_contract: "the gate command passes"
+    depends_on: []
+  - id: WU-B
+    title: "human-gated unit B"
+    layers: [qa]
+    target_modules: ["out.txt"]
+    test_contract: "a human QAs the draft PR"
+    depends_on: [WU-A]
+  - id: WU-C
+    title: "auto unit C"
+    layers: [py-logic]
+    target_modules: ["out.txt"]
+    test_contract: "the gate command passes"
+    depends_on: [WU-B]""",
+}
+
+
 def _result(text):
     return ExecutorResult(
         text=text, model="claude-opus-4-8", is_error=False, num_turns=1,
@@ -127,6 +153,22 @@ class FakeExecutor:
 
     def run_implement(self, prompt, **kwargs):
         Path(kwargs["cwd"], "out.txt").write_text("implemented\n")  # simulate the edit
+        return _result("done")
+
+
+class MultiExecutor:
+    """Like ``FakeExecutor`` but writes a DISTINCT file per implement call, so each unit in
+    a multi-unit chain produces a real (non-empty) diff to commit."""
+
+    def __init__(self):
+        self.n = 0
+
+    def run_plan(self, prompt, **kwargs):
+        return _result("1. write files")
+
+    def run_implement(self, prompt, **kwargs):
+        self.n += 1
+        Path(kwargs["cwd"], f"out{self.n}.txt").write_text("implemented\n")
         return _result("done")
 
 
@@ -192,11 +234,11 @@ def _branches(repo, branch):
     return out.strip()
 
 
-def _wire(tmp_path, repo, *, gh, gate=run_gate):
+def _wire(tmp_path, repo, *, gh, gate=run_gate, executor=None):
     saver = build_checkpointer(tmp_path / "ckpt.sqlite")
     graph = compile_graph(
         saver,
-        executor=FakeExecutor(),
+        executor=executor or FakeExecutor(),
         worktree_manager=WorktreeManager(repo, base_dir=tmp_path / "wt"),
         gate=gate,
         pr_runner=gh,
@@ -234,6 +276,36 @@ def test_human_gated_unit_opens_draft_pr_and_awaits_qa(tmp_path):
     assert gate.calls == 0
     # Only the plan gate is consulted — the QA happens on the draft PR itself.
     assert approver.gates == ["plan"]
+    saver.conn.close()
+
+
+def _create_arg(create, flag):
+    return create[create.index(flag) + 1]
+
+
+def test_mid_dag_draft_pr_describes_only_units_built(tmp_path):
+    # gate_cmd="true" so WU-A's auto gate passes; WU-B (human) never runs the gate.
+    repo = _target_repo(tmp_path, gate_cmd="true")
+    gh = _recording_gh("https://github.com/owner/demo/pull/8")
+    graph, saver = _wire(tmp_path, repo, gh=gh, executor=MultiExecutor())
+    approver = _approver()
+
+    final = drive(graph, _write_prd(tmp_path, _THREE), approver=approver, thread_id="mid")
+
+    # The run parked WU-B behind a draft PR; WU-C was never built.
+    assert final.values["status"] == Status.AWAITING_QA
+    creates = _pr_creates(gh)
+    assert len(creates) == 1
+    assert "--draft" in creates[0]
+
+    title = _create_arg(creates[0], "--title")
+    body = _create_arg(creates[0], "--body")
+    # The PR names only the units actually built/committed (WU-A and WU-B)...
+    assert "WU-A" in title and "WU-A" in body
+    assert "WU-B" in title and "WU-B" in body
+    # ...and never the never-built WU-C.
+    assert "WU-C" not in title
+    assert "WU-C" not in body
     saver.conn.close()
 
 

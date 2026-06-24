@@ -197,9 +197,15 @@ class Renderer:
             for mod in plan.get("target_modules") or []:
                 mods.append(f"• {mod}\n")
             console.print(Panel(mods or Text("(none)"), title="target modules", expand=False))
-            console.print(
-                Panel(Text(plan.get("test_contract") or ""), title="test contract", expand=False)
-            )
+            # The test_contract is verbatim from the PRD — the least actionable item at this
+            # gate. De-emphasise it to a dim, collapsed secondary line so the plan STEPS and
+            # target modules lead, rather than a co-equal full-width panel that competes.
+            contract = plan.get("test_contract") or ""
+            if contract:
+                summary = textwrap.shorten(contract, width=96, placeholder=" …")
+                console.print(
+                    Text(f"test contract (from PRD, for reference): {summary}", style="dim")
+                )
             console.print(Text(self._cost_tokens_line(plan), style="dim"))
         elif gate == "pr":
             impl = payload.get("implementation") or {}

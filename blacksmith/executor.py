@@ -132,6 +132,10 @@ class Executor:
 
     async def _collect(self, prompt: str, options: ClaudeAgentOptions) -> ExecutorResult:
         default_model = options.model or self._config.models.implement
+        # The session_id is surfaced mid-stream (on AssistantMessage/ResultMessage). Capture
+        # it into this holder as _aggregate sees it so the error path below can link the
+        # PARTIAL transcript already flushed for the call (instead of leaving session_id=None).
+        captured: dict[str, str | None] = {"session_id": None}
         try:
             if options.can_use_tool is not None:
                 # A can_use_tool guard needs a persistent bidirectional connection: the
@@ -140,8 +144,12 @@ class Executor:
                 # ClaudeSDKClient keeps the connection open for the duration of the turn.
                 async with ClaudeSDKClient(options=options) as client:
                     await client.query(prompt)
-                    return await self._aggregate(client.receive_response(), default_model)
-            return await self._aggregate(self._query(prompt=prompt, options=options), default_model)
+                    return await self._aggregate(
+                        client.receive_response(), default_model, captured
+                    )
+            return await self._aggregate(
+                self._query(prompt=prompt, options=options), default_model, captured
+            )
         except Exception as exc:
             # The Agent SDK signals some failures — notably "Reached maximum number of turns",
             # but also CLI/stream errors — by RAISING during message iteration rather than
@@ -158,10 +166,12 @@ class Executor:
                 num_turns=0,
                 cost_usd=None,
                 usage=None,
-                session_id=None,
+                session_id=captured["session_id"],
             )
 
-    async def _aggregate(self, messages, default_model: str) -> ExecutorResult:
+    async def _aggregate(
+        self, messages, default_model: str, captured: dict[str, str | None] | None = None
+    ) -> ExecutorResult:
         texts: list[str] = []
         model = default_model
         result: ResultMessage | None = None
@@ -180,10 +190,14 @@ class Executor:
                 if isinstance(message, AssistantMessage):
                     model = message.model or model
                     session_id = getattr(message, "session_id", None) or session_id
+                    if captured is not None:
+                        captured["session_id"] = session_id
                     texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
                 elif isinstance(message, ResultMessage):
                     result = message
                     session_id = message.session_id or session_id
+                    if captured is not None:
+                        captured["session_id"] = session_id
             text = result.result if result and result.result else "".join(texts)
             return ExecutorResult(
                 text=text or "",
