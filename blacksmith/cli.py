@@ -26,6 +26,7 @@ from blacksmith import __version__
 from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, find_config
 from blacksmith.contract import ContractError, parse_prd
 from blacksmith.costs import run_costs
+from blacksmith.dashboard import serve as serve_dashboard
 from blacksmith.executor import Executor
 from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -598,6 +599,36 @@ def _runs(argv: list[str] | None = None) -> int:
         store.close()
 
 
+def _dashboard(argv: list[str] | None = None) -> int:
+    """``blacksmith dashboard``: serve a localhost read-only JSON API over the metrics store.
+
+    Binds ``127.0.0.1`` on an ephemeral port (``--port`` to fix it), prints the chosen
+    ``http://127.0.0.1:<port>`` URL, and serves until interrupted. It reads the local
+    metrics SQLite sink (``[metrics] db_path``) in READ-ONLY mode — it never writes the
+    metrics DB, never mutates run state, and never runs the graph.
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith dashboard",
+        description="Serve a localhost (127.0.0.1) read-only JSON API over the metrics store.",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Port to bind on 127.0.0.1 (default: 0, an ephemeral OS-chosen port).",
+    )
+    args = parser.parse_args(argv)
+
+    load_dotenv(Path.cwd() / ".env")
+    config = _load_config(args.config)
+    return serve_dashboard(config.metrics.db_path, port=args.port)
+
+
 def _validate(argv: list[str] | None = None) -> int:
     """Dry-run a PRD against the contract: parse only, no model spend, no network I/O.
 
@@ -777,6 +808,8 @@ def main(argv: list[str] | None = None) -> int:
         return _costs(argv[1:])
     if argv and argv[0] == "runs":
         return _runs(argv[1:])
+    if argv and argv[0] == "dashboard":
+        return _dashboard(argv[1:])
 
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
     parser.add_argument(
