@@ -281,6 +281,35 @@ def _total_cost_line(values) -> str:
     return f"total cost: ${sum(known):.2f}"
 
 
+def _token_line(values) -> str:
+    """Build the run-end token line from the per-node usage breakdowns (WU-COST-INSTRUMENT).
+
+    Each model-calling node records a ``usage`` breakdown (input/output + cache counters)
+    under its state slice alongside ``cost_usd``. This sums those across the plan + implement
+    nodes and reports total input, total output, and a cache-hit rate —
+    ``cache_read / (input + cache_read + cache_creation)``. A node whose usage is ``None``
+    (no executor wired, or a call with no usage) is skipped; if no node reported usage the
+    figure is unknown — say so plainly rather than crash the report.
+    """
+    usages = [
+        (values.get("plan") or {}).get("usage"),
+        (values.get("implementation") or {}).get("usage"),
+    ]
+    known = [u for u in usages if u]
+    if not known:
+        return "tokens: unavailable"
+    total_input = sum(u.get("input_tokens", 0) for u in known)
+    total_output = sum(u.get("output_tokens", 0) for u in known)
+    cache_read = sum(u.get("cache_read_input_tokens", 0) for u in known)
+    cache_creation = sum(u.get("cache_creation_input_tokens", 0) for u in known)
+    denom = total_input + cache_read + cache_creation
+    hit_rate = cache_read / denom if denom else 0.0
+    return (
+        f"tokens: input {total_input}, output {total_output}, "
+        f"cache-hit {hit_rate:.1%}"
+    )
+
+
 def _report(snapshot) -> None:
     values = snapshot.values
     print(f"\nstatus: {values.get('status')}")
@@ -289,6 +318,7 @@ def _report(snapshot) -> None:
     for err in values.get("errors", []):
         print(f"error [{err.get('node')}]: {err.get('message')}")
     print(_total_cost_line(values))
+    print(_token_line(values))
 
 
 def _validate(argv: list[str] | None = None) -> int:

@@ -14,10 +14,30 @@ model call.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.state import BlacksmithState, Status
+
+
+def usage_breakdown(usage: dict[str, Any] | None) -> dict[str, int] | None:
+    """Per-call token breakdown from ``ExecutorResult.usage`` (WU-COST-INSTRUMENT).
+
+    Pulls the four figures the run report cares about — uncached ``input_tokens``,
+    ``output_tokens`` and the two cache counters — so the node can persist them next to
+    the ``cost_usd`` it already stores. Returns ``None`` when no usage is reported (no
+    executor wired, or a call that returned no usage), so the report degrades to
+    "tokens: unavailable" rather than crashing.
+    """
+    if not usage:
+        return None
+    return {
+        "input_tokens": int(usage.get("input_tokens", 0) or 0),
+        "output_tokens": int(usage.get("output_tokens", 0) or 0),
+        "cache_read_input_tokens": int(usage.get("cache_read_input_tokens", 0) or 0),
+        "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens", 0) or 0),
+    }
 
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
 # finishes in one) but block all writes — at plan time there is no worktree yet, so
@@ -68,6 +88,7 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
             "test_contract": unit.test_contract,
             "steps": result.text,
             "cost_usd": result.cost_usd,
+            "usage": usage_breakdown(result.usage),
         },
         "status": Status.AWAITING_PLAN_APPROVAL,
     }
