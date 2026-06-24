@@ -13,7 +13,7 @@ which halts the run there — e.g. ``--approve plan`` builds and stops before th
 from __future__ import annotations
 
 import argparse
-import json
+import functools
 import os
 import sys
 from pathlib import Path
@@ -257,10 +257,18 @@ def resume(graph, thread_id: str, *, approver, on_node=None):
     return _drive_gates(graph, config, approver=approver, on_node=on_node)
 
 
-def _cli_approver(payload, values) -> bool:
-    gate = payload.get("gate", "?") if isinstance(payload, dict) else "?"
-    print(f"\n=== blacksmith: approval needed at the '{gate}' gate ===")
-    print(json.dumps(payload, indent=2, default=str))
+def _cli_approver(
+    payload, values, *, renderer: Renderer | None = None, as_json: bool = False
+) -> bool:
+    """Interactive gate: render the payload, then prompt for a y/n decision.
+
+    The payload is *rendered* by the presentation layer (plan steps / target modules /
+    test contract, or the PR diffstat / test result / files touched) rather than dumped
+    as raw JSON; ``--json`` (``as_json``) preserves the legacy raw payload for scripting.
+    The ``Approve? [y/N]`` prompt and the bool it returns are unchanged.
+    """
+    renderer = renderer if renderer is not None else Renderer()
+    renderer.gate(payload, as_json=as_json)
     return input("Approve? [y/N] ").strip().lower() in ("y", "yes")
 
 
@@ -287,6 +295,21 @@ def _select_approver(args):
     if args.approve is not None:
         return _auto_approver({g.strip() for g in args.approve.split(",") if g.strip()})
     return _cli_approver
+
+
+def _resolve_approver(args, renderer: Renderer):
+    """Pick the approver and, for the interactive one, bind the renderer + ``--json`` flag.
+
+    Headless approvers (``--auto-approve`` / ``--approve``) are returned unchanged. The
+    interactive ``_cli_approver`` is bound to the presentation-layer renderer (so the gate
+    payload is rendered rather than dumped) and to ``args.json`` (legacy raw JSON payload).
+    """
+    approver = _select_approver(args)
+    if approver is _cli_approver:
+        return functools.partial(
+            _cli_approver, renderer=renderer, as_json=getattr(args, "json", False)
+        )
+    return approver
 
 
 def _build_renderer(args) -> Renderer:
@@ -450,6 +473,12 @@ def _resume(argv: list[str] | None = None) -> int:
         help="Force plain, ANSI-free output even on a TTY (rendering is otherwise enabled "
         "only on a real terminal with NO_COLOR unset).",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="At an approval gate, print the raw JSON payload (for scripting) instead of "
+        "the rendered plan/PR view.",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv(Path.cwd() / ".env")
@@ -462,7 +491,7 @@ def _resume(argv: list[str] | None = None) -> int:
         final = resume(
             graph,
             args.thread_id,
-            approver=_select_approver(args),
+            approver=_resolve_approver(args, renderer),
             on_node=_progress_emitter(args.quiet, renderer),
         )
     except ResumeError as exc:
@@ -590,6 +619,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Force plain, ANSI-free output even on a TTY (rendering is otherwise enabled "
         "only on a real terminal with NO_COLOR unset).",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="At an approval gate, print the raw JSON payload (for scripting) instead of "
+        "the rendered plan/PR view.",
+    )
     args = parser.parse_args(argv)
 
     if args.prd_path is None and args.issue is None:
@@ -626,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
         final = drive(
             graph,
             args.prd_path,
-            approver=_select_approver(args),
+            approver=_resolve_approver(args, renderer),
             thread_id=args.thread_id,
             on_node=_progress_emitter(args.quiet, renderer),
             issue_number=args.issue,

@@ -16,10 +16,13 @@ are emitted verbatim with zero risk of escape codes or reflow leaking in.
 
 from __future__ import annotations
 
+import json
 import sys
+import textwrap
 import time
 
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 
@@ -114,6 +117,107 @@ class Renderer:
         body.append(f"\n{cost_line}", style="dim")
         body.append(f"\n{token_line}", style="dim")
         self._console.print(Panel(body, title="blacksmith", border_style=style, expand=False))
+
+    # -- approval gate --------------------------------------------------------
+
+    def gate(self, payload, *, as_json: bool = False) -> None:
+        """Render an approval-gate payload to the report stream.
+
+        ``as_json`` preserves the legacy raw ``json.dumps`` blob for scripting. Otherwise
+        the payload is *rendered*: the plan's steps as Markdown / its target modules and
+        test-contract as readable text; or the PR's diffstat, pass/fail test panel and
+        files-touched list. Rendered mode colour-codes panels on a TTY; plain / non-TTY
+        mode emits the same facts as flat ANSI-free text (never JSON unless ``as_json``).
+        """
+        if as_json:
+            print(json.dumps(payload, indent=2, default=str), file=self._out)
+            return
+        payload = payload if isinstance(payload, dict) else {}
+        if not self.rendered:
+            self._plain_gate(payload)
+            return
+        self._rendered_gate(payload)
+
+    def _gate_summary(self, payload: dict) -> str:
+        """One-line summary of WHAT is being approved (precedes the y/N prompt)."""
+        gate = payload.get("gate", "?")
+        unit = payload.get("unit") or {}
+        label = f"{unit.get('id', '?')} {unit.get('title', '')}".strip()
+        if gate == "plan":
+            return f"Approve the implementation PLAN for {label}"
+        if gate == "pr":
+            return f"Approve the PR for {label}"
+        return f"Approve the {gate!r} gate for {label}"
+
+    def _cost_tokens_line(self, slice_: dict) -> str:
+        """Compact cost + tokens line for a plan/implementation state slice."""
+        cost = slice_.get("cost_usd")
+        cost_str = f"${cost:.2f}" if cost is not None else "unavailable"
+        usage = slice_.get("usage") or {}
+        return (
+            f"cost: {cost_str} · tokens: input {usage.get('input_tokens', 0)}, "
+            f"output {usage.get('output_tokens', 0)}"
+        )
+
+    def _plain_gate(self, payload: dict) -> None:
+        out = self._out
+        print(f"\n{self._gate_summary(payload)}", file=out)
+        gate = payload.get("gate")
+        if gate == "plan":
+            plan = payload.get("plan") or {}
+            print("\nSteps:", file=out)
+            print(plan.get("steps") or "(none)", file=out)
+            print("\nTarget modules:", file=out)
+            for mod in plan.get("target_modules") or []:
+                print(f"  - {mod}", file=out)
+            print("\nTest contract:", file=out)
+            print(textwrap.fill(plan.get("test_contract") or "", width=88), file=out)
+            print(f"\n{self._cost_tokens_line(plan)}", file=out)
+        elif gate == "pr":
+            impl = payload.get("implementation") or {}
+            results = payload.get("test_results") or {}
+            print("\nDiff summary:", file=out)
+            print(impl.get("diff_summary") or "(none)", file=out)
+            marker = "PASS" if results.get("passed") else "FAIL"
+            print(f"\nTests: {marker}  ({results.get('command', '')})", file=out)
+            print(results.get("output") or "", file=out)
+            print("\nFiles touched:", file=out)
+            for path in impl.get("files_touched") or []:
+                print(f"  - {path}", file=out)
+
+    def _rendered_gate(self, payload: dict) -> None:
+        console = self._console
+        console.print(Text(self._gate_summary(payload), style="bold"))
+        gate = payload.get("gate")
+        if gate == "plan":
+            plan = payload.get("plan") or {}
+            steps = Markdown(plan.get("steps") or "_(no steps)_")
+            console.print(Panel(steps, title="plan steps", expand=False))
+            mods = Text()
+            for mod in plan.get("target_modules") or []:
+                mods.append(f"• {mod}\n")
+            console.print(Panel(mods or Text("(none)"), title="target modules", expand=False))
+            console.print(
+                Panel(Text(plan.get("test_contract") or ""), title="test contract", expand=False)
+            )
+            console.print(Text(self._cost_tokens_line(plan), style="dim"))
+        elif gate == "pr":
+            impl = payload.get("implementation") or {}
+            results = payload.get("test_results") or {}
+            diff = Text(impl.get("diff_summary") or "(none)")
+            console.print(Panel(diff, title="diff summary", expand=False))
+            passed = results.get("passed")
+            marker, style = ("PASS", "bold green") if passed else ("FAIL", "bold red")
+            body = Text()
+            body.append(f"{marker}  ", style=style)
+            body.append(results.get("command", ""), style="dim")
+            body.append("\n")
+            body.append(results.get("output") or "")
+            console.print(Panel(body, title="test results", border_style=style, expand=False))
+            files = Text()
+            for path in impl.get("files_touched") or []:
+                files.append(f"• {path}\n")
+            console.print(Panel(files or Text("(none)"), title="files touched", expand=False))
 
     # -- per-node progress ----------------------------------------------------
 
