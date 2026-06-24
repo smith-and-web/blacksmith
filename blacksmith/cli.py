@@ -80,6 +80,10 @@ class ResumeError(Exception):
     """Raised when a resume targets a thread-id with no persisted checkpoint."""
 
 
+class FreshRunError(Exception):
+    """Raised when a fresh run targets a thread paused mid-run (resume it instead)."""
+
+
 class RepoConsistencyError(Exception):
     """Raised when the target repo's git remote doesn't match the PRD's target repo."""
 
@@ -179,6 +183,35 @@ def _drive_gates(graph, config, *, approver, on_node, result=None):
         result = _step(graph, Command(resume=approved), config, on_node=on_node)
 
 
+def _isolate_fresh_run(graph, config, thread_id: str) -> None:
+    """Stop a fresh run from inheriting a prior run's state on the same thread-id.
+
+    Mirrors WU-RESUME's ``snapshot.created_at`` probe to classify the thread BEFORE the
+    fresh run starts:
+
+    - UNUSED thread (no checkpoint): nothing to isolate — proceed exactly as today.
+    - PAUSED at a gate (a pending interrupt, ``snapshot.next`` non-empty): a fresh run
+      would clobber an in-flight run, so refuse and point at ``blacksmith resume`` instead.
+    - TERMINAL (the prior run reached END: done/halted/awaiting_qa, ``snapshot.next``
+      empty): clear the thread's checkpoint so the new run starts with clean run-scoped
+      state — it must not carry the prior run's accumulated ``errors`` or its ``pr_url``.
+
+    The isolation is enforced here at the checkpoint level (``delete_thread``), NOT by
+    weakening the ``errors`` reducer (which correctly accumulates WITHIN a single run).
+    """
+    snapshot = graph.get_state(config)
+    if getattr(snapshot, "created_at", None) is None:
+        return  # unused thread-id — a first run behaves exactly as today
+    if snapshot.next:  # a pending interrupt — the prior run is paused mid-flight
+        raise FreshRunError(
+            f"thread-id {thread_id!r} has a run paused at a gate; starting a fresh run "
+            f"would clobber it. Continue it with `blacksmith resume --thread-id "
+            f"{thread_id}`, or start the fresh run on a different --thread-id."
+        )
+    # The prior run reached a terminal state: drop its checkpoint so this run starts clean.
+    graph.checkpointer.delete_thread(thread_id)
+
+
 def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
@@ -188,8 +221,13 @@ def drive(graph, prd_path, *, approver, thread_id: str = "run", on_node=None, is
 
     ``issue_number``, when given, seeds the run state with the originating GitHub issue
     so the opened PR links ``Closes #N`` in its body (it is never auto-merged/closed).
+
+    A fresh run never inherits a prior run's state on the same thread-id
+    (WU-FRESH-RUN-GUARD): see ``_isolate_fresh_run`` — a terminal thread is reset to a
+    clean slate, and a thread paused mid-run is left untouched (it must be resumed).
     """
     config = {"configurable": {"thread_id": thread_id}}
+    _isolate_fresh_run(graph, config, thread_id)
     payload = {"prd_path": str(prd_path)}
     if issue_number is not None:
         payload["issue_number"] = issue_number
@@ -548,14 +586,18 @@ def main(argv: list[str] | None = None) -> int:
     checkpointer = build_checkpointer(config.checkpointer.db_path)
     graph = build_graph_for(config, checkpointer)
 
-    final = drive(
-        graph,
-        args.prd_path,
-        approver=_select_approver(args),
-        thread_id=args.thread_id,
-        on_node=_progress_emitter(args.quiet),
-        issue_number=args.issue,
-    )
+    try:
+        final = drive(
+            graph,
+            args.prd_path,
+            approver=_select_approver(args),
+            thread_id=args.thread_id,
+            on_node=_progress_emitter(args.quiet),
+            issue_number=args.issue,
+        )
+    except FreshRunError as exc:
+        print(f"blacksmith: {exc}", file=sys.stderr)
+        return 1
     _report(final)
     return 0 if final.values.get("status") == Status.DONE else 1
 
