@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import json
 import os
 import sqlite3
 import sys
@@ -461,6 +462,7 @@ def _record_metrics(
                 prd_path=prd_path,
                 started_at=started_at,
                 ended_at=ended_at,
+                transcripts_dir=config.transcripts.dir,
             )
         finally:
             store.close()
@@ -514,6 +516,22 @@ def _print_run_list(runs: list[dict]) -> None:
     _print_table(headers, rows)
 
 
+def _transcript_paths(run: dict) -> list[str]:
+    """The run row's recorded transcript file paths (empty when none were captured).
+
+    Decodes the JSON list recorded by ``metrics.record_run``. A missing / malformed /
+    empty field reads as no transcripts, so the detail view omits the section cleanly.
+    """
+    raw = run.get("transcripts")
+    if not raw:
+        return []
+    try:
+        paths = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return [str(p) for p in paths if p]
+
+
 def _print_run_detail(run: dict, units: list[dict]) -> None:
     print(f"run {run.get('thread_id')} — {run.get('status') or '-'}")
     print(f"total cost: {_fmt_cost(run.get('total_cost'))}")
@@ -537,6 +555,13 @@ def _print_run_detail(run: dict, units: list[dict]) -> None:
         for u in units
     ]
     _print_table(headers, rows)
+
+    transcripts = _transcript_paths(run)
+    if transcripts:
+        print("")
+        print("transcripts:")
+        for path in transcripts:
+            print(f"  {path}")
 
 
 def _runs(argv: list[str] | None = None) -> int:

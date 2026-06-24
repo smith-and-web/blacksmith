@@ -134,6 +134,19 @@ class MetricsConfig(_Strict):
     db_path: Path = Path(".blacksmith/metrics.sqlite")
 
 
+class TranscriptsConfig(_Strict):
+    """Per-call transcript capture settings (WU-TRANSCRIPT-CAPTURE).
+
+    A purely ADDITIVE observability channel: when ``enabled`` (the default), the
+    executor writes one JSONL file per model call under ``dir``, keyed by the call's
+    session id. It is its OWN directory, never the checkpointer/state — disabling it,
+    or an unwritable ``dir``, writes nothing and the run behaves exactly as today.
+    """
+
+    dir: Path = Path(".blacksmith/transcripts")
+    enabled: bool = True
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -156,6 +169,7 @@ class BlacksmithConfig(_Strict):
     checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
 
     @classmethod
