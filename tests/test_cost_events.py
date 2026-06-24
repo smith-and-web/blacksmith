@@ -169,6 +169,50 @@ def test_cost_event_handles_usage_none(tmp_path):
     assert _token_line({"cost_events": out["cost_events"]}) == "tokens: unavailable"
 
 
+# --- failed implement attempts still ledger their spend ----------------------
+
+
+def test_errored_implement_attempt_records_cost_event_on_halt(tmp_path):
+    # A model-error halt (is_error, e.g. max-turns) must still ledger THIS attempt's spend —
+    # otherwise a run that halts inside implement silently drops the cost and the unit
+    # disappears from the per-unit metrics.
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    state = {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)}
+    errored = ExecutorResult(
+        text="boom: reached maximum number of turns", model="claude-sonnet-4-6",
+        is_error=True, num_turns=40, cost_usd=0.75, usage=USAGE, session_id="s",
+    )
+
+    class ErroringExecutor:
+        def run_implement(self, prompt, **kwargs):
+            return errored  # call errored; no file written
+
+    out = implement(state, executor=ErroringExecutor())
+    assert out["status"] == Status.HALTED
+    assert out["cost_events"][0]["node"] == "implement"
+    assert out["cost_events"][0]["cost_usd"] == 0.75
+    assert out["cost_events"][0]["num_turns"] == 40
+
+
+def test_no_change_implement_records_cost_event_on_halt(tmp_path):
+    # The agent spent budget but produced no diff -> halt, but the spend is still ledgered.
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    state = {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)}
+
+    class NoChangeExecutor:
+        def run_implement(self, prompt, **kwargs):
+            return _result(0.20)  # success result, but writes NO file in the worktree
+
+    out = implement(state, executor=NoChangeExecutor())
+    assert out["status"] == Status.HALTED
+    assert "no file changes" in out["errors"][0]["message"]
+    assert out["cost_events"][0]["cost_usd"] == 0.20
+
+
 # --- run-end report sums the ledger -----------------------------------------
 
 
