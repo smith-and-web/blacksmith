@@ -33,12 +33,22 @@ def test_valid_config_parses():
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
     assert cfg.target.repo_path == Path("/tmp/kindling")
     assert cfg.target.default_branch == "main"
+    # An explicit [models].implement still works — it just sets the first-attempt model.
     assert cfg.models.implement == "claude-opus-4-8"
+    assert cfg.models.implement_escalate == "claude-opus-4-8"  # default escalation model
     assert cfg.models.plan == "claude-sonnet-4-6"
     assert cfg.models.triage == "claude-haiku-4-5"
     assert cfg.checkpointer.db_path == Path(".blacksmith/checkpoints.sqlite")
     assert cfg.api.key_env_var == "BLACKSMITH_ANTHROPIC_API_KEY"
     assert cfg.api.prompt_caching is True
+
+
+def test_implement_first_attempt_defaults_to_sonnet_with_opus_escalation():
+    # The first implement attempt defaults to the cheaper Sonnet model; the escalation
+    # retry defaults to the stronger Opus model (PRD §8, cheaper-first).
+    tiers = ModelTiers()
+    assert tiers.implement == "claude-sonnet-4-6"
+    assert tiers.implement_escalate == "claude-opus-4-8"
 
 
 def test_defaults_applied_when_optional_sections_omitted():

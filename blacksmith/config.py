@@ -22,7 +22,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 # Current model IDs only (PRD §8). The legacy ``claude-*-4-20250514`` IDs are
 # retired and will error — do not reintroduce date-suffixed IDs here.
 DEFAULT_PLAN_MODEL = "claude-sonnet-4-6"
-DEFAULT_IMPLEMENT_MODEL = "claude-opus-4-8"
+# Implement runs cheaper-first: Sonnet on the first attempt, escalating to the stronger
+# model only on a gate failure (PRD §8). ``implement`` is the first-attempt model.
+DEFAULT_IMPLEMENT_MODEL = "claude-sonnet-4-6"
+DEFAULT_IMPLEMENT_ESCALATE_MODEL = "claude-opus-4-8"
 DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5"
 
 # Default name for blacksmith's runtime config, discovered by walking up to the
@@ -75,10 +78,16 @@ class _Strict(BaseModel):
 
 
 class ModelTiers(_Strict):
-    """Per-node model tiering (PRD §8): cheaper model on plan/triage, stronger on implement."""
+    """Per-node model tiering (PRD §8): cheaper model on plan/triage and on the first
+    implement attempt, escalating to a stronger model only on a gate failure.
+
+    ``implement`` is the FIRST-attempt implement model (defaults to Sonnet);
+    ``implement_escalate`` is the stronger model used for the single escalation retry.
+    """
 
     plan: str = DEFAULT_PLAN_MODEL
     implement: str = DEFAULT_IMPLEMENT_MODEL
+    implement_escalate: str = DEFAULT_IMPLEMENT_ESCALATE_MODEL
     triage: str = DEFAULT_TRIAGE_MODEL
 
 

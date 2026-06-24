@@ -123,6 +123,9 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         }
 
     guard = make_pre_edit_guard(worktree_root=worktree_path)
+    # First attempt runs the cheaper first-attempt implement model (config.models.implement,
+    # default Sonnet); escalation to the stronger model is a separate concern (no routing
+    # change here).
     result = executor.run_implement(
         _implement_prompt(unit),
         system_prompt=_system_prompt(prd.contract, _read_project_context(worktree_path)),
