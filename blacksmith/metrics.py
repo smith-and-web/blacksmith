@@ -63,19 +63,73 @@ CREATE TABLE IF NOT EXISTS unit_metrics (
 )
 """
 
+# Non-PK columns that may be MISSING from a DB created by an earlier schema version.
+# ``CREATE TABLE IF NOT EXISTS`` never alters an existing table, so a metrics DB created
+# before a column was added (e.g. ``transcripts``) would reject inserts referencing it and
+# the best-effort sink would drop every row SILENTLY. ``_ensure_columns`` ADDs any missing
+# column. Keep these in sync with the CREATE schemas above; PRIMARY KEY columns are omitted
+# (ALTER cannot add them, and they always exist from the original CREATE).
+_RUN_COLUMNS: dict[str, str] = {
+    "status": "TEXT",
+    "total_cost": "REAL",
+    "input_tokens": "INTEGER",
+    "output_tokens": "INTEGER",
+    "cache_hit_rate": "REAL",
+    "duration_s": "REAL",
+    "success": "INTEGER",
+    "failure_reason": "TEXT",
+    "escalation_count": "INTEGER",
+    "model_tier_mix": "TEXT",
+    "units_count": "INTEGER",
+    "pr_url": "TEXT",
+    "prd": "TEXT",
+    "repo": "TEXT",
+    "transcripts": "TEXT",
+    "started_at": "REAL",
+    "ended_at": "REAL",
+}
+_UNIT_COLUMNS: dict[str, str] = {
+    "title": "TEXT",
+    "models": "TEXT",
+    "cost": "REAL",
+    "input_tokens": "INTEGER",
+    "output_tokens": "INTEGER",
+    "turns": "INTEGER",
+    "gate_result": "TEXT",
+    "files_count": "INTEGER",
+    "diff_size": "INTEGER",
+}
+
+
+def _ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    """Add any of ``columns`` missing from ``table`` via ``ALTER TABLE ADD COLUMN``.
+
+    An idempotent forward migration so a metrics DB created by an earlier schema gains new
+    columns instead of silently rejecting inserts. ``table``/column names come from fixed
+    in-code maps (never user input), so the f-strings are safe.
+    """
+    have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, decl in columns.items():
+        if name not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+
 
 def build_metrics_store(db_path: str | Path) -> sqlite3.Connection:
     """Open a file-backed metrics SQLite, creating its schema on open.
 
     Mirrors ``graph.build_checkpointer``: a fresh instance pointed at the same path
-    re-attaches to the existing file. This is the metrics channel's OWN database — it is
-    never shared with the checkpointer or the long-term Store.
+    re-attaches to the existing file, and a DB created by an EARLIER schema is
+    forward-migrated (any missing column is added) so recording never silently breaks
+    after a schema change. This is the metrics channel's OWN database — it is never shared
+    with the checkpointer or the long-term Store.
     """
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.execute(_RUN_SCHEMA)
     conn.execute(_UNIT_SCHEMA)
+    _ensure_columns(conn, "run_metrics", _RUN_COLUMNS)
+    _ensure_columns(conn, "unit_metrics", _UNIT_COLUMNS)
     conn.commit()
     return conn
 
