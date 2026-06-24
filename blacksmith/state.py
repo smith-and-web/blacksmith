@@ -119,6 +119,18 @@ class BlacksmithState(TypedDict, total=False):
     # opened against it. Set once when the run's lone worktree is created.
     branch: str
     implementation: dict[str, Any]
+    # Escalation (WU-ESCALATE-ON-FAIL): a gate failure discards the failed attempt and
+    # re-implements the SAME unit once with the stronger model. ``pre_implement_ref`` is the
+    # shared worktree's HEAD captured just before THIS unit's implement attempt, so resetting
+    # to it throws away only the failed attempt's commit while every prior unit's committed
+    # work is preserved. It is recorded only when the executor can actually escalate (exposes
+    # ``run_implement_escalate``); a plain test double leaves it unset, which keeps the prior
+    # "a gate failure halts" behaviour unchanged.
+    pre_implement_ref: str
+    # True once this unit has been re-implemented with the escalation model, so escalation
+    # happens at most once per unit (a second gate failure routes to human_halt). Reset by
+    # the level engine when it advances to the next unit.
+    escalated: bool
     test_results: TestResults
     pr_url: str | None
     approvals: Approvals

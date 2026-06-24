@@ -123,7 +123,19 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         }
 
     guard = make_pre_edit_guard(worktree_root=worktree_path)
-    result = executor.run_implement(
+    # Escalation (WU-ESCALATE-ON-FAIL): the first attempt runs the cheaper first-attempt
+    # model (config.models.implement, default Sonnet). After a gate failure the run resets the
+    # worktree and re-enters here with ``escalated`` set, so this attempt instead uses the
+    # stronger model (config.models.implement_escalate). Capability is detected on the
+    # executor — a plain test double without ``run_implement_escalate`` simply never escalates,
+    # which preserves the prior "a gate failure halts" behaviour for those tests.
+    escalating = bool(state.get("escalated"))
+    can_escalate = hasattr(executor, "run_implement_escalate")
+    # HEAD just before this unit's commit — the reset target a gate failure rewinds to, so the
+    # failed attempt is discarded without touching prior units' committed work.
+    pre_implement_ref = _git(worktree_path, "rev-parse", "HEAD").strip()
+    run_attempt = executor.run_implement_escalate if escalating else executor.run_implement
+    result = run_attempt(
         _implement_prompt(unit),
         system_prompt=_system_prompt(prd.contract, _read_project_context(worktree_path)),
         cwd=worktree_path,
@@ -173,6 +185,12 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         },
         "status": Status.TESTING,
     }
+    # Record the pre-attempt ref so a gate failure can reset to exactly here — discarding only
+    # this attempt's commit, never prior units' work — and escalate once. Only on the first
+    # attempt, and only when the executor can escalate; otherwise leave it unset so a gate
+    # failure routes straight to human_halt as before.
+    if can_escalate and not escalating and pre_implement_ref:
+        update["pre_implement_ref"] = pre_implement_ref
     # Only untouchable blocks (§7) are run errors that need human sign-off. Out-of-worktree
     # blocks are the isolation boundary doing its job — benign audit info, recorded under
     # implementation["blocked"] above but never surfaced as an implement error.
