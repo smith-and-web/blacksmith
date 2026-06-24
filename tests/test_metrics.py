@@ -14,8 +14,10 @@ final snapshot is recorded and the DB rows asserted.
 from __future__ import annotations
 
 import re
+import sqlite3
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 from blacksmith.cli import _record_metrics, drive
 from blacksmith.config import BlacksmithConfig, MetricsConfig
@@ -185,6 +187,49 @@ def _unit_rows(store):
     cur = store.execute("SELECT * FROM unit_metrics ORDER BY unit_id")
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+
+# --- schema migration -------------------------------------------------------
+
+
+def test_build_store_migrates_old_schema_db(tmp_path):
+    # A metrics DB created BEFORE the `transcripts` column existed must be forward-migrated
+    # on open — otherwise record_run raises "no such column" and the best-effort sink drops
+    # every row SILENTLY (the exact bug found reviewing the transcript-capture PR).
+    db = tmp_path / "old.sqlite"
+    conn = sqlite3.connect(str(db))  # simulate a pre-transcripts run_metrics table
+    conn.execute(
+        "CREATE TABLE run_metrics (thread_id TEXT PRIMARY KEY, status TEXT, total_cost REAL)"
+    )
+    conn.commit()
+    conn.close()
+
+    store = build_metrics_store(db)  # opens + forward-migrates
+    cols = {r[1] for r in store.execute("PRAGMA table_info(run_metrics)")}
+    assert "transcripts" in cols  # the column that was missing
+    assert "duration_s" in cols  # ...and every other absent column is added too
+
+    # record_run now succeeds instead of raising OperationalError on the missing column.
+    snap = SimpleNamespace(
+        values={"status": Status.DONE, "cost_events": [], "errors": [], "unit_results": []}
+    )
+    record_run(store, snap, thread_id="t1", prd_path="x.md", started_at=0.0, ended_at=1.0)
+    rows = _run_rows(store)
+    assert [r["thread_id"] for r in rows] == ["t1"]
+    store.close()
+
+
+def test_build_store_is_idempotent_on_current_schema(tmp_path):
+    # Re-opening an already-current DB adds nothing and still records fine (no double-ALTER).
+    db = tmp_path / "cur.sqlite"
+    build_metrics_store(db).close()
+    store = build_metrics_store(db)
+    snap = SimpleNamespace(
+        values={"status": Status.DONE, "cost_events": [], "errors": [], "unit_results": []}
+    )
+    record_run(store, snap, thread_id="t1", prd_path="x.md", started_at=0.0, ended_at=1.0)
+    assert len(_run_rows(store)) == 1
+    store.close()
 
 
 # --- config ------------------------------------------------------------------
