@@ -196,8 +196,29 @@ def next_unit(state: BlacksmithState) -> dict:
         "level_cursor": level,
         "unit_in_level": index,
         "selected_unit": levels[level][index],
+        # Escalation is per-unit: clear the previous unit's escalation flag so the new unit
+        # gets its own (at most one) escalation on a gate failure.
+        "escalated": False,
         "status": Status.IMPLEMENTING,
     }
+
+
+def prepare_escalation(state: BlacksmithState) -> dict:
+    """A gate failure on the first attempt: discard it and re-implement once with the
+    stronger model (WU-ESCALATE-ON-FAIL).
+
+    Resets the shared worktree to ``pre_implement_ref`` — the HEAD captured just before this
+    unit's implement attempt — so the failed attempt's commit is thrown away while every prior
+    unit's committed work is preserved. Marks the unit ``escalated`` so the next implement uses
+    ``config.models.implement_escalate`` and escalation can happen at most once per unit, then
+    routes back to ``implement``. The re-gated result then proceeds (pass) or halts (a second
+    failure)."""
+    worktree_path = state.get("worktree_path")
+    ref = state.get("pre_implement_ref")
+    if worktree_path and ref:
+        _git_run(worktree_path, "reset", "--hard", ref)
+        _git_run(worktree_path, "clean", "-fd")
+    return {"escalated": True, "status": Status.IMPLEMENTING}
 
 
 # --- parallel fan-out (WU-PARALLEL-FANOUT) -----------------------------------
@@ -477,9 +498,17 @@ def route_after_test_gate(state: BlacksmithState) -> str:
 
     A failed gate halts. On a pass, loop to ``next_unit`` while units remain in the level
     plan (shared branch); on the last unit of the last level, proceed to the single
-    PR-approval gate."""
+    PR-approval gate.
+
+    Escalation (WU-ESCALATE-ON-FAIL): a gate failure on the FIRST attempt — when the executor
+    recorded a ``pre_implement_ref`` (i.e. it can escalate) and the unit has not escalated yet
+    — instead discards the attempt and re-implements once with the stronger model. A second
+    failure (already escalated), or a failure with no recorded ref (a test double that cannot
+    escalate), halts with no PR."""
     results = state.get("test_results") or {}
     if not results.get("passed"):
+        if state.get("pre_implement_ref") and not state.get("escalated"):
+            return "escalate"
         return "human_halt"
     levels = state.get("execution_levels") or []
     nxt = _next_position(levels, state.get("level_cursor", 0), state.get("unit_in_level", 0))
@@ -605,6 +634,7 @@ def build_graph(
     )
     graph.add_node("join_level", join_level)
     graph.add_node("next_unit", next_unit)
+    graph.add_node("escalate", prepare_escalation)
     graph.add_node("approve_pr", approve_pr)
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner))
     graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner))
@@ -653,8 +683,12 @@ def build_graph(
             "approve_pr": "approve_pr",
             "human_halt": "human_halt",
             "next_unit": "next_unit",
+            "escalate": "escalate",
         },
     )
+    # Escalation: discard the failed attempt, reset the worktree, and re-implement the SAME
+    # unit once with the stronger model, then re-gate (WU-ESCALATE-ON-FAIL).
+    graph.add_edge("escalate", "implement")
     # Loop: a size-1 next level builds on the same shared worktree/branch (no re-plan, no
     # new worktree), so its implement step sees the prior units' committed changes. A
     # multi-unit next level (CloneManager) instead fans out into per-unit build clones.

@@ -117,8 +117,17 @@ class Executor:
         return self.run(prompt, model=self._config.models.plan, **kwargs)
 
     def run_implement(self, prompt: str, **kwargs: Any) -> ExecutorResult:
-        """Run with the stronger implement model tier (PRD §8)."""
+        """Run with the first-attempt (cheaper) implement model tier (PRD §8)."""
         return self.run(prompt, model=self._config.models.implement, **kwargs)
+
+    def run_implement_escalate(self, prompt: str, **kwargs: Any) -> ExecutorResult:
+        """Run the single escalation retry with the stronger implement model (PRD §8).
+
+        Used only after a gate failure has discarded the cheaper first attempt; the model is
+        ``config.models.implement_escalate``. Escalation happens at most once per unit, so
+        this is called at most once per unit.
+        """
+        return self.run(prompt, model=self._config.models.implement_escalate, **kwargs)
 
     async def _collect(self, prompt: str, options: ClaudeAgentOptions) -> ExecutorResult:
         default_model = options.model or self._config.models.implement
