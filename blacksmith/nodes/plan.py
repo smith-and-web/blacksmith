@@ -43,6 +43,26 @@ def usage_breakdown(usage: dict[str, Any] | None) -> dict[str, int] | None:
         "cache_creation_input_tokens": int(usage.get("cache_creation_input_tokens", 0) or 0),
     }
 
+
+def cost_event(node: str, unit_id: str, result: Any) -> dict:
+    """One append-only ledger record for a single model call (WU-COST-EVENTS).
+
+    Captures the spend/usage of THIS call — ``cost_usd``, ``num_turns`` (persisted here,
+    as it is not stored in any state slice today) and the per-call usage breakdown — keyed
+    by the ``node`` that made the call and the ``unit_id`` it was working on. Appended to
+    ``state["cost_events"]`` so a multi-unit run's report sums every call rather than only
+    the last unit's last-write-wins slice. ``usage`` is ``None`` when the call reported no
+    usage (handled as zeros by the report), so a missing usage never crashes the run.
+    """
+    return {
+        "node": node,
+        "unit_id": unit_id,
+        "model": result.model,
+        "cost_usd": result.cost_usd,
+        "num_turns": result.num_turns,
+        "usage": usage_breakdown(result.usage),
+    }
+
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
 # finishes in one) but block all writes — at plan time there is no worktree yet, so
 # the agent's cwd would be blacksmith's own repo. 8 was too tight for PRDs that span
@@ -103,6 +123,7 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
             "cost_usd": result.cost_usd,
             "usage": usage_breakdown(result.usage),
         },
+        "cost_events": [cost_event("plan", unit.id, result)],
         "status": Status.AWAITING_PLAN_APPROVAL,
     }
 

@@ -25,7 +25,7 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.nodes.plan import usage_breakdown
+from blacksmith.nodes.plan import cost_event, usage_breakdown
 from blacksmith.state import BlacksmithState, Status
 
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
@@ -149,9 +149,14 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         max_turns=_IMPLEMENT_MAX_TURNS,
         raise_on_error=False,  # surface failures into state, don't crash the graph
     )
+    # Ledger event for THIS attempt (WU-COST-EVENTS), built once and emitted on EVERY return
+    # below — including the failure halts — so a run that halts inside implement still counts
+    # this attempt's spend and the unit still appears in the per-unit metrics.
+    event = cost_event("implement", unit.id, result)
     if result.is_error:
         return {
             "status": Status.HALTED,
+            "cost_events": [event],
             "errors": [{"node": "implement", "message": f"implement call failed: {result.text}"}],
         }
 
@@ -161,6 +166,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     except CommitError as exc:
         return {
             "status": Status.HALTED,
+            "cost_events": [event],
             "errors": [
                 {"node": "implement", "message": f"failed to commit the unit's changes: {exc}"}
             ],
@@ -170,6 +176,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         # gate an unchanged tree and then fail on an empty-diff PR.
         return {
             "status": Status.HALTED,
+            "cost_events": [event],
             "errors": [
                 {"node": "implement", "message": "implement produced no file changes; "
                  "nothing to gate or open a PR"}
@@ -183,6 +190,11 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
             "cost_usd": result.cost_usd,
             "usage": usage_breakdown(result.usage),
         },
+        # Append-only ledger event for THIS attempt (WU-COST-EVENTS). The escalation retry
+        # is a separate implement invocation that reaches here too, so each attempt
+        # contributes exactly one event — the multi-unit/escalation spend is no longer lost
+        # to the last-write-wins ``implementation`` slice.
+        "cost_events": [event],
         "status": Status.TESTING,
     }
     # Record the pre-attempt ref so a gate failure can reset to exactly here — discarding only

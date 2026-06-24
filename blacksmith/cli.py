@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import functools
 import os
+import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from langgraph.types import Command
@@ -29,6 +31,7 @@ from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
+from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
 from blacksmith.render import Renderer
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
@@ -340,19 +343,49 @@ def _progress_emitter(quiet: bool, renderer: Renderer | None = None):
     return emit
 
 
-def _total_cost_line(values) -> str:
-    """Build the run-end total-cost line summing the plan + implement ``cost_usd``.
+def _cost_usds(values) -> list:
+    """Per-call ``cost_usd`` figures to sum for the run total (WU-COST-EVENTS).
 
-    Each node records its spend under its own state slice (``plan["cost_usd"]`` /
-    ``implementation["cost_usd"]``). A node that reports ``None`` (no executor wired, or
-    a model call that returned no cost) is excluded from the sum rather than crashing it.
-    If neither node reported a cost, the spend is unknown — say so plainly.
+    Reads the append-only ``cost_events`` ledger — one record per model call, so a
+    multi-unit run (and every escalation attempt) is counted, not just plan + the final
+    unit's last-write-wins ``implementation`` slice. Falls back to those slices only when
+    no ledger is present (e.g. a skeleton run with no executor wired).
     """
-    costs = [
+    events = values.get("cost_events")
+    if events:
+        return [e.get("cost_usd") for e in events]
+    return [
         (values.get("plan") or {}).get("cost_usd"),
         (values.get("implementation") or {}).get("cost_usd"),
     ]
-    known = [c for c in costs if c is not None]
+
+
+def _usages(values) -> list:
+    """Per-call usage breakdowns to sum for the token line (WU-COST-EVENTS).
+
+    Like ``_cost_usds``, this reads the append-only ``cost_events`` ledger so every call's
+    tokens are counted across a multi-unit run, falling back to the per-node slices only
+    when no ledger is present."""
+    events = values.get("cost_events")
+    if events:
+        return [e.get("usage") for e in events]
+    return [
+        (values.get("plan") or {}).get("usage"),
+        (values.get("implementation") or {}).get("usage"),
+    ]
+
+
+def _total_cost_line(values) -> str:
+    """Build the run-end total-cost line summing every model call's ``cost_usd``.
+
+    The figures come from the append-only ``cost_events`` ledger (WU-COST-EVENTS), so a
+    multi-unit run reports the SUM of all units' (and all escalation attempts') spend —
+    fixing the prior undercount where only plan + the last-write-wins ``implementation``
+    slice were counted. A call that reports ``None`` (no executor wired, or a model call
+    that returned no cost) is excluded from the sum rather than crashing it. If nothing
+    reported a cost, the spend is unknown — say so plainly.
+    """
+    known = [c for c in _cost_usds(values) if c is not None]
     if not known:
         return "total cost: cost unavailable"
     return f"total cost: ${sum(known):.2f}"
@@ -361,18 +394,14 @@ def _total_cost_line(values) -> str:
 def _token_line(values) -> str:
     """Build the run-end token line from the per-node usage breakdowns (WU-COST-INSTRUMENT).
 
-    Each model-calling node records a ``usage`` breakdown (input/output + cache counters)
-    under its state slice alongside ``cost_usd``. This sums those across the plan + implement
-    nodes and reports total input, total output, and a cache-hit rate —
-    ``cache_read / (input + cache_read + cache_creation)``. A node whose usage is ``None``
-    (no executor wired, or a call with no usage) is skipped; if no node reported usage the
+    Each model call records a ``usage`` breakdown (input/output + cache counters) in the
+    append-only ``cost_events`` ledger alongside ``cost_usd`` (WU-COST-EVENTS). This sums
+    those across every call and reports total input, total output, and a cache-hit rate —
+    ``cache_read / (input + cache_read + cache_creation)``. A call whose usage is ``None``
+    (no executor wired, or a call with no usage) is skipped; if nothing reported usage the
     figure is unknown — say so plainly rather than crash the report.
     """
-    usages = [
-        (values.get("plan") or {}).get("usage"),
-        (values.get("implementation") or {}).get("usage"),
-    ]
-    known = [u for u in usages if u]
+    known = [u for u in _usages(values) if u]
     if not known:
         return "tokens: unavailable"
     total_input = sum(u.get("input_tokens", 0) for u in known)
@@ -403,6 +432,170 @@ def _report(snapshot, renderer: Renderer | None = None) -> None:
         cost_line=_total_cost_line(values),
         token_line=_token_line(values),
     )
+
+
+def _record_metrics(
+    config: BlacksmithConfig,
+    snapshot,
+    *,
+    thread_id: str,
+    prd_path: str | Path,
+    started_at: float,
+    ended_at: float,
+) -> None:
+    """Record run + per-unit metrics rows to the local metrics SQLite (WU-METRICS-RECORD).
+
+    BEST-EFFORT and write-only: any exception (a bad path, a locked DB, a malformed row)
+    is swallowed so a metrics failure never changes the run's exit code or outcome. The
+    metrics DB is its own file (``[metrics] db_path``) and is never read back into the
+    graph, so a run behaves exactly the same with or without this sink.
+    """
+    try:
+        store = build_metrics_store(config.metrics.db_path)
+        try:
+            record_run(
+                store,
+                snapshot,
+                thread_id=thread_id,
+                prd_path=prd_path,
+                started_at=started_at,
+                ended_at=ended_at,
+            )
+        finally:
+            store.close()
+    except Exception:
+        pass
+
+
+_NO_RUNS_MESSAGE = "no runs recorded yet"
+
+
+def _fmt_cost(value) -> str:
+    return f"${value:.2f}" if isinstance(value, (int, float)) else "-"
+
+
+def _fmt_rate(value) -> str:
+    return f"{value:.1%}" if isinstance(value, (int, float)) else "-"
+
+
+def _fmt_duration(value) -> str:
+    return f"{value:.1f}" if isinstance(value, (int, float)) else "-"
+
+
+def _print_table(headers: list[str], rows: list[list[str]]) -> None:
+    """Print a plain, ANSI-free, whitespace-aligned table to stdout (parseable)."""
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+    line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    print(line.rstrip())
+    for row in rows:
+        print("  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)).rstrip())
+
+
+def _print_run_list(runs: list[dict]) -> None:
+    headers = [
+        "thread_id", "status", "total_cost", "cache_hit", "duration_s", "units", "pr_url"
+    ]
+    rows = [
+        [
+            str(run.get("thread_id") or "-"),
+            str(run.get("status") or "-"),
+            _fmt_cost(run.get("total_cost")),
+            _fmt_rate(run.get("cache_hit_rate")),
+            _fmt_duration(run.get("duration_s")),
+            str(run.get("units_count") if run.get("units_count") is not None else "-"),
+            str(run.get("pr_url") or "-"),
+        ]
+        for run in runs
+    ]
+    _print_table(headers, rows)
+
+
+def _print_run_detail(run: dict, units: list[dict]) -> None:
+    print(f"run {run.get('thread_id')} — {run.get('status') or '-'}")
+    print(f"total cost: {_fmt_cost(run.get('total_cost'))}")
+    print(f"cache-hit: {_fmt_rate(run.get('cache_hit_rate'))}")
+    print(f"duration: {_fmt_duration(run.get('duration_s'))}s")
+    print(f"units: {run.get('units_count') if run.get('units_count') is not None else '-'}")
+    print(f"pr: {run.get('pr_url') or '-'}")
+    print("")
+    headers = ["unit_id", "title", "models", "cost", "turns", "gate_result", "files", "diff_size"]
+    rows = [
+        [
+            str(u.get("unit_id") or "-"),
+            str(u.get("title") or "-"),
+            str(u.get("models") or "-"),
+            _fmt_cost(u.get("cost")),
+            str(u.get("turns") if u.get("turns") is not None else "-"),
+            str(u.get("gate_result") or "-"),
+            str(u.get("files_count") if u.get("files_count") is not None else "-"),
+            str(u.get("diff_size") if u.get("diff_size") is not None else "-"),
+        ]
+        for u in units
+    ]
+    _print_table(headers, rows)
+
+
+def _runs(argv: list[str] | None = None) -> int:
+    """``blacksmith runs``: list recorded run history, or drill into one run (READ-ONLY).
+
+    Reads the local metrics SQLite sink (``[metrics] db_path``) with a strictly read-only
+    connection — it never writes, and the metrics DB is never read back into the graph. An
+    empty or absent store prints a friendly message and exits 0. ``runs <thread_id>`` prints
+    that run's summary plus its per-unit rows. Output is plain text (no control codes).
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith runs",
+        description="List recorded run history, or drill into one run by thread-id (read-only).",
+    )
+    parser.add_argument(
+        "thread_id",
+        nargs="?",
+        help="Show this run's summary and per-unit rows instead of the run list.",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of runs to list, most-recent first (default: 20).",
+    )
+    args = parser.parse_args(argv)
+
+    load_dotenv(Path.cwd() / ".env")
+    config = _load_config(args.config)
+    db_path = Path(config.metrics.db_path)
+    if not db_path.is_file():
+        print(_NO_RUNS_MESSAGE)
+        return 0
+
+    store = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        if args.thread_id:
+            run, units = get_run(store, args.thread_id)
+            if run is None:
+                print(f"no run recorded for thread-id {args.thread_id!r}")
+                return 0
+            _print_run_detail(run, units)
+            return 0
+        runs = list_runs(store, args.limit)
+        if not runs:
+            print(_NO_RUNS_MESSAGE)
+            return 0
+        _print_run_list(runs)
+        return 0
+    except sqlite3.OperationalError:
+        # A file that exists but isn't a populated metrics DB (no schema yet) reads as empty.
+        print(_NO_RUNS_MESSAGE)
+        return 0
+    finally:
+        store.close()
 
 
 def _validate(argv: list[str] | None = None) -> int:
@@ -487,6 +680,7 @@ def _resume(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
     renderer = _build_renderer(args)
 
+    started_at = time.time()
     try:
         final = resume(
             graph,
@@ -497,7 +691,16 @@ def _resume(argv: list[str] | None = None) -> int:
     except ResumeError as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
+    ended_at = time.time()
     _report(final, renderer)
+    _record_metrics(
+        config,
+        final,
+        thread_id=args.thread_id,
+        prd_path=final.values.get("prd_path") or "",
+        started_at=started_at,
+        ended_at=ended_at,
+    )
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
@@ -572,6 +775,8 @@ def main(argv: list[str] | None = None) -> int:
         return _resume(argv[1:])
     if argv and argv[0] == "costs":
         return _costs(argv[1:])
+    if argv and argv[0] == "runs":
+        return _runs(argv[1:])
 
     parser = argparse.ArgumentParser(prog="blacksmith", description="Run one PRD work unit.")
     parser.add_argument(
@@ -657,6 +862,7 @@ def main(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
     renderer = _build_renderer(args)
 
+    started_at = time.time()
     try:
         final = drive(
             graph,
@@ -669,7 +875,16 @@ def main(argv: list[str] | None = None) -> int:
     except FreshRunError as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1
+    ended_at = time.time()
     _report(final, renderer)
+    _record_metrics(
+        config,
+        final,
+        thread_id=args.thread_id,
+        prd_path=args.prd_path,
+        started_at=started_at,
+        ended_at=ended_at,
+    )
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
