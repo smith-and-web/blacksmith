@@ -25,6 +25,7 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
+from blacksmith.nodes.plan import usage_breakdown
 from blacksmith.state import BlacksmithState, Status
 
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
@@ -168,6 +169,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
             "diff_summary": diff_summary,
             "blocked": list(guard.blocked),
             "cost_usd": result.cost_usd,
+            "usage": usage_breakdown(result.usage),
         },
         "status": Status.TESTING,
     }
