@@ -121,6 +121,19 @@ class StoreConfig(_Strict):
     db_path: Path = Path(".blacksmith/store.sqlite")
 
 
+class MetricsConfig(_Strict):
+    """Local metrics SQLite sink settings (WU-METRICS-RECORD).
+
+    A SEPARATE, additive OUTPUT channel from the ``[checkpointer]`` and ``[store]``: its
+    own ``db_path`` backs a write-only metrics database that records one row per run (and
+    per unit) for later reporting. It is never read back into the graph and never shares a
+    file with the checkpointer or the long-term Store, so a run with metrics disabled or a
+    failed metrics write behaves exactly as today.
+    """
+
+    db_path: Path = Path(".blacksmith/metrics.sqlite")
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -142,6 +155,7 @@ class BlacksmithConfig(_Strict):
     models: ModelTiers = Field(default_factory=ModelTiers)
     checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
+    metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
 
     @classmethod

@@ -16,6 +16,7 @@ import argparse
 import functools
 import os
 import sys
+import time
 from pathlib import Path
 
 from langgraph.types import Command
@@ -29,6 +30,7 @@ from blacksmith.gate import run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
+from blacksmith.metrics import build_metrics_store, record_run
 from blacksmith.render import Renderer
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
@@ -431,6 +433,39 @@ def _report(snapshot, renderer: Renderer | None = None) -> None:
     )
 
 
+def _record_metrics(
+    config: BlacksmithConfig,
+    snapshot,
+    *,
+    thread_id: str,
+    prd_path: str | Path,
+    started_at: float,
+    ended_at: float,
+) -> None:
+    """Record run + per-unit metrics rows to the local metrics SQLite (WU-METRICS-RECORD).
+
+    BEST-EFFORT and write-only: any exception (a bad path, a locked DB, a malformed row)
+    is swallowed so a metrics failure never changes the run's exit code or outcome. The
+    metrics DB is its own file (``[metrics] db_path``) and is never read back into the
+    graph, so a run behaves exactly the same with or without this sink.
+    """
+    try:
+        store = build_metrics_store(config.metrics.db_path)
+        try:
+            record_run(
+                store,
+                snapshot,
+                thread_id=thread_id,
+                prd_path=prd_path,
+                started_at=started_at,
+                ended_at=ended_at,
+            )
+        finally:
+            store.close()
+    except Exception:
+        pass
+
+
 def _validate(argv: list[str] | None = None) -> int:
     """Dry-run a PRD against the contract: parse only, no model spend, no network I/O.
 
@@ -513,6 +548,7 @@ def _resume(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
     renderer = _build_renderer(args)
 
+    started_at = time.time()
     try:
         final = resume(
             graph,
@@ -523,7 +559,16 @@ def _resume(argv: list[str] | None = None) -> int:
     except ResumeError as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
+    ended_at = time.time()
     _report(final, renderer)
+    _record_metrics(
+        config,
+        final,
+        thread_id=args.thread_id,
+        prd_path=final.values.get("prd_path") or "",
+        started_at=started_at,
+        ended_at=ended_at,
+    )
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
@@ -683,6 +728,7 @@ def main(argv: list[str] | None = None) -> int:
     graph = build_graph_for(config, checkpointer)
     renderer = _build_renderer(args)
 
+    started_at = time.time()
     try:
         final = drive(
             graph,
@@ -695,7 +741,16 @@ def main(argv: list[str] | None = None) -> int:
     except FreshRunError as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1
+    ended_at = time.time()
     _report(final, renderer)
+    _record_metrics(
+        config,
+        final,
+        thread_id=args.thread_id,
+        prd_path=args.prd_path,
+        started_at=started_at,
+        ended_at=ended_at,
+    )
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
