@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS run_metrics (
     pr_url TEXT,
     prd TEXT,
     repo TEXT,
+    transcripts TEXT,
     started_at REAL,
     ended_at REAL
 )
@@ -194,6 +195,26 @@ def _unit_rows(values: dict) -> list[dict]:
     return rows
 
 
+def _transcript_refs(values: dict, transcripts_dir: str | Path | None) -> list[str]:
+    """Resolved transcript file paths for this run's per-call session ids.
+
+    Drawn from the run's ``cost_events``: each event carries the ``session_id`` of the
+    model call it recorded, and the executor wrote that call's transcript to
+    ``<dir>/<session_id>.jsonl`` (WU-TRANSCRIPT-CAPTURE). Returns the de-duplicated,
+    order-preserving list of those resolved paths so a run links back to the per-call
+    transcripts that belong to it. Empty when transcripts are disabled (no ``dir``) or
+    no event carries a session id (nothing was captured).
+    """
+    if not transcripts_dir:
+        return []
+    events = values.get("cost_events") or []
+    session_ids = list(
+        dict.fromkeys(e.get("session_id") for e in events if e.get("session_id"))
+    )
+    base = Path(transcripts_dir)
+    return [str(base / f"{session_id}.jsonl") for session_id in session_ids]
+
+
 def _rows(cursor: sqlite3.Cursor) -> list[dict]:
     """Materialise a cursor's rows as plain ``column -> value`` dicts."""
     cols = [c[0] for c in cursor.description]
@@ -238,12 +259,18 @@ def record_run(
     prd_path: str | Path,
     started_at: float,
     ended_at: float,
+    transcripts_dir: str | Path | None = None,
 ) -> None:
     """Write ONE run row (UPSERT keyed by ``thread_id``) plus N unit rows.
 
     Derived entirely from the final snapshot's ``cost_events`` / ``unit_results`` /
     ``status`` / ``errors`` / ``pr_url``. A resumed thread re-derives and UPSERTs the SAME
     rows. This is a write-only sink: nothing here is ever read back into the graph.
+
+    ``transcripts_dir`` (the configured transcripts directory) resolves the run's
+    per-call ``session_id`` references into ``<dir>/<session_id>.jsonl`` paths recorded
+    on the run row, so a run links to the transcripts that belong to it. ``None`` (or a
+    run that captured nothing) records an empty list.
     """
     values = _values(snapshot)
     events = values.get("cost_events") or []
@@ -276,6 +303,7 @@ def record_run(
         "pr_url": values.get("pr_url"),
         "prd": str(prd_path),
         "repo": repo,
+        "transcripts": json.dumps(_transcript_refs(values, transcripts_dir)),
         "started_at": started_at,
         "ended_at": ended_at,
     }
