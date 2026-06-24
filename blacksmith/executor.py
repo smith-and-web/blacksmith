@@ -29,6 +29,7 @@ from claude_agent_sdk import (
     query,
 )
 
+from blacksmith import transcript
 from blacksmith.config import BlacksmithConfig
 
 QueryFn = Callable[..., AsyncIterator[Any]]
@@ -164,19 +165,63 @@ class Executor:
         texts: list[str] = []
         model = default_model
         result: ResultMessage | None = None
-        async for message in messages:
-            if isinstance(message, AssistantMessage):
-                model = message.model or model
-                texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
-            elif isinstance(message, ResultMessage):
-                result = message
-        text = result.result if result and result.result else "".join(texts)
-        return ExecutorResult(
-            text=text or "",
-            model=model,
-            is_error=bool(result.is_error) if result else False,
-            num_turns=result.num_turns if result else 0,
-            cost_usd=result.total_cost_usd if result else None,
-            usage=result.usage if result else None,
-            session_id=result.session_id if result else None,
-        )
+        # Transcript capture (WU-TRANSCRIPT-CAPTURE): buffer THIS call's events in memory
+        # only — never graph state. Gated on the config so a disabled feature costs nothing
+        # and changes nothing. The buffer is written once in the ``finally`` so the SDK-error/
+        # max-turns path (iteration raises) still flushes the PARTIAL transcript captured so
+        # far — the failure case is the most valuable to inspect.
+        capture = self._config.transcripts.enabled
+        events: list[dict] = []
+        session_id: str | None = None
+        try:
+            async for message in messages:
+                if capture:
+                    self._capture(events, message)
+                if isinstance(message, AssistantMessage):
+                    model = message.model or model
+                    session_id = getattr(message, "session_id", None) or session_id
+                    texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
+                elif isinstance(message, ResultMessage):
+                    result = message
+                    session_id = message.session_id or session_id
+            text = result.result if result and result.result else "".join(texts)
+            return ExecutorResult(
+                text=text or "",
+                model=model,
+                is_error=bool(result.is_error) if result else False,
+                num_turns=result.num_turns if result else 0,
+                cost_usd=result.total_cost_usd if result else None,
+                usage=result.usage if result else None,
+                session_id=result.session_id if result else None,
+            )
+        finally:
+            if capture:
+                self._write_transcript(session_id, events)
+
+    @staticmethod
+    def _capture(events: list[dict], message: Any) -> None:
+        """Append a message's transcript events to the buffer — BEST-EFFORT.
+
+        Wrapped so a malformed message can never turn a successful call into an error:
+        capture is additive observability and must never affect the returned result.
+        """
+        try:
+            events.extend(transcript.events_for_message(message))
+        except Exception:
+            pass
+
+    def _write_transcript(self, session_id: str | None, events: list[dict]) -> None:
+        """Flush the buffered events to ``<dir>/<session_id>.jsonl`` — BEST-EFFORT.
+
+        Writes nothing when there is nothing to record. The write itself is best-effort
+        (``transcript.write_transcript`` swallows errors), and this method also guards so
+        an unexpected failure here never propagates into the run.
+        """
+        try:
+            if not events:
+                return
+            cfg = self._config.transcripts
+            name = f"{session_id or 'unknown-session'}.jsonl"
+            transcript.write_transcript(cfg.dir / name, events)
+        except Exception:
+            pass

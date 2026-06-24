@@ -53,6 +53,10 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
     ``state["cost_events"]`` so a multi-unit run's report sums every call rather than only
     the last unit's last-write-wins slice. ``usage`` is ``None`` when the call reported no
     usage (handled as zeros by the report), so a missing usage never crashes the run.
+
+    ``session_id`` is the per-call session id (a small REFERENCE, never transcript content):
+    it lets a run later locate the call's ``<transcripts_dir>/<session_id>.jsonl`` file
+    (WU-TRANSCRIPT-CAPTURE). ``None`` when the call reported no session id.
     """
     return {
         "node": node,
@@ -61,6 +65,7 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
         "cost_usd": result.cost_usd,
         "num_turns": result.num_turns,
         "usage": usage_breakdown(result.usage),
+        "session_id": result.session_id,
     }
 
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
