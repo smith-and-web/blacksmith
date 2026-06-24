@@ -20,13 +20,17 @@ every PRD must conform to.
 **Status:** well past the v0 spine — blacksmith builds its own features end to end, and
 nearly everything below was shipped that way (write a PRD → blacksmith builds it → review
 the PR). Current on `main`: **multi-unit execution** of a PRD's whole `depends_on` DAG
-(units run in topological order — independent ones in parallel within a dependency level —
-accumulating onto one branch that opens a single combined PR); **clone-based isolation**
-(each run/unit works in a throwaway `git clone`, never the real checkout); a **human-QA
-path** (a `human`-gated unit opens a *draft* PR and ends `AWAITING_QA` with its branch
-preserved); **tiered models** (implement on Sonnet first, escalate to Opus only on a gate
-failure); per-node progress, per-run token/cache instrumentation, and an org cost reporter.
-200+ tests, CI-green. Proven against its own repo and an external Node/TypeScript target.
+(topological order, independent units in parallel within a level, one combined PR);
+**clone-based isolation** (each run/unit works in a throwaway `git clone`, never the real
+checkout); a **human-QA path** (a `human`-gated unit opens a *draft* PR and ends
+`AWAITING_QA`, branch preserved); **tiered models** (implement on Sonnet first, escalate to
+Opus only on a gate failure); **long-term memory** (per-repo gate-failure lessons fed back
+to the planner via a SQLite Store); a local **observability suite** — per-run/per-unit
+metrics recording, a `blacksmith runs` history command, a built-in `blacksmith dashboard`,
+and per-call agent **transcripts**; a **rendered interactive CLI** (Markdown plans, diffs,
+live progress) that degrades to plain output when piped; **fresh-run state isolation**;
+per-run token/cache instrumentation; and an org **cost reporter**. 300+ tests, CI-green.
+Proven against its own repo and an external Node/TypeScript target.
 
 ## Stack
 
@@ -59,8 +63,9 @@ operates on **that** repo (the git root of where you're standing). See
 
 ## Configuration
 
-- **`blacksmith.config.toml`** — blacksmith's own runtime config (model tiering,
-  target repo, checkpointer, API auth). Parsed by [`blacksmith/config.py`](blacksmith/config.py).
+- **`blacksmith.config.toml`** — blacksmith's own runtime config: model tiering, target
+  repo, checkpointer, the long-term memory `[store]`, the run-metrics `[metrics]` sink,
+  agent `[transcripts]`, and API auth. Parsed by [`blacksmith/config.py`](blacksmith/config.py).
   It's discovered by walking up from the current directory to the git root, so a
   globally-installed `blacksmith` works from any nested path inside the repo.
 - A separate **`blacksmith.toml`** lives in each *target* repo and defines that repo's
@@ -75,7 +80,7 @@ blacksmith's metered spend isolated.
 
 ```sh
 # from inside the target repo, with blacksmith installed globally:
-blacksmith <path/to/prd.md>                 # run one work unit from a PRD
+blacksmith <path/to/prd.md>                 # run a PRD's work units (the whole DAG)
 blacksmith <prd> --approve plan,pr          # non-interactive (CI / headless)
 
 # from a clone of blacksmith itself, without a global install:
@@ -91,7 +96,9 @@ and run `blacksmith <prd>` from anywhere inside it. Setting an explicit absolute
 
 The PRD path is the single positional argument. `--config` points at a non-default
 `blacksmith.config.toml` (otherwise it's discovered by walking up to the git root);
-`--thread-id` names the checkpointer thread for the run (**use a fresh one per run**).
+`--thread-id` names the checkpointer thread; a fresh run resets a terminally-finished
+thread and refuses a paused one, so a reused id won't resurrect prior state — a fresh id
+per run is still the simplest habit.
 Interactive runs pause for a y/n at the plan and PR gates; `--auto-approve` approves
 both, and `--approve plan,pr` approves only the gates you name (an unlisted gate is
 denied, halting the run there). `--quiet` silences the per-node progress stream.
@@ -101,19 +108,21 @@ Other entry points:
 ```sh
 blacksmith validate <prd>            # offline contract check — field-level errors, zero model spend
 blacksmith resume --thread-id <id>   # continue an interrupted run from its SQLite checkpoint
+blacksmith runs [<thread-id>]        # recorded run history; pass a thread-id to drill into one run
+blacksmith dashboard                 # local read-only web dashboard over recorded run metrics (localhost)
 blacksmith --issue <N>               # scaffold a PRD skeleton from GitHub issue #N (PR links Closes #N)
 blacksmith costs                     # org usage + cost from the Admin API (read-only; needs an admin key)
 ```
 
 ## Onboarding a new target repo
 
-blacksmith operates *on* a target repo via git worktrees — nothing about blacksmith is
+blacksmith operates *on* a target repo via git clones — nothing about blacksmith is
 compiled into it, and the repo needs no prior setup beyond being a git clone.
 
-> **blacksmith only sees committed state.** Each run cuts a fresh worktree from `HEAD`,
+> **blacksmith only sees committed state.** Each run cuts a fresh clone from `HEAD`,
 > so anything it should use must be **committed, not just staged** — including
 > `blacksmith.toml` and `CLAUDE.md` (a staged-but-uncommitted config reads as "no
-> `blacksmith.toml` found"). That worktree also starts with **no installed dependencies**
+> `blacksmith.toml` found"). That clone also starts with **no installed dependencies**
 > (`node_modules`, virtualenvs, etc. are gitignored) — which is what `setup_cmd` is for.
 
 To point blacksmith at a new project:
@@ -123,7 +132,7 @@ To point blacksmith at a new project:
    from inside the repo — it then targets the git root of your current directory
    (see [Running](#running)). Set `default_branch` if it isn't `main`.
 2. **Add a `blacksmith.toml` to the target repo** so the test gate knows its toolchain.
-   Because the gate runs in a fresh worktree with no installed deps, a Node/TS target
+   Because the gate runs in a fresh clone with no installed deps, a Node/TS target
    needs `setup_cmd` to install them — `test_cmd = "npm test"` alone dies with
    `vitest: command not found`:
    ```toml
@@ -137,7 +146,7 @@ To point blacksmith at a new project:
    `setup_cmd` — it fetches its own deps.
 3. **Give it context — commit a `CLAUDE.md`.** For a repo with no claude.ai Project, a
    root-level `CLAUDE.md` is how its conventions reach the agent: blacksmith reads the
-   worktree's `CLAUDE.md` and injects it into the implementer's system prompt as
+   clone's `CLAUDE.md` and injects it into the implementer's system prompt as
    *project context*. For safety it does **not** load the repo's `.claude/settings.json`
    — permissions and hooks are never inherited from a target — and the PRD untouchables
    always override the repo's own guidance.
@@ -157,7 +166,7 @@ To point blacksmith at a new project:
 > `npm run lint`), commit
 > a `CLAUDE.md` capturing the server's conventions, and write a one-unit PRD whose work
 > unit targets the offending tool's module with a `test_contract` that asserts the
-> spec-conformant shape. blacksmith plans, implements in an isolated worktree, gates on
+> spec-conformant shape. blacksmith plans, implements in an isolated clone, gates on
 > `npm test`, and opens a PR for review — no claude.ai Project required.
 
 ## Build progress (WU-01…WU-11 — see PRD §6)
@@ -166,7 +175,7 @@ To point blacksmith at a new project:
 - [x] **WU-02** — PRD contract schema + validator
 - [x] **WU-03** — state schema + graph skeleton + checkpointer
 - [x] **WU-04** — Claude Agent SDK executor wrapper *(mocked tests pass; live agent path confirmed via dogfood)*
-- [x] **WU-05** — worktree manager
+- [x] **WU-05** — clone manager
 - [x] **WU-06** — toolchain-aware test gate
 - [x] **WU-07** — HITL interrupt nodes (plan + PR)
 - [x] **WU-08** — PR node
@@ -180,6 +189,10 @@ To point blacksmith at a new project:
 - **Clone-based isolation** — a throwaway `git clone` per run/unit; the real checkout is never touched.
 - **Human-QA path** — a `human`-gated unit opens a *draft* PR and ends `AWAITING_QA`, branch preserved for manual review.
 - **Tiered models** — implement on Sonnet first, escalate to Opus only on a gate failure.
-- **More CLIs** — `validate` (offline contract check), `resume` (continue from a checkpoint), `--issue N` (scaffold from a GitHub issue), `costs` (org Admin-API usage/cost), and global `uv tool install`.
-- **Cost visibility** — end-of-run cost total plus per-run token + cache-hit instrumentation.
-- **Robustness** — repo-consistency preflight, reason-accurate guard-block reporting, and a per-node progress stream (`--quiet` to silence).
+- **More CLIs** — `validate` (offline contract check), `resume` (continue from a checkpoint), `runs` (recorded run history + per-run drill-down), `dashboard` (local metrics UI), `--issue N` (scaffold from a GitHub issue), `costs` (org Admin-API usage/cost), and global `uv tool install`.
+- **Long-term memory** — per-repo gate-failure lessons persisted in a SQLite Store and fed back into the planner's context on later runs.
+- **Observability** — per-run/per-unit metrics recorded to a local SQLite, a `blacksmith runs` history command, a built-in localhost `blacksmith dashboard`, and per-call agent transcripts linked from each run.
+- **Interactive CLI** — rendered Markdown plans, diffs, and test output with a live progress indicator at the gates, degrading to plain, parseable output when piped or under `--quiet`.
+- **Fresh-run state isolation** — a fresh run resets a terminally-finished thread and refuses a paused one, so a reused `--thread-id` can't resurrect a prior run's errors.
+- **Cost visibility** — end-of-run cost total (summed across all units + escalations) plus per-run token + cache-hit instrumentation.
+- **Robustness** — repo-consistency preflight, reason-accurate guard-block reporting, graceful executor failures, and a forward-migrating metrics store.

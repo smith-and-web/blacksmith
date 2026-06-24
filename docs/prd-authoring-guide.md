@@ -10,9 +10,10 @@
 
 ## 1. What "blacksmith-ready" means
 
-blacksmith is a LangGraph orchestrator that ingests **one** PRD and drives **one work
-unit** through `plan → implement → test-gate → review → PR`, in an isolated git
-worktree on a target repo. A "blacksmith-ready" PRD is a single markdown file with
+blacksmith is a LangGraph orchestrator that ingests **one** PRD and drives its **work
+units** — the whole `depends_on` DAG, in dependency order — each through
+`plan → implement → test-gate → review → PR`, in an isolated git clone of a target repo.
+A "blacksmith-ready" PRD is a single markdown file with
 **two parts**, both of which are validated:
 
 1. **YAML frontmatter** — a machine-readable contract, validated by pydantic
@@ -97,14 +98,19 @@ and the agent (architecture, edges, phasing, cost model, open decisions).
   real UI, external services). A unit is treated as human-gated if **any** of its
   layers is `human`.
 
-**Consequence for a real run (v0):** blacksmith executes **exactly one root unit** —
-a unit with `depends_on: []` and no unmet dependencies. So:
+**Consequence for a real run:** blacksmith executes the **whole `work_units` DAG** in
+dependency order — independent units at the same level run in parallel, dependent units
+in topological order — accumulating every unit's commits onto **one shared branch** that
+opens a **single combined PR**. So:
 
-- If you want a fully **autonomous** end-to-end run (implement → auto gate → PR),
-  make the unit you intend to run a **root** and give it an **`auto`** layer whose
-  commands fully prove it.
-- A `human`-layer root will still run, but expect it to surface for human
-  verification rather than being decided by the gate alone.
+- For a fully **autonomous** end-to-end run (implement → auto gate → one combined PR for
+  the whole DAG), make every unit **`auto`** with `test_contract`s the gate can fully
+  prove, and order them with `depends_on`.
+- A `human`-layer unit **truncates** the DAG when reached: blacksmith builds up to and
+  including it, opens a **draft PR** for that built subset, and ends `AWAITING_QA` with
+  the branch preserved for manual review (units after the human gate are not built in that
+  run). Continuing a DAG *past* a human gate is out of scope.
+- A gate failure on any unit halts the run there with no PR, naming the failed unit.
 
 Pick layer names that map cleanly to how things are tested. Typical taxonomies:
 `rust-logic: auto`, `py-logic: auto`, `ui: human`, `integration: human`,
@@ -131,9 +137,9 @@ lint_cmd = "uv run ruff check"
 - `test_cmd` is required; `lint_cmd` is optional and only runs if tests pass.
 - A unit's layer name can match a `[layers.<name>]` section to override the default
   commands; otherwise the top-level commands run.
-- **Commands must work from a fresh worktree checkout.** If the project needs an
-  environment activated, bake that into the command (e.g. `uv run pytest`, not bare
-  `pytest`).
+- **Commands must work from a fresh clone with no installed deps.** If the project needs
+  an environment activated or deps installed, bake that into `setup_cmd`/the command
+  (e.g. `uv run pytest`, not bare `pytest`; `npm ci` before `npm test`).
 
 ---
 
@@ -141,7 +147,7 @@ lint_cmd = "uv run ruff check"
 
 `untouchables` entries are injected into the implementing agent's system context as
 hard "never modify without sign-off" rules, and some path patterns are additionally
-enforced by a pre-edit guard (writes outside the worktree, plus protected globs like
+enforced by a pre-edit guard (writes outside the clone, plus protected globs like
 lockfiles, migrations, and the contract schema, are blocked outright). Author them as:
 
 - The single most important product invariant first (for Kindling: *no AI/cloud/
@@ -170,7 +176,8 @@ Be specific; these are the guardrails that stop an over-eager agent.
 - Don't add frontmatter keys that aren't in §2 — strict validation rejects them.
 - Don't reference an undeclared layer or an unknown `depends_on` id.
 - Don't create dependency cycles.
-- Don't assume more than one unit runs — v0 is single-unit.
+- Don't put a `human` layer on a unit you want fully auto-gated — a `human` unit truncates
+  the DAG into a draft PR (`AWAITING_QA`) rather than running to a merged-style PR.
 - Don't put secrets, API keys, or absolute local paths in the PRD (it may be public).
 
 ---
@@ -236,9 +243,9 @@ work_units:
 - [ ] Every `depends_on` points at a real id; the DAG is acyclic.
 - [ ] **No extra/unknown frontmatter keys.**
 - [ ] Body has headings containing: `purpose`, `scope`, `untouchables`, `acceptance`.
-- [ ] The unit you intend to run first is a **root** (`depends_on: []`); if you want
-      it fully autonomous, its layer is `auto` and the target repo's
-      `blacksmith.toml` runs commands that actually prove it.
+- [ ] The DAG's root unit(s) have `depends_on: []` and the rest are ordered with
+      `depends_on` (acyclic). For a fully autonomous run, every unit is `auto` and the
+      target repo's `blacksmith.toml` runs commands that actually prove each one.
 - [ ] `target_modules` are real paths; no secrets or absolute local paths anywhere.
 
 ---
