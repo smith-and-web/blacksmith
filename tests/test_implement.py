@@ -30,6 +30,25 @@ from blacksmith.worktree import WorktreeManager
 VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
 
 
+def test_implement_denies_shell_and_escape_tools():
+    # The implementer must not reach a shell or spawn shell-capable helpers — that is what let a
+    # run flail hunting for a way to run tests until it blew its turn budget (transcript-debugged).
+    from blacksmith.nodes.implement import _DISALLOWED_TOOLS
+
+    for tool in ("Bash", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch"):
+        assert tool in _DISALLOWED_TOOLS
+
+
+def test_implement_prompt_forbids_running_anything():
+    from blacksmith.nodes.implement import _implement_prompt
+
+    unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+    prompt = _implement_prompt(unit).lower()
+    assert "no shell" in prompt and "cannot run" in prompt
+    assert "do not try to run" in prompt
+    assert "gate" in prompt  # the agent is told the gate verifies — it must not self-verify
+
+
 def _result(text="done") -> ExecutorResult:
     return ExecutorResult(
         text=text, model="claude-opus-4-8", is_error=False, num_turns=3,
