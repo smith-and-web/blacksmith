@@ -127,11 +127,13 @@ declares *what commands* the gate runs. Keep them consistent.
 # blacksmith.toml — lives in the TARGET repo root, read by the test gate.
 test_cmd = "cargo test"
 lint_cmd = "cargo clippy -- -D warnings"   # optional
+fix_cmd = "cargo fmt --all"                # optional; deterministic auto-fix before the gate
 
 # Optional per-layer overrides — keys should match PRD layer names:
 [layers.py-logic]
 test_cmd = "uv run pytest"
 lint_cmd = "uv run ruff check"
+fix_cmd = "uv run ruff format && uv run ruff check --fix"
 ```
 
 - `test_cmd` is required; `lint_cmd` is optional and only runs if tests pass.
@@ -140,6 +142,13 @@ lint_cmd = "uv run ruff check"
 - **Commands must work from a fresh clone with no installed deps.** If the project needs
   an environment activated or deps installed, bake that into `setup_cmd`/the command
   (e.g. `uv run pytest`, not bare `pytest`; `npm ci` before `npm test`).
+- **`fix_cmd` is optional and auto-fixes mechanical failures so they never burn a model
+  retry.** It runs in the worktree right after the agent commits and *before* the gate, and
+  any change it makes is `git commit --amend`ed into the unit's commit (so the cherry-picked
+  unit is CI-clean). Use it for the formatter/lint-fixer the agent can't reproduce by hand —
+  `cargo fmt --all`, `prettier --write`, `ruff format` — then you can safely keep the matching
+  `--check` in `lint_cmd`. It's best-effort and self-contained (chain in deps it needs, e.g.
+  `npm ci && npm run format`); a failing `fix_cmd` just falls through to the gate.
 
 ---
 
@@ -274,8 +283,16 @@ Kindling's `blacksmith.toml` (in the Kindling repo):
 
 ```toml
 test_cmd = "cargo test"
-lint_cmd = "cargo clippy -- -D warnings"
+lint_cmd = "cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings"
+fix_cmd = "cargo fmt --all"   # auto-format before the gate, so the fmt --check above never halts on whitespace
 ```
+
+With `fix_cmd` set you can safely keep `cargo fmt --all -- --check` in `lint_cmd`:
+blacksmith runs `cargo fmt --all` and amends the result into the unit's commit before the
+gate, so a whitespace-only diff is fixed deterministically (no Sonnet→Opus escalation on
+trivia) instead of halting the run. `fix_cmd` must not touch `Cargo.lock` (untouchable #4),
+so prefer `cargo fmt` over `cargo clippy --fix` unless you've confirmed the latter leaves the
+lockfile alone.
 
 The **prime directive** (untouchable #1) is non-negotiable: blacksmith *uses* AI to
 build Kindling, but must **never** make Kindling's product depend on AI, cloud, or

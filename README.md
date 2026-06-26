@@ -69,8 +69,10 @@ operates on **that** repo (the git root of where you're standing). See
   It's discovered by walking up from the current directory to the git root, so a
   globally-installed `blacksmith` works from any nested path inside the repo.
 - A separate **`blacksmith.toml`** lives in each *target* repo and defines that repo's
-  toolchain — `test_cmd`, optional `lint_cmd`, and optional `setup_cmd` (a one-off
-  provisioning step like `npm ci`, run before the gate) — read by the test gate.
+  toolchain — `test_cmd`, optional `lint_cmd`, optional `setup_cmd` (a one-off
+  provisioning step like `npm ci`, run before the gate), and optional `fix_cmd` (a
+  deterministic formatter/auto-fixer like `cargo fmt --all`, run before the gate and folded
+  into the unit's commit) — read by the test gate.
 
 The dedicated Anthropic API key is read from the env var named in `[api].key_env_var`
 (default `BLACKSMITH_ANTHROPIC_API_KEY`) — never from subscription auth, keeping
@@ -140,10 +142,24 @@ To point blacksmith at a new project:
    setup_cmd = "npm ci"           # optional; one-off provisioning, runs before the gate
    test_cmd = "npm test"
    lint_cmd = "npm run lint"      # optional; runs only if tests pass
+   fix_cmd = "npm run format"     # optional; deterministic auto-fix, runs before the gate
    ```
    Commands run through a shell, so chains work directly
    (`test_cmd = "npm ci && npm test"`) with no `sh -c` wrapper. cargo needs no
    `setup_cmd` — it fetches its own deps.
+
+   **`fix_cmd` auto-fixes mechanical failures so they never burn a model retry.** A
+   formatting check in `lint_cmd` (`cargo fmt --all -- --check`, `prettier --check`) is
+   100% auto-fixable, but the agent has no shell and can't reproduce a formatter by hand —
+   so a single whitespace diff used to escalate Sonnet→Opus and halt. With `fix_cmd` set,
+   blacksmith runs it in the worktree right after the agent commits and *before* the gate,
+   then `git commit --amend`s the result into the unit's commit — so the committed (and
+   cherry-picked) code is CI-clean with zero model spend. It's best-effort and self-contained:
+   chain in any deps it needs (`fix_cmd = "npm ci && npm run format"`), and a failing `fix_cmd`
+   just falls through to the gate (which then escalates/halts as before). For Kindling:
+   ```toml
+   fix_cmd = "cargo fmt --all"    # cargo needs no setup_cmd; restore the fmt --check to lint_cmd
+   ```
 3. **Give it context — commit a `CLAUDE.md`.** For a repo with no claude.ai Project, a
    root-level `CLAUDE.md` is how its conventions reach the agent: blacksmith reads the
    clone's `CLAUDE.md` and injects it into the implementer's system prompt as
