@@ -29,7 +29,7 @@ from blacksmith.contract import ContractError, parse_prd
 from blacksmith.costs import run_costs
 from blacksmith.dashboard import serve as serve_dashboard
 from blacksmith.executor import Executor
-from blacksmith.gate import run_gate
+from blacksmith.gate import run_fix, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
@@ -65,6 +65,7 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         executor=Executor(config),
         worktree_manager=CloneManager(config.resolve_repo_path()),
         gate=run_gate,
+        fix=run_fix,
         store=build_store(config.store.db_path),
     )
 
