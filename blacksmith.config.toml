@@ -15,6 +15,22 @@ plan = "claude-sonnet-4-6"     # cheaper/faster: planning + triage
 implement = "claude-opus-4-8"  # strongest: implementation
 triage = "claude-haiku-4-5"
 
+[limits]
+# Gate self-heal loop (WU-GATE-SELF-HEAL). When a unit's test gate fails, blacksmith
+# re-implements the unit with the gate output fed back, instead of discarding the
+# (expensive) run on a fixable error.
+#
+# max_fix_attempts: same-model retries WITH the gate error fed back, tried BEFORE the
+#   single stronger-model escalation. 0 disables the loop (escalate-then-halt). The
+#   bounded count is the anti-runaway guard: worst case per unit is
+#   1 + max_fix_attempts + 1 implement attempts.
+max_fix_attempts = 1
+# max_run_cost_usd: OPTIONAL hard ceiling on total run spend. Once the run crosses it, no
+#   further retry/escalation fires and it halts with a "cost cap reached" error. Commented
+#   out = no cap. A hard whole-run cap can strand an already-committed multi-unit run, so
+#   pick a value with that in mind (a single-PRD run today costs ~$5-7.50).
+# max_run_cost_usd = 12.0
+
 [checkpointer]
 # SQLite checkpointer DB (PRD §12 decision 1). Relative to blacksmith's CWD.
 db_path = ".blacksmith/checkpoints.sqlite"

@@ -237,9 +237,10 @@ def test_gate_failure_escalates_then_passes_and_opens_one_pr(tmp_path):
     assert _git_show(repo, ["show", f"{branch}:wu-a.txt"]) == "first WU-A\n"
     assert _git_show(repo, ["show", f"{branch}:wu-b.txt"]) == "escalated WU-B\n"
     # ...and the branch carries exactly one WU-B commit (the failed attempt's commit was reset
-    # away, so it is unreachable from the branch — the diff is not "both attempts").
+    # away, so it is unreachable from the branch — the diff is not "both attempts"). The unit id
+    # rides the Conventional-Commits scope, lower-cased: "feat(wu-b): ...".
     log = _git_show(repo, ["log", "--oneline", branch])
-    assert log.count("WU-B") == 1
+    assert log.count("wu-b") == 1
     saver.conn.close()
 
 

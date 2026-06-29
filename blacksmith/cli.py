@@ -66,6 +66,7 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         worktree_manager=CloneManager(config.resolve_repo_path()),
         gate=run_gate,
         store=build_store(config.store.db_path),
+        limits=config.limits,
     )
 
 

@@ -69,6 +69,55 @@ def test_route_after_test_gate():
     assert route_after_test_gate({}) == "human_halt"  # no results yet -> halt, never auto-proceed
 
 
+def _failed_with(**extra) -> BlacksmithState:
+    state = {"test_results": {"passed": False, "output": "boom", "command": "pytest"}}
+    state.update(extra)
+    return state
+
+
+def test_route_after_test_gate_self_heal_loop():
+    # Self-heal recovers in a bounded order before halting (WU-GATE-SELF-HEAL).
+    limits = {"max_fix_attempts": 1, "max_run_cost_usd": None}
+    # First failure, retries left + a reset target -> same-model fix retry (before escalation).
+    assert (
+        route_after_test_gate(_failed_with(limits=limits, pre_implement_ref="abc", fix_attempts=0))
+        == "fix_retry"
+    )
+    # Retries spent, not yet escalated -> the single stronger-model escalation.
+    assert (
+        route_after_test_gate(_failed_with(limits=limits, pre_implement_ref="abc", fix_attempts=1))
+        == "escalate"
+    )
+    # Retries spent AND already escalated -> halt.
+    assert (
+        route_after_test_gate(
+            _failed_with(limits=limits, pre_implement_ref="abc", fix_attempts=1, escalated=True)
+        )
+        == "human_halt"
+    )
+    # Loop OFF (no limits seeded) with a reset target -> escalate, exactly as before this feature.
+    assert route_after_test_gate(_failed_with(pre_implement_ref="abc")) == "escalate"
+
+
+def test_route_after_test_gate_cost_cap_blocks_recovery():
+    # An otherwise-eligible retry/escalation is blocked once the run crosses its cost cap.
+    limits = {"max_fix_attempts": 3, "max_run_cost_usd": 1.0}
+    over = [{"cost_usd": 0.6}, {"cost_usd": 0.6}]  # $1.20 spent > $1.00 cap
+    assert (
+        route_after_test_gate(
+            _failed_with(limits=limits, pre_implement_ref="abc", fix_attempts=0, cost_events=over)
+        )
+        == "human_halt"
+    )
+    under = [{"cost_usd": 0.3}]  # $0.30 spent < cap -> still recovers
+    assert (
+        route_after_test_gate(
+            _failed_with(limits=limits, pre_implement_ref="abc", fix_attempts=0, cost_events=under)
+        )
+        == "fix_retry"
+    )
+
+
 def test_route_after_implement_uses_layer_gate():
     prd = parse_prd(VENDORED_PRD)
     auto_unit = prd.contract.work_unit_by_id("WU-01")  # py-logic -> auto

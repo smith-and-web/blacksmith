@@ -147,6 +147,30 @@ class TranscriptsConfig(_Strict):
     enabled: bool = True
 
 
+class LimitsConfig(_Strict):
+    """Recovery limits for the gate self-heal loop (WU-GATE-SELF-HEAL).
+
+    When a unit's test gate fails, blacksmith can re-implement the unit with the gate's
+    output fed back in, rather than discarding the (expensive) run on a fixable error.
+    These two knobs bound that recovery so it can never spiral — the whole point of the
+    feature is to recover cheaply, not to keep paying:
+
+    * ``max_fix_attempts`` — same-model retries (cheap first-attempt model) WITH the gate
+      error fed back, attempted BEFORE the single stronger-model escalation. ``0`` disables
+      the self-heal loop entirely (escalate-then-halt, the prior behaviour). The bounded
+      count is the primary anti-runaway guard: worst case per unit is
+      ``1 + max_fix_attempts + 1`` implement attempts.
+    * ``max_run_cost_usd`` — an OPTIONAL hard ceiling on total run spend. Once the run's
+      summed ``cost_events`` cross it, no further retry OR escalation fires and the run
+      halts with a "cost cap reached" error. ``None`` (the default) means no cap; it is
+      left off by default because a hard whole-run cap can strand a multi-unit run's
+      already-committed units, so the value is best chosen per project.
+    """
+
+    max_fix_attempts: int = Field(default=1, ge=0)
+    max_run_cost_usd: float | None = Field(default=None, gt=0)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -166,6 +190,7 @@ class BlacksmithConfig(_Strict):
 
     target: TargetConfig = Field(default_factory=TargetConfig)
     models: ModelTiers = Field(default_factory=ModelTiers)
+    limits: LimitsConfig = Field(default_factory=LimitsConfig)
     checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)

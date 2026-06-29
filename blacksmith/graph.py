@@ -32,6 +32,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
+from blacksmith.config import LimitsConfig
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import GateError, GateResult
@@ -83,7 +84,10 @@ def ingest_prd(state: BlacksmithState) -> dict:
 
 
 def prepare_worktree(
-    state: BlacksmithState, *, worktree_manager: IsolationManager | None = None
+    state: BlacksmithState,
+    *,
+    worktree_manager: IsolationManager | None = None,
+    limits: LimitsConfig | None = None,
 ) -> dict:
     """Create the run's ONE shared clone/branch and seed the level execution plan.
 
@@ -124,6 +128,17 @@ def prepare_worktree(
     if levels:
         update["execution_levels"] = levels
         update["work_units"] = units
+    # Seed the self-heal limits into state ONCE (WU-GATE-SELF-HEAL). Only when limits are
+    # wired in (production via build_graph_for); a graph compiled without them seeds nothing,
+    # so routing's max_fix_attempts reads 0 and the loop stays OFF — every graph-level test
+    # that does not opt in keeps its exact prior behaviour. Routing needs these in state
+    # because LangGraph edge functions are pure (state) -> str and receive no config.
+    if limits is not None:
+        update["limits"] = {
+            "max_fix_attempts": limits.max_fix_attempts,
+            "max_run_cost_usd": limits.max_run_cost_usd,
+        }
+        update["fix_attempts"] = 0
     return update
 
 
@@ -149,11 +164,22 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
         update["errors"] = [
             {"node": "test_gate", "message": f"gate failed for unit {unit.id}"}
         ]
-        # Record a lesson only on the path that actually halts the run: a first-attempt
-        # failure that can still escalate (pre_implement_ref set, not yet escalated) is
-        # retried, not halted, so it is not a lesson. Memory is optional and additive —
-        # it never changes routing (``_will_escalate`` is the SAME condition routing uses).
-        if not _will_escalate(state):
+        # If a same-model retry or escalation WOULD have run but the cost cap blocked it,
+        # say so explicitly, so a budget halt never looks like a plain second failure
+        # (WU-GATE-SELF-HEAL). Checked before the lesson guard, which uses the same routing.
+        if _blocked_by_budget(state):
+            cap = (state.get("limits") or {}).get("max_run_cost_usd")
+            update["errors"].append(
+                {
+                    "node": "test_gate",
+                    "message": f"cost cap ${cap:.2f} reached (spent ${_run_cost(state):.2f}); "
+                    "halting without further retries",
+                }
+            )
+        # Record a lesson only on the path that actually halts the run: a failure that still
+        # retries or escalates is not yet a lesson. Memory is optional and additive — it never
+        # changes routing (``_will_recover`` is the SAME condition the routing uses).
+        if not _will_recover(state):
             _record_gate_lesson(state, unit, result, impl)
     else:
         # Retain this unit's own result so the combined PR body can summarize each unit's
@@ -207,6 +233,53 @@ def _will_escalate(state: BlacksmithState) -> bool:
     return bool(state.get("pre_implement_ref")) and not state.get("escalated")
 
 
+def _events_cost(events: list[dict] | None) -> float:
+    """Sum the USD spend across a list of append-only cost-ledger events."""
+    return sum(float(event.get("cost_usd") or 0) for event in events or [])
+
+
+def _run_cost(state: BlacksmithState) -> float:
+    """Total USD spent so far this run — the sum of the append-only cost ledger."""
+    return _events_cost(state.get("cost_events"))
+
+
+def _within_budget(state: BlacksmithState) -> bool:
+    """True if the run may still spend on recovery (WU-GATE-SELF-HEAL): no cap configured,
+    or total spend so far is still under the configured ``max_run_cost_usd``."""
+    cap = (state.get("limits") or {}).get("max_run_cost_usd")
+    return cap is None or _run_cost(state) < cap
+
+
+def _retry_eligible(state: BlacksmithState) -> bool:
+    """A same-model fix retry is structurally available for this unit, IGNORING the cost cap:
+    the loop is enabled with retries left, the unit has not escalated, and there is a
+    ``pre_implement_ref`` to reset to (the capability gate escalation also uses)."""
+    if state.get("escalated") or not state.get("pre_implement_ref"):
+        return False
+    max_fix = int((state.get("limits") or {}).get("max_fix_attempts", 0) or 0)
+    return state.get("fix_attempts", 0) < max_fix
+
+
+def _can_fix_retry(state: BlacksmithState) -> bool:
+    """Whether a gate failure routes to a same-model fix retry before any escalation
+    (WU-GATE-SELF-HEAL): structurally eligible AND still within the cost cap."""
+    return _retry_eligible(state) and _within_budget(state)
+
+
+def _will_recover(state: BlacksmithState) -> bool:
+    """A gate failure recovers (fix-retry or escalation) rather than terminally halting.
+    The single source of truth for both the lesson-recording guard and what halting means."""
+    return _can_fix_retry(state) or (_will_escalate(state) and _within_budget(state))
+
+
+def _blocked_by_budget(state: BlacksmithState) -> bool:
+    """A gate failure that WOULD have retried or escalated but for the cost cap — so the halt
+    can be labelled as a budget halt rather than a plain repeated failure."""
+    if _within_budget(state):
+        return False
+    return _retry_eligible(state) or _will_escalate(state)
+
+
 def _next_position(
     levels: list[list[WorkUnit]], level: int, index: int
 ) -> tuple[int, int] | None:
@@ -240,9 +313,12 @@ def next_unit(state: BlacksmithState) -> dict:
         "level_cursor": level,
         "unit_in_level": index,
         "selected_unit": levels[level][index],
-        # Escalation is per-unit: clear the previous unit's escalation flag so the new unit
-        # gets its own (at most one) escalation on a gate failure.
+        # Escalation AND the self-heal loop are per-unit: clear the previous unit's recovery
+        # state so the new unit gets its own (at most one) escalation and its own fresh
+        # fix-retry budget, and never inherits the previous unit's gate-output feedback.
         "escalated": False,
+        "fix_attempts": 0,
+        "last_gate_output": "",
         "status": Status.IMPLEMENTING,
     }
 
@@ -263,6 +339,29 @@ def prepare_escalation(state: BlacksmithState) -> dict:
         _git_run(worktree_path, "reset", "--hard", ref)
         _git_run(worktree_path, "clean", "-fd")
     return {"escalated": True, "status": Status.IMPLEMENTING}
+
+
+def prepare_fix_retry(state: BlacksmithState) -> dict:
+    """A gate failure with same-model retries left: discard the failed attempt and
+    re-implement the SAME unit on the cheap first-attempt model with the gate output fed
+    back (WU-GATE-SELF-HEAL).
+
+    Resets the shared worktree to ``pre_implement_ref`` exactly like ``prepare_escalation``
+    (so only this attempt's commit is thrown away while prior units' committed work is
+    preserved), but leaves ``escalated`` unset so the cheap model is used again and the
+    single escalation stays available once the retries are spent. Records the gate output as
+    ``last_gate_output`` (the next implement prompt feeds it back) and bumps the per-unit
+    ``fix_attempts`` counter so the loop is bounded."""
+    worktree_path = state.get("worktree_path")
+    ref = state.get("pre_implement_ref")
+    if worktree_path and ref:
+        _git_run(worktree_path, "reset", "--hard", ref)
+        _git_run(worktree_path, "clean", "-fd")
+    return {
+        "fix_attempts": state.get("fix_attempts", 0) + 1,
+        "last_gate_output": (state.get("test_results") or {}).get("output", ""),
+        "status": Status.IMPLEMENTING,
+    }
 
 
 # --- parallel fan-out (WU-PARALLEL-FANOUT) -----------------------------------
@@ -289,44 +388,101 @@ def build_unit(
     (``shared_clone_path``), so the unit sees every prior level's merged changes while
     writing to a working tree no sibling touches. The existing ``implement`` and
     ``test_gate`` bodies are reused against a per-unit sub-state; their outcome is recorded
-    for the join to cherry-pick (on pass) or halt on (on fail)."""
+    for the join to cherry-pick (on pass) or halt on (on fail).
+
+    A gate failure self-heals on the SAME model before it is recorded (WU-GATE-SELF-HEAL):
+    while same-model retries remain (``limits.max_fix_attempts``) and the run is within its
+    ``max_run_cost_usd`` ceiling, the build clone is reset HARD to its base tip and the unit
+    is re-implemented WITH the gate output fed back, then re-gated — mirroring the sequential
+    path's fix-retry on this isolated build clone. Escalation is NOT done here (the sequential
+    path owns the single stronger-model retry); the fan-out worker only loops the cheap model.
+    Both knobs ride along in the ``Send`` payload (``limits`` + the run's pre-level spend), so a
+    fan-out run wired without limits keeps its prior behaviour: one attempt, then record/halt."""
     unit = state["selected_unit"]
     level = state.get("level_cursor", 0)
     shared = state["shared_clone_path"]
     record: dict = {"unit_id": unit.id, "title": unit.title, "level": level}
+    # This worker's OWN ledger events (one per implement attempt, including retries). Returned
+    # under the ``cost_events`` reducer key so each concurrent worker's spend merges into the
+    # run ledger the cost report/metrics sum — otherwise a fan-out level's spend is lost.
+    cost_events: list[dict] = []
     try:
         clone = worktree_manager.create_from(shared, unit.id)
     except WorktreeError as exc:
         record.update(ok=False, error=f"unit {unit.id}: could not create build clone: {exc}")
-        return {"level_builds": [record]}
+        return {"level_builds": [record], "cost_events": cost_events}
 
     record["clone_path"] = str(clone.path)
     record["branch"] = clone.branch
+    # The build clone's combined-branch tip: a same-model fix retry resets HARD to here between
+    # attempts (exactly like the sequential ``prepare_fix_retry``), discarding the failed
+    # attempt's commit while keeping every prior level's merged work the clone was taken from.
+    base_ref = _git_run(clone.path, "rev-parse", "HEAD").stdout.strip()
+
+    limits = state.get("limits") or {}
+    max_fix = int(limits.get("max_fix_attempts", 0) or 0)
+    cap = limits.get("max_run_cost_usd")
+    # Whole-run spend before this level (threaded in via the Send payload) plus this worker's
+    # own attempt spend, so the per-unit retry honours the SAME cost ceiling the sequential
+    # path checks. Fan-out workers run concurrently and cannot see each other's in-flight spend,
+    # so each charges its own attempts against the shared pre-level baseline.
+    run_cost = float(state.get("level_cost_base") or 0.0)
+
     sub: dict = {
         "prd": state["prd"],
         "selected_unit": unit,
         "worktree_path": str(clone.path),
         "branch": clone.branch,
     }
-    impl = implement(sub, executor=executor)
-    impl_data = impl.get("implementation") or {}
-    record["files_touched"] = list(impl_data.get("files_touched") or [])
-    record["diff_summary"] = impl_data.get("diff_summary", "")
-    if impl.get("status") == Status.HALTED:
-        message = impl["errors"][0]["message"] if impl.get("errors") else "implement failed"
-        record.update(ok=False, error=f"unit {unit.id}: {message}")
-        return {"level_builds": [record]}
+    fix_attempts = 0
+    last_gate_output = ""
+    while True:
+        # Feed the prior attempt's gate output back into the prompt (empty on the first attempt,
+        # so it runs blind); ``implement`` routes it through ``_implement_prompt``'s prior_failure
+        # path and commits with ``conventional_commit_message``.
+        sub["last_gate_output"] = last_gate_output
+        impl = implement(sub, executor=executor)
+        impl_data = impl.get("implementation") or {}
+        record["files_touched"] = list(impl_data.get("files_touched") or [])
+        record["diff_summary"] = impl_data.get("diff_summary", "")
+        # Collect THIS attempt's event for the ledger, and add its cost to the budget running
+        # total. ``run_cost`` carries the pre-level baseline (already in the ledger) so the
+        # budget check stays whole-run; only the new events are propagated up, never the baseline.
+        events = impl.get("cost_events") or []
+        cost_events.extend(events)
+        run_cost += _events_cost(events)
+        if impl.get("status") == Status.HALTED:
+            message = impl["errors"][0]["message"] if impl.get("errors") else "implement failed"
+            record.update(ok=False, error=f"unit {unit.id}: {message}")
+            return {"level_builds": [record], "cost_events": cost_events}
 
-    sub["implementation"] = impl_data
-    gate_update = test_gate(sub, gate=gate)
-    results = gate_update.get("test_results") or {}
-    record["test_command"] = results.get("command", "")
-    if not results.get("passed"):
-        record.update(ok=False, error=f"gate failed for unit {unit.id}")
-        return {"level_builds": [record]}
+        sub["implementation"] = impl_data
+        gate_update = test_gate(sub, gate=gate)
+        results = gate_update.get("test_results") or {}
+        record["test_command"] = results.get("command", "")
+        if results.get("passed"):
+            record["ok"] = True
+            return {"level_builds": [record], "cost_events": cost_events}
 
-    record["ok"] = True
-    return {"level_builds": [record]}
+        # Gate failed: retry on the cheap model while retries remain AND the run is within its
+        # cost cap (the same gate as the sequential ``_can_fix_retry``, minus escalation). Reset
+        # to the base tip so only the failed attempt's commit is discarded, then re-implement
+        # with the gate output fed back.
+        last_gate_output = results.get("output", "")
+        within_budget = cap is None or run_cost < cap
+        if fix_attempts < max_fix and within_budget:
+            fix_attempts += 1
+            _git_run(clone.path, "reset", "--hard", base_ref)
+            _git_run(clone.path, "clean", "-fd")
+            continue
+        error = f"gate failed for unit {unit.id}"
+        if cap is not None and not within_budget and fix_attempts < max_fix:
+            error += (
+                f"; cost cap ${cap:.2f} reached (spent ${run_cost:.2f}), "
+                "halting without further retries"
+            )
+        record.update(ok=False, error=error)
+        return {"level_builds": [record], "cost_events": cost_events}
 
 
 def _git_run(cwd: str, *args: str) -> subprocess.CompletedProcess:
@@ -544,14 +700,19 @@ def route_after_test_gate(state: BlacksmithState) -> str:
     plan (shared branch); on the last unit of the last level, proceed to the single
     PR-approval gate.
 
-    Escalation (WU-ESCALATE-ON-FAIL): a gate failure on the FIRST attempt — when the executor
-    recorded a ``pre_implement_ref`` (i.e. it can escalate) and the unit has not escalated yet
-    — instead discards the attempt and re-implements once with the stronger model. A second
-    failure (already escalated), or a failure with no recorded ref (a test double that cannot
-    escalate), halts with no PR."""
+    A gate failure recovers in a bounded order before it halts:
+    1. Self-heal (WU-GATE-SELF-HEAL): while same-model retries remain for this unit and the
+       run is within its cost cap, re-implement on the cheap model WITH the gate output fed
+       back (``fix_retry``).
+    2. Escalation (WU-ESCALATE-ON-FAIL): once the retries are spent, re-implement once with
+       the stronger model (still within the cost cap).
+    3. Halt: retries spent AND already escalated, or no ``pre_implement_ref`` (a test double
+       that cannot escalate), or the cost cap is reached — halt with no PR."""
     results = state.get("test_results") or {}
     if not results.get("passed"):
-        if _will_escalate(state):
+        if _can_fix_retry(state):
+            return "fix_retry"
+        if _will_escalate(state) and _within_budget(state):
             return "escalate"
         return "human_halt"
     levels = state.get("execution_levels") or []
@@ -570,7 +731,12 @@ def _is_fanout_level(state: BlacksmithState, level: int) -> bool:
 
 def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
     """One ``Send`` per unit in the level: each carries the unit plus the shared clone's
-    combined-branch tip, so its ``build_unit`` worker clones an isolated build tree."""
+    combined-branch tip, so its ``build_unit`` worker clones an isolated build tree.
+
+    The self-heal limits and the run's spend-so-far ride along too (``level_cost_base`` is
+    a payload-only field), so each worker's bounded same-model fix retry honours
+    ``max_fix_attempts`` and the ``max_run_cost_usd`` cap. A run wired without limits sends
+    ``limits=None`` and the worker takes a single attempt, exactly as before."""
     levels = state.get("execution_levels") or []
     return [
         Send(
@@ -581,6 +747,8 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
                 "level_cursor": level,
                 "shared_clone_path": state.get("worktree_path"),
                 "combined_branch": state.get("branch"),
+                "limits": state.get("limits"),
+                "level_cost_base": _run_cost(state),
             },
         )
         for unit in levels[level]
@@ -658,15 +826,21 @@ def build_graph(
     executor: Executor | None = None,
     worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
+    limits: LimitsConfig | None = None,
 ) -> StateGraph:
-    """Construct (but do not compile) the v0 graph topology."""
+    """Construct (but do not compile) the v0 graph topology.
+
+    ``limits`` enables the gate self-heal loop (WU-GATE-SELF-HEAL): when provided it is
+    seeded into state by ``prepare_worktree`` so routing can bound the retries. Left unset
+    (every graph wired without it) the loop is OFF and routing behaves exactly as before."""
     graph = StateGraph(BlacksmithState)
 
     graph.add_node("ingest_prd", ingest_prd)
     graph.add_node("plan", _node_with(plan, executor=executor))
     graph.add_node("approve_plan", approve_plan)
     graph.add_node(
-        "prepare_worktree", _node_with(prepare_worktree, worktree_manager=worktree_manager)
+        "prepare_worktree",
+        _node_with(prepare_worktree, worktree_manager=worktree_manager, limits=limits),
     )
     graph.add_node("implement", _node_with(implement, executor=executor))
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
@@ -679,6 +853,7 @@ def build_graph(
     graph.add_node("join_level", join_level)
     graph.add_node("next_unit", next_unit)
     graph.add_node("escalate", prepare_escalation)
+    graph.add_node("fix_retry", prepare_fix_retry)
     graph.add_node("approve_pr", approve_pr)
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner))
     graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner))
@@ -727,11 +902,15 @@ def build_graph(
             "approve_pr": "approve_pr",
             "human_halt": "human_halt",
             "next_unit": "next_unit",
+            "fix_retry": "fix_retry",
             "escalate": "escalate",
         },
     )
-    # Escalation: discard the failed attempt, reset the worktree, and re-implement the SAME
-    # unit once with the stronger model, then re-gate (WU-ESCALATE-ON-FAIL).
+    # Self-heal: discard the failed attempt, reset the worktree, and re-implement the SAME
+    # unit on the cheap model with the gate output fed back, then re-gate (WU-GATE-SELF-HEAL).
+    graph.add_edge("fix_retry", "implement")
+    # Escalation: once the retries are spent, re-implement the SAME unit once with the
+    # stronger model, then re-gate (WU-ESCALATE-ON-FAIL).
     graph.add_edge("escalate", "implement")
     # Loop: a size-1 next level builds on the same shared worktree/branch (no re-plan, no
     # new worktree), so its implement step sees the prior units' committed changes. A
@@ -806,6 +985,7 @@ def compile_graph(
     worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
     store: BaseStore | None = None,
+    limits: LimitsConfig | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -818,12 +998,16 @@ def compile_graph(
     ``store`` is an optional persistent long-term memory Store (WU-STORE-WIRING),
     forwarded to ``.compile(store=...)``. It is a SEPARATE, additive channel from the
     checkpointer; ``store=None`` (the default) compiles exactly as before.
+
+    ``limits`` enables the gate self-heal loop (WU-GATE-SELF-HEAL); ``None`` (the default,
+    every test that does not opt in) leaves the loop off and routing unchanged.
     """
     return build_graph(
         pr_runner=pr_runner,
         executor=executor,
         worktree_manager=worktree_manager,
         gate=gate,
+        limits=limits,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),
