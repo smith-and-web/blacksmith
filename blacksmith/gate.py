@@ -17,6 +17,13 @@ pnpm / yarn / pip-without-venv do not.
 Commands may be overridden per layer under ``[layers.<name>]``; otherwise the
 top-level defaults apply, matching the PRD's flat examples (Kindling: cargo test /
 cargo clippy; blacksmith self-target: pytest / ruff check).
+
+An optional ``fix_cmd`` (``run_fix``) runs the target's own deterministic formatter/
+auto-fixer (e.g. ``cargo fmt --all``) BEFORE the gate and folds the result into the unit's
+commit. It exists because mechanical formatting failures (``cargo fmt --check``,
+``prettier --check``) are 100% auto-fixable yet the agent is worst at reproducing them by
+hand — so blacksmith fixes them itself, for free, instead of burning a model retry. The gate
+stays verify-only; ``fix_cmd`` is a separate step.
 """
 
 from __future__ import annotations
@@ -45,6 +52,7 @@ class LayerOverride(_Strict):
     setup_cmd: str | None = None
     test_cmd: str | None = None
     lint_cmd: str | None = None
+    fix_cmd: str | None = None
 
 
 class TargetToolchain(_Strict):
@@ -53,16 +61,21 @@ class TargetToolchain(_Strict):
     setup_cmd: str | None = None
     test_cmd: str
     lint_cmd: str | None = None
+    # Optional deterministic auto-fixer (e.g. `cargo fmt --all`). Run by `run_fix` after the
+    # implement commit and BEFORE the gate, so mechanical formatting/lint failures are fixed
+    # without a model retry. Self-contained: if it needs deps, chain them in (`npm ci && ...`).
+    fix_cmd: str | None = None
     layers: dict[str, LayerOverride] = Field(default_factory=dict)
 
     def commands_for(
         self, layer: str | None = None
-    ) -> tuple[str | None, str, str | None]:
+    ) -> tuple[str | None, str, str | None, str | None]:
         override = self.layers.get(layer) if layer else None
         setup_cmd = override.setup_cmd if override and override.setup_cmd else self.setup_cmd
         test_cmd = override.test_cmd if override and override.test_cmd else self.test_cmd
         lint_cmd = override.lint_cmd if override and override.lint_cmd else self.lint_cmd
-        return setup_cmd, test_cmd, lint_cmd
+        fix_cmd = override.fix_cmd if override and override.fix_cmd else self.fix_cmd
+        return setup_cmd, test_cmd, lint_cmd, fix_cmd
 
 
 @dataclass(frozen=True)
@@ -104,7 +117,7 @@ def run_gate(
     """
     path = Path(worktree_path)
     toolchain = toolchain or load_toolchain(path)
-    setup_cmd, test_cmd, lint_cmd = toolchain.commands_for(layer)
+    setup_cmd, test_cmd, lint_cmd, _fix_cmd = toolchain.commands_for(layer)
 
     ran: list[str] = []
     sections: list[str] = []
@@ -130,6 +143,70 @@ def run_gate(
         sections.append(f"$ {lint_cmd}\n{lint_output}")
         passed = lint_ok
     return GateResult(passed=passed, output="\n".join(sections), command=" && ".join(ran))
+
+
+@dataclass(frozen=True)
+class FixResult:
+    """Outcome of the deterministic auto-fix step (model-free).
+
+    ``applied`` — a ``fix_cmd`` was configured and ran. ``changed`` — the fixer produced
+    changes that were folded into the unit's commit (``git commit --amend``). ``ok`` — the
+    fixer exited 0; a non-zero exit is recorded but never halts the run (best-effort), since
+    the gate that follows is the real verdict.
+    """
+
+    applied: bool
+    changed: bool
+    ok: bool
+    output: str
+    command: str
+
+
+def run_fix(
+    worktree_path: str | Path,
+    layer: str | None = None,
+    *,
+    toolchain: TargetToolchain | None = None,
+) -> FixResult:
+    """Run the target's optional ``fix_cmd`` in the worktree and fold any change into the
+    unit's existing commit (``git add -A && git commit --amend --no-edit``), BEFORE the gate.
+
+    This is the deterministic answer to mechanical, zero-correctness gate failures
+    (``cargo fmt --check``, ``prettier --check``): the formatter the agent is worst at
+    reproducing by hand is the one blacksmith can run perfectly for free. When ``fix_cmd`` is
+    unset this is a no-op (``applied=False``) and the gate runs on exactly the agent's commit.
+
+    Best-effort by design: a non-zero ``fix_cmd`` exit is captured in ``ok`` but does not
+    halt — whatever it managed to fix is still committed, and an unfixable problem simply
+    fails the gate and routes to the existing escalate/halt path. The amend only happens when
+    the fixer actually changed tracked content, so a no-op fixer leaves the commit untouched.
+    """
+    path = Path(worktree_path)
+    toolchain = toolchain or load_toolchain(path)
+    _setup_cmd, _test_cmd, _lint_cmd, fix_cmd = toolchain.commands_for(layer)
+    if not fix_cmd:
+        return FixResult(applied=False, changed=False, ok=True, output="", command="")
+    ok, output = _run(fix_cmd, path)
+    changed = _amend_if_changed(path)
+    return FixResult(applied=True, changed=changed, ok=ok, output=output, command=fix_cmd)
+
+
+def _amend_if_changed(cwd: Path) -> bool:
+    """Stage everything and, only if that produced a staged diff, amend the unit's commit.
+
+    Returns whether an amend happened. The ``--cached --quiet`` check is what keeps an
+    already-formatted tree (the common case) from amending — and stops a degenerate
+    no-commit implement path from rewriting an unrelated commit."""
+    subprocess.run(["git", "-C", str(cwd), "add", "-A"], capture_output=True, text=True)
+    staged = subprocess.run(
+        ["git", "-C", str(cwd), "diff", "--cached", "--quiet"], capture_output=True, text=True
+    )
+    if staged.returncode == 0:  # nothing staged -> the fixer changed nothing
+        return False
+    amend = subprocess.run(
+        ["git", "-C", str(cwd), "commit", "--amend", "--no-edit"], capture_output=True, text=True
+    )
+    return amend.returncode == 0
 
 
 def _run(command: str, cwd: Path) -> tuple[bool, str]:

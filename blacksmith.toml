@@ -6,3 +6,7 @@
 # checkout (the PRD's bare "pytest" / "ruff check" assume an already-active venv).
 test_cmd = "uv run pytest"
 lint_cmd = "uv run ruff check"
+# Auto-fix the auto-fixable lint violations (unused imports, etc.) before the gate, so a
+# generated unit isn't halted/escalated over a nit ruff can fix itself. Any change is folded
+# into the unit's commit. Pairs with lint_cmd above; `ruff check --fix` applies only safe fixes.
+fix_cmd = "uv run ruff check --fix"

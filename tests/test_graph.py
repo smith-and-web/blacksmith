@@ -38,6 +38,7 @@ EXPECTED_NODES = {
     "approve_plan",
     "prepare_worktree",
     "implement",
+    "auto_fix",
     "test_gate",
     "approve_pr",
     "open_pr",
@@ -122,7 +123,8 @@ def test_route_after_implement_uses_layer_gate():
     prd = parse_prd(VENDORED_PRD)
     auto_unit = prd.contract.work_unit_by_id("WU-01")  # py-logic -> auto
     human_unit = prd.contract.work_unit_by_id("WU-06")  # py-logic + integration -> human
-    assert route_after_implement({"prd": prd, "selected_unit": auto_unit}) == "test_gate"
+    # An auto-gated unit routes through the deterministic auto_fix step on its way to the gate.
+    assert route_after_implement({"prd": prd, "selected_unit": auto_unit}) == "auto_fix"
     # A human-gated unit that implemented successfully opens a DRAFT PR for QA (WU-QA-WIRING),
     # rather than discarding its work via human_halt.
     assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "open_draft_pr"
@@ -133,7 +135,7 @@ def test_route_after_implement_uses_layer_gate():
         )
         == "human_halt"
     )
-    assert route_after_implement({}) == "test_gate"  # nothing selected -> default auto path
+    assert route_after_implement({}) == "auto_fix"  # nothing selected -> default auto path
 
 
 def test_checkpointer_persists_and_resumes_across_restart(tmp_path):

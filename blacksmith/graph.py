@@ -35,7 +35,7 @@ from langgraph.types import Send
 from blacksmith.config import LimitsConfig
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
-from blacksmith.gate import GateError, GateResult
+from blacksmith.gate import FixResult, GateError, GateResult
 from blacksmith.memory import current_store, record_lesson
 from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
@@ -55,6 +55,12 @@ from blacksmith.worktree import (
 # A gate callable: (worktree_path, layer) -> GateResult. Injected so tests can
 # control pass/fail; production passes blacksmith.gate.run_gate.
 GateFn = Callable[[str, str | None], GateResult]
+
+# A fix callable: (worktree_path, layer) -> FixResult. The deterministic, model-free
+# auto-fix step run between implement (commit) and the gate; production passes
+# blacksmith.gate.run_fix. Injected like the gate so tests can control it; an unset one
+# leaves auto_fix a pass-through (the gate then runs on the agent's commit unchanged).
+FixFn = Callable[[str, str | None], FixResult]
 
 # The run's isolation manager. In production this is a CloneManager (each run gets a
 # throwaway local clone with its own .git, which kills the self-targeting hazard — the
@@ -140,6 +146,32 @@ def prepare_worktree(
         }
         update["fix_attempts"] = 0
     return update
+
+
+def auto_fix(state: BlacksmithState, *, fix: FixFn | None = None) -> dict:
+    """Deterministic, model-free formatting/auto-fix run between implement and the gate.
+
+    Runs the target's ``fix_cmd`` (if configured) in the shared worktree and folds the
+    result into the unit's commit BEFORE ``test_gate`` verifies it — so a mechanical
+    ``cargo fmt --check`` / ``prettier --check`` failure is fixed for free instead of
+    triggering a model retry and escalation. It mutates the worktree but reports no state
+    update: the (possibly amended) commit is the only effect, and the gate that follows is
+    the verdict. Best-effort — a missing ``fix_cmd`` or a failing fixer is a no-op that flows
+    straight on. Without a ``fix`` injected (skeleton / deterministic tests) it is a pure
+    pass-through, so the gate runs on exactly the agent's commit as before."""
+    if fix is None:
+        return {}
+    worktree_path = state.get("worktree_path")
+    unit = state.get("selected_unit")
+    if not worktree_path or unit is None:
+        return {}
+    layer = unit.layers[0] if unit.layers else None
+    try:
+        fix(worktree_path, layer)
+    except GateError:
+        # A missing/invalid toolchain is surfaced by the gate, not here — don't double-halt.
+        pass
+    return {}
 
 
 def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
@@ -378,6 +410,7 @@ def build_unit(
     *,
     executor: Executor | None = None,
     gate: GateFn | None = None,
+    fix: FixFn | None = None,
     worktree_manager: IsolationManager | None = None,
 ) -> dict:
     """Fan-out worker: build ONE unit of a multi-unit level in its OWN clone and gate it
@@ -457,6 +490,14 @@ def build_unit(
             return {"level_builds": [record], "cost_events": cost_events}
 
         sub["implementation"] = impl_data
+        # Deterministic auto-fix in this unit's own clone before gating it (WU-FIX-CMD): the same
+        # fix-then-verify order as the sequential auto_fix -> test_gate, run on EVERY attempt so a
+        # self-heal retry re-fixes too. Best-effort; never halts the unit.
+        if fix is not None:
+            try:
+                fix(str(clone.path), unit.layers[0] if unit.layers else None)
+            except GateError:
+                pass
         gate_update = test_gate(sub, gate=gate)
         results = gate_update.get("test_results") or {}
         record["test_command"] = results.get("command", "")
@@ -683,14 +724,15 @@ def route_after_implement(state: BlacksmithState) -> str:
     A failed implement (status HALTED) discards the work via ``human_halt``. A human-gated
     unit (any ``human`` layer) that implemented successfully bypasses the automated gate and
     instead opens a DRAFT PR for manual QA (``open_draft_pr`` -> AWAITING_QA, branch kept).
-    An auto-gated unit proceeds to the automated ``test_gate`` unchanged."""
+    An auto-gated unit proceeds to ``auto_fix`` (the deterministic formatter step), which
+    then flows into the automated ``test_gate``."""
     if state.get("status") == Status.HALTED:
         return "human_halt"
     prd = state.get("prd")
     unit = state.get("selected_unit")
     if prd is not None and unit is not None and prd.contract.gate_for(unit) == "human":
         return "open_draft_pr"
-    return "test_gate"
+    return "auto_fix"
 
 
 def route_after_test_gate(state: BlacksmithState) -> str:
@@ -827,6 +869,7 @@ def build_graph(
     worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
     limits: LimitsConfig | None = None,
+    fix: FixFn | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
 
@@ -843,11 +886,16 @@ def build_graph(
         _node_with(prepare_worktree, worktree_manager=worktree_manager, limits=limits),
     )
     graph.add_node("implement", _node_with(implement, executor=executor))
+    graph.add_node("auto_fix", _node_with(auto_fix, fix=fix))
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
     graph.add_node(
         "build_unit",
         _node_with(
-            build_unit, executor=executor, gate=gate, worktree_manager=worktree_manager
+            build_unit,
+            executor=executor,
+            gate=gate,
+            fix=fix,
+            worktree_manager=worktree_manager,
         ),
     )
     graph.add_node("join_level", join_level)
@@ -890,11 +938,15 @@ def build_graph(
         "implement",
         route_after_implement,
         {
-            "test_gate": "test_gate",
+            "auto_fix": "auto_fix",
             "human_halt": "human_halt",
             "open_draft_pr": "open_draft_pr",
         },
     )
+    # Deterministic auto-fix runs between implement and the gate, then always flows into it.
+    # A unit with no fix_cmd makes auto_fix a pass-through, so this is the prior implement->gate
+    # path with one (usually free) step inserted.
+    graph.add_edge("auto_fix", "test_gate")
     graph.add_conditional_edges(
         "test_gate",
         route_after_test_gate,
@@ -984,6 +1036,7 @@ def compile_graph(
     executor: Executor | None = None,
     worktree_manager: IsolationManager | None = None,
     gate: GateFn | None = None,
+    fix: FixFn | None = None,
     store: BaseStore | None = None,
     limits: LimitsConfig | None = None,
 ) -> CompiledStateGraph:
@@ -992,8 +1045,9 @@ def compile_graph(
     The HITL halts come from dynamic ``interrupt()`` calls inside ``approve_plan`` /
     ``approve_pr`` (WU-07), so no static ``interrupt_before`` is needed by default;
     the parameter remains for tests or extra inspection points. The dependency params
-    (``executor``, ``worktree_manager``, ``gate``, ``pr_runner``) are injected by the
-    CLI in production and faked in tests; unset ones leave that node a pass-through.
+    (``executor``, ``worktree_manager``, ``gate``, ``fix``, ``pr_runner``) are injected by
+    the CLI in production and faked in tests; unset ones leave that node a pass-through (an
+    unset ``fix`` makes ``auto_fix`` a no-op, so the gate runs on the agent's commit as-is).
 
     ``store`` is an optional persistent long-term memory Store (WU-STORE-WIRING),
     forwarded to ``.compile(store=...)``. It is a SEPARATE, additive channel from the
@@ -1008,6 +1062,7 @@ def compile_graph(
         worktree_manager=worktree_manager,
         gate=gate,
         limits=limits,
+        fix=fix,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),

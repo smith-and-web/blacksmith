@@ -23,7 +23,7 @@ def _worktree(path: Path, toolchain: str) -> Path:
 def test_load_toolchain(tmp_path):
     wt = _worktree(tmp_path, 'test_cmd = "pytest"\nlint_cmd = "ruff check"\n')
     tc = load_toolchain(wt)
-    assert tc.commands_for() == (None, "pytest", "ruff check")
+    assert tc.commands_for() == (None, "pytest", "ruff check", None)
 
 
 def test_missing_toolchain_raises(tmp_path):
