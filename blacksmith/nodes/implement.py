@@ -42,6 +42,31 @@ _DISALLOWED_TOOLS = [
 ]
 _IMPLEMENT_MAX_TURNS = 40
 
+# Conventional-Commits header so the unit's commit is never rejected by a target repo's
+# commit-msg hook (commitlint / config-conventional) AFTER its expensive implementation
+# already ran — the failure that discarded whole runs. The header is valid by construction
+# for config-conventional (and a repo with no hook accepts it fine, so no detection needed):
+#   <type>(<scope>): <subject>
+# type is lower-case and in the default enum; scope is the lower-cased unit id (the
+# scope-case rule requires lower-case); the subject's first letter is lower-cased so the
+# whole subject is never classified sentence/start/pascal/upper-case (subject-case), any
+# trailing period is stripped (subject-full-stop), and the header is truncated to the
+# 100-char header-max-length default.
+_COMMIT_TYPE = "feat"
+_HEADER_MAX_LEN = 100
+# Cap the gate output fed back into a retry prompt: the tail holds the actual failures, and
+# an unbounded test log would balloon the retry's input tokens (the cost this feature saves).
+_FEEDBACK_TAIL_CHARS = 3000
+
+
+def conventional_commit_message(unit: WorkUnit, *, commit_type: str = _COMMIT_TYPE) -> str:
+    """Build a Conventional-Commits header for a unit's commit (see _COMMIT_TYPE notes)."""
+    scope = unit.id.lower()
+    subject = unit.title.strip().rstrip(".").strip()
+    subject = (subject[0].lower() + subject[1:]) if subject else f"implement {scope}"
+    header = f"{commit_type}({scope}): {subject}"
+    return header[:_HEADER_MAX_LEN].rstrip() if len(header) > _HEADER_MAX_LEN else header
+
 # The target repo's CLAUDE.md (if committed) is injected into the implementer's system
 # prompt as project context, so a repo with no claude.ai Project still carries its own
 # conventions into the run. See _read_project_context for why we read it ourselves
@@ -144,7 +169,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     pre_implement_ref = _git(worktree_path, "rev-parse", "HEAD").strip()
     run_attempt = executor.run_implement_escalate if escalating else executor.run_implement
     result = run_attempt(
-        _implement_prompt(unit),
+        _implement_prompt(unit, prior_failure=state.get("last_gate_output")),
         system_prompt=_system_prompt(prd.contract, _read_project_context(worktree_path)),
         cwd=worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
@@ -169,8 +194,9 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         }
 
     try:
-        commit_message = f"blacksmith: {unit.id} {unit.title}"
-        files, diff_summary = _stage_and_commit(worktree_path, commit_message)
+        files, diff_summary = _stage_and_commit(
+            worktree_path, conventional_commit_message(unit)
+        )
     except CommitError as exc:
         return {
             "status": Status.HALTED,
@@ -257,8 +283,8 @@ def _git(worktree_path: str, *args: str) -> str:
     return result.stdout
 
 
-def _implement_prompt(unit: WorkUnit) -> str:
-    return (
+def _implement_prompt(unit: WorkUnit, *, prior_failure: str | None = None) -> str:
+    prompt = (
         "Implement this work unit fully inside the current working directory by creating or "
         "editing the target modules. Make the minimal changes needed to satisfy the test "
         "contract; do not add anything beyond what the unit asks for. Do NOT assume a target "
@@ -278,6 +304,20 @@ def _implement_prompt(unit: WorkUnit) -> str:
         f"Target modules: {', '.join(unit.target_modules)}\n"
         f"Test contract (must be satisfied): {unit.test_contract}"
     )
+    if prior_failure and prior_failure.strip():
+        # Self-heal retry (WU-GATE-SELF-HEAL): a prior attempt at THIS unit failed the gate.
+        # Feed the gate's output back so the retry fixes the real error instead of re-running
+        # blind. The honesty rule is explicit: fix the CODE, never weaken the gate — the human
+        # PR review is the backstop, but a retry that games the tests defeats the gate's point.
+        tail = prior_failure.strip()[-_FEEDBACK_TAIL_CHARS:]
+        prompt += (
+            "\n\nYOUR PREVIOUS ATTEMPT AT THIS UNIT FAILED THE TEST GATE. Read the gate output "
+            "below, find the root cause, and FIX THE CODE so the project's own tests and lint "
+            "pass. Do NOT delete, skip, weaken, or trivially rewrite tests/assertions to go "
+            "green — fix the implementation. Gate output (tail):\n"
+            f"{tail}"
+        )
+    return prompt
 
 
 def _read_project_context(worktree_path: str | Path) -> str | None:

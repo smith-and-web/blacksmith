@@ -90,6 +90,110 @@ def test_stage_and_commit_raises_when_commit_fails(tmp_path, monkeypatch):
         _stage_and_commit(str(repo), "should fail")
 
 
+# --- conventional commit message (the commitlint failure that discarded whole runs) ------
+
+_CONVENTIONAL_TYPES = (
+    "feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert",
+)
+
+
+class _Unit:
+    """Minimal stand-in: conventional_commit_message only reads .id and .title."""
+
+    def __init__(self, unit_id, title):
+        self.id = unit_id
+        self.title = title
+
+
+def test_conventional_commit_message_is_commitlint_safe():
+    from blacksmith.nodes.implement import conventional_commit_message
+
+    # The exact title shape that was rejected in the wild: PascalCase first word, mixed case.
+    msg = conventional_commit_message(
+        _Unit("WU-03", "FeedbackDialog.svelte form with validation and submit states")
+    )
+    type_, _, rest = msg.partition("(")
+    assert type_ in _CONVENTIONAL_TYPES  # type-enum
+    assert type_ == type_.lower()  # type-case
+    scope, _, subject = rest.partition("): ")
+    assert scope == "wu-03"  # unit id rides the (lower-case) scope — scope-case
+    assert subject and subject[0].islower()  # subject-case: never upper/sentence/start/pascal
+    assert not subject.endswith(".")  # subject-full-stop
+    assert len(msg) <= 100  # header-max-length
+
+
+def test_conventional_message_long_title_is_truncated_and_empty_title_has_subject():
+    from blacksmith.nodes.implement import conventional_commit_message
+
+    long = conventional_commit_message(_Unit("WU-LONG", "x " * 200))
+    assert len(long) <= 100
+    empty = conventional_commit_message(_Unit("WU-EMPTY", "   "))
+    # An empty title still yields a non-empty subject (subject-empty rule).
+    assert empty == "feat(wu-empty): implement wu-empty"
+
+
+def _conventional_hook_repo(tmp_path):
+    """A git repo with a commit-msg hook enforcing the two rules that bit us in the wild:
+    a Conventional-Commits type AND a lower-case subject (commitlint type-enum + subject-case)."""
+    repo = tmp_path / "hooked"
+    repo.mkdir()
+
+    def g(*args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
+
+    g("init", "-b", "main")
+    g("config", "user.email", "t@example.com")
+    g("config", "user.name", "Test")
+    hook = repo / ".git" / "hooks" / "commit-msg"
+    hook.write_text(
+        "#!/bin/sh\n"
+        'msg=$(head -n1 "$1")\n'
+        "types='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'\n"
+        'echo "$msg" | grep -Eq "^($types)(\\(.+\\))?: " \\\n'
+        '  || { echo "type must be one of"; exit 1; }\n'
+        'subject=$(echo "$msg" | sed -E "s/^[^:]+: //")\n'
+        'case "$subject" in [A-Z]*) echo "subject must be lower-case"; exit 1;; esac\n'
+        "exit 0\n"
+    )
+    hook.chmod(0o755)
+    return repo
+
+
+def test_commit_survives_conventional_commit_msg_hook(tmp_path):
+    # Reproduces the wild failure: the OLD "blacksmith: WU-03 <Title>" message is rejected by
+    # a commitlint-style hook, while the new conventional message commits cleanly.
+    from blacksmith.nodes.implement import conventional_commit_message
+
+    repo = _conventional_hook_repo(tmp_path)
+    unit = _Unit("WU-03", "FeedbackDialog.svelte form with validation and submit states")
+
+    # The old format trips BOTH rules and would discard the run at commit time.
+    (repo / "old.txt").write_text("x\n")
+    with pytest.raises(CommitError):
+        _stage_and_commit(str(repo), f"blacksmith: {unit.id} {unit.title}")
+
+    # The new conventional message passes the hook and lands the commit.
+    (repo / "new.txt").write_text("y\n")
+    files, _ = _stage_and_commit(str(repo), conventional_commit_message(unit))
+    assert "new.txt" in files
+    log = subprocess.run(
+        ["git", "-C", str(repo), "log", "--oneline"], capture_output=True, text=True
+    ).stdout
+    assert "feat(wu-03):" in log
+
+
+def test_implement_prompt_feeds_back_prior_gate_failure():
+    from blacksmith.nodes.implement import _implement_prompt
+
+    unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+    base = _implement_prompt(unit)
+    assert "PREVIOUS ATTEMPT" not in base  # no feedback on the first attempt
+    retry = _implement_prompt(unit, prior_failure="E   assert 1 == 2\nFAILED tests/test_x.py")
+    assert "FAILED tests/test_x.py" in retry  # the gate output is fed back
+    # The honesty rule travels with the feedback: fix the code, never weaken the gate.
+    assert "weaken" in retry.lower() and "tests" in retry.lower()
+
+
 # --- path matching -----------------------------------------------------------
 
 
@@ -209,7 +313,9 @@ def test_implement_edits_captures_and_commits(tmp_path):
     log = subprocess.run(
         ["git", "-C", str(wt.path), "log", "--oneline"], capture_output=True, text=True
     ).stdout
-    assert "WU-01" in log  # the edit was committed to the branch
+    # The commit is a Conventional-Commits header so a target repo's commit-msg hook accepts
+    # it; the unit id rides the (lower-case) scope: "feat(wu-01): ...".
+    assert "feat(wu-01):" in log
 
 
 def test_implement_surfaces_blocked_untouchable(tmp_path):

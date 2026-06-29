@@ -248,7 +248,8 @@ def test_independent_level_builds_in_distinct_clones_to_one_pr(tmp_path):
     # (the cherry-picks landed both units on the one branch).
     assert len(_pr_creates(gh)) == 1
     assert len(gh.push_logs) == 1
-    assert "WU-X" in gh.push_logs[0] and "WU-Y" in gh.push_logs[0]
+    # Commit subjects carry the unit id in the Conventional-Commits scope, lower-cased.
+    assert "wu-x" in gh.push_logs[0] and "wu-y" in gh.push_logs[0]
     body = _pr_body(gh)
     assert "WU-X" in body and "WU-Y" in body
     assert "wu-x.txt" in body and "wu-y.txt" in body
@@ -327,7 +328,8 @@ def test_dependent_level_builds_from_prior_levels_merged_tip(tmp_path):
 
     # One combined PR naming every unit across both levels; the combined branch carried all.
     assert len(_pr_creates(gh)) == 1
-    assert all(uid in gh.push_logs[0] for uid in ["WU-ROOT", "WU-A", "WU-B"])
+    # Commit subjects carry the unit id in the Conventional-Commits scope, lower-cased.
+    assert all(uid in gh.push_logs[0] for uid in ["wu-root", "wu-a", "wu-b"])
     body = _pr_body(gh)
     assert all(uid in body for uid in ["WU-ROOT", "WU-A", "WU-B"])
     assert final.values["status"] == Status.DONE

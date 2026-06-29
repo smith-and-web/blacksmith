@@ -67,6 +67,7 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         gate=run_gate,
         fix=run_fix,
         store=build_store(config.store.db_path),
+        limits=config.limits,
     )
 
 

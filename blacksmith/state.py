@@ -131,6 +131,21 @@ class BlacksmithState(TypedDict, total=False):
     # happens at most once per unit (a second gate failure routes to human_halt). Reset by
     # the level engine when it advances to the next unit.
     escalated: bool
+    # Self-heal loop (WU-GATE-SELF-HEAL). Seeded once by prepare_worktree from
+    # ``config.limits`` ONLY when the graph is wired with limits (production); absent on a
+    # graph compiled without them, which keeps the loop OFF and every existing test's
+    # behaviour unchanged. ``max_fix_attempts`` caps same-model error-feedback retries;
+    # ``max_run_cost_usd`` (or None) is the optional hard spend ceiling. Routing reads these
+    # from state because LangGraph edge functions are pure (state) -> str and get no config.
+    limits: dict[str, Any]
+    # Same-model gate-failure retries already spent on the CURRENT unit (WU-GATE-SELF-HEAL).
+    # Reset to 0 by the level engine when it advances to the next unit, so the budget is
+    # per-unit, mirroring ``escalated``.
+    fix_attempts: int
+    # The failing gate's output, fed back into the next implement attempt's prompt so the
+    # retry (and the escalation) can actually FIX the error instead of re-running blind. Set
+    # by the fix-retry/escalation prep, cleared when the level engine advances to a new unit.
+    last_gate_output: str
     test_results: TestResults
     pr_url: str | None
     approvals: Approvals
