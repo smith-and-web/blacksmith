@@ -39,8 +39,8 @@ def _snapshot(values):
 
 def test_plan_node_records_cost_usd():
     out = plan({"prd": parse_prd(VENDORED_PRD)}, executor=FakeExecutor(cost=0.07))
-    # The plan node surfaces result.cost_usd, just as the implement node does.
-    assert out["plan"]["cost_usd"] == 0.07
+    # The plan node surfaces each call's result.cost_usd, just as the implement node does.
+    assert out["plans"][0]["cost_usd"] == 0.07
 
 
 def test_report_prints_summed_total_cost(capsys):

@@ -138,13 +138,37 @@ class Renderer:
             return
         self._rendered_gate(payload)
 
+    @staticmethod
+    def _plan_entries(payload: dict) -> list:
+        """The plan(s) being approved. Prefers the multi-unit ``plans`` list
+        (WU-PLAN-ALL-UNITS); falls back to a single legacy ``plan`` (e.g. an older
+        checkpoint or a direct caller) so the renderer handles both payload shapes."""
+        plans = payload.get("plans")
+        if plans:
+            return list(plans)
+        single = payload.get("plan")
+        return [single] if single else []
+
+    def _plans_total_line(self, entries: list) -> str:
+        """Combined cost across all the plans shown at a multi-unit plan gate."""
+        total = sum(p.get("cost_usd") or 0 for p in entries)
+        return f"plan total: ${total:.2f} across {len(entries)} units"
+
     def _gate_summary(self, payload: dict) -> str:
         """One-line summary of WHAT is being approved (precedes the y/N prompt)."""
         gate = payload.get("gate", "?")
+        if gate == "plan":
+            entries = self._plan_entries(payload)
+            if len(entries) > 1:
+                ids = ", ".join(e.get("unit_id", "?") for e in entries)
+                return f"Approve the implementation PLAN for {len(entries)} work units: {ids}"
+            single = entries[0] if entries else {}
+            unit = payload.get("unit") or {}
+            uid = single.get("unit_id") or unit.get("id", "?")
+            title = single.get("title") or unit.get("title", "")
+            return f"Approve the implementation PLAN for {uid} {title}".strip()
         unit = payload.get("unit") or {}
         label = f"{unit.get('id', '?')} {unit.get('title', '')}".strip()
-        if gate == "plan":
-            return f"Approve the implementation PLAN for {label}"
         if gate == "pr":
             return f"Approve the PR for {label}"
         return f"Approve the {gate!r} gate for {label}"
@@ -164,15 +188,21 @@ class Renderer:
         print(f"\n{self._gate_summary(payload)}", file=out)
         gate = payload.get("gate")
         if gate == "plan":
-            plan = payload.get("plan") or {}
-            print("\nSteps:", file=out)
-            print(plan.get("steps") or "(none)", file=out)
-            print("\nTarget modules:", file=out)
-            for mod in plan.get("target_modules") or []:
-                print(f"  - {mod}", file=out)
-            print("\nTest contract:", file=out)
-            print(textwrap.fill(plan.get("test_contract") or "", width=88), file=out)
-            print(f"\n{self._cost_tokens_line(plan)}", file=out)
+            entries = self._plan_entries(payload)
+            for plan in entries:
+                if len(entries) > 1:
+                    header = f"{plan.get('unit_id', '?')} {plan.get('title', '')}".strip()
+                    print(f"\n=== {header} ===", file=out)
+                print("\nSteps:", file=out)
+                print(plan.get("steps") or "(none)", file=out)
+                print("\nTarget modules:", file=out)
+                for mod in plan.get("target_modules") or []:
+                    print(f"  - {mod}", file=out)
+                print("\nTest contract:", file=out)
+                print(textwrap.fill(plan.get("test_contract") or "", width=88), file=out)
+                print(f"\n{self._cost_tokens_line(plan)}", file=out)
+            if len(entries) > 1:
+                print(f"\n{self._plans_total_line(entries)}", file=out)
         elif gate == "pr":
             impl = payload.get("implementation") or {}
             results = payload.get("test_results") or {}
@@ -190,23 +220,31 @@ class Renderer:
         console.print(Text(self._gate_summary(payload), style="bold"))
         gate = payload.get("gate")
         if gate == "plan":
-            plan = payload.get("plan") or {}
-            steps = Markdown(plan.get("steps") or "_(no steps)_")
-            console.print(Panel(steps, title="plan steps", expand=False))
-            mods = Text()
-            for mod in plan.get("target_modules") or []:
-                mods.append(f"• {mod}\n")
-            console.print(Panel(mods or Text("(none)"), title="target modules", expand=False))
-            # The test_contract is verbatim from the PRD — the least actionable item at this
-            # gate. De-emphasise it to a dim, collapsed secondary line so the plan STEPS and
-            # target modules lead, rather than a co-equal full-width panel that competes.
-            contract = plan.get("test_contract") or ""
-            if contract:
-                summary = textwrap.shorten(contract, width=96, placeholder=" …")
-                console.print(
-                    Text(f"test contract (from PRD, for reference): {summary}", style="dim")
-                )
-            console.print(Text(self._cost_tokens_line(plan), style="dim"))
+            entries = self._plan_entries(payload)
+            for plan in entries:
+                # With multiple units, title each steps panel by its unit so the plans are
+                # distinguishable; a single-unit gate keeps the plain "plan steps" title.
+                title = "plan steps"
+                if len(entries) > 1:
+                    title = f"plan: {plan.get('unit_id', '?')} {plan.get('title', '')}".strip()
+                steps = Markdown(plan.get("steps") or "_(no steps)_")
+                console.print(Panel(steps, title=title, expand=False))
+                mods = Text()
+                for mod in plan.get("target_modules") or []:
+                    mods.append(f"• {mod}\n")
+                console.print(Panel(mods or Text("(none)"), title="target modules", expand=False))
+                # The test_contract is verbatim from the PRD — the least actionable item at this
+                # gate. De-emphasise it to a dim, collapsed secondary line so the plan STEPS and
+                # target modules lead, rather than a co-equal full-width panel that competes.
+                contract = plan.get("test_contract") or ""
+                if contract:
+                    summary = textwrap.shorten(contract, width=96, placeholder=" …")
+                    console.print(
+                        Text(f"test contract (from PRD, for reference): {summary}", style="dim")
+                    )
+                console.print(Text(self._cost_tokens_line(plan), style="dim"))
+            if len(entries) > 1:
+                console.print(Text(self._plans_total_line(entries), style="dim"))
         elif gate == "pr":
             impl = payload.get("implementation") or {}
             results = payload.get("test_results") or {}

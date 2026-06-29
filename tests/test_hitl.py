@@ -73,10 +73,11 @@ def test_interrupt_surfaces_plan_payload(tmp_path):
     g, saver = _graph(tmp_path)
     cfg = _cfg("payload")
 
-    result = g.invoke({"status": Status.PENDING, "plan": {"steps": ["do x"]}}, cfg)
+    plans = [{"unit_id": "WU-X", "steps": "do x"}]
+    result = g.invoke({"status": Status.PENDING, "plans": plans}, cfg)
     payload = result["__interrupt__"][0].value
     assert payload["gate"] == "plan"
-    assert payload["plan"] == {"steps": ["do x"]}
+    assert payload["plans"] == plans  # the gate surfaces every auto unit's plan
     saver.conn.close()
 
 

@@ -258,9 +258,10 @@ def test_done_run_records_run_row_and_two_unit_rows(tmp_path):
     runs = _run_rows(store)
     assert len(runs) == 1
     run = runs[0]
-    # total_cost equals the summed cost_events (plan + both implements).
+    # total_cost equals the summed cost_events: one plan call PER auto unit now
+    # (WU-PLAN-ALL-UNITS), plus both implements.
     summed = sum(e["cost_usd"] for e in final.values["cost_events"])
-    assert run["total_cost"] == summed == _PLAN_COST + 0.30 + 0.50
+    assert run["total_cost"] == summed == 2 * _PLAN_COST + 0.30 + 0.50
     assert run["status"] == "done"
     assert run["success"] == 1
     assert run["failure_reason"] == "none"

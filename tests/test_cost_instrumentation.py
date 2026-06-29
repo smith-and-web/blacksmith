@@ -92,8 +92,8 @@ def _scratch_worktree(tmp_path):
 
 def test_plan_node_records_usage_breakdown():
     out = plan({"prd": parse_prd(VENDORED_PRD)}, executor=PlanFakeExecutor(PLAN_USAGE))
-    assert out["plan"]["cost_usd"] == 0.05  # the cost it already stored is untouched
-    assert out["plan"]["usage"] == {
+    assert out["plans"][0]["cost_usd"] == 0.05  # the cost it already stored is untouched
+    assert out["plans"][0]["usage"] == {
         "input_tokens": 100,
         "output_tokens": 10,
         "cache_read_input_tokens": 400,
@@ -121,7 +121,7 @@ def test_implement_node_records_usage_breakdown(tmp_path):
 
 def test_node_usage_is_none_when_executor_reports_no_usage():
     out = plan({"prd": parse_prd(VENDORED_PRD)}, executor=PlanFakeExecutor(None))
-    assert out["plan"]["usage"] is None
+    assert out["plans"][0]["usage"] is None
 
 
 # --- run-end report ----------------------------------------------------------

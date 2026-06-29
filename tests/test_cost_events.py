@@ -106,10 +106,13 @@ def test_state_has_appendonly_cost_events_field():
 # --- node recording ----------------------------------------------------------
 
 
-def test_plan_node_appends_one_cost_event():
-    out = plan({"prd": parse_prd(VENDORED_PRD)}, executor=PlanFakeExecutor(_result(0.05)))
+def test_plan_node_appends_one_cost_event_per_auto_unit():
+    prd = parse_prd(VENDORED_PRD)
+    out = plan({"prd": prd}, executor=PlanFakeExecutor(_result(0.05)))
     events = out["cost_events"]
-    assert len(events) == 1
+    # One plan event per auto-gated unit now that the planner plans them all (WU-PLAN-ALL-UNITS).
+    auto = [u for u in prd.contract.work_units if prd.contract.gate_for(u) != "human"]
+    assert [e["unit_id"] for e in events] == [u.id for u in auto]
     event = events[0]
     assert event["node"] == "plan"
     assert event["unit_id"] == out["selected_unit"].id

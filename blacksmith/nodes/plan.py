@@ -1,14 +1,19 @@
-"""Plan node — select the next work unit and plan it (PRD §4 node 2).
+"""Plan node — plan every auto-gated work unit up front (PRD §4 node 2).
 
-v0 selects exactly one unit: the lowest in the dependency DAG with no unmet deps
-(``select_unit``). It then asks the executor (plan model tier, PRD §8) to produce an
-implementation plan for that unit, with the untouchables in the system prompt as the
-static constitution context.
+Produces an implementation plan for EACH auto-gated unit (WU-PLAN-ALL-UNITS), so a
+multi-unit PRD surfaces a plan for ALL of its units behind the single ``approve_plan``
+gate — not just the first (the prior behaviour, which left units 2..N building with no
+plan and no approval, undercutting the plan gate for multi-unit PRDs). Human-gated units
+are skipped: they get manual QA via a draft PR, so no implementation plan is needed (this
+mirrors ``route_after_implement``). Each plan call uses the executor's plan model tier
+(PRD §8) with the untouchables in the system prompt as the static constitution context;
+that prompt is built ONCE and reused across the per-unit calls so it caches (AC-8).
 
-Without an executor wired (skeleton/tests), the node is a pass-through that only
-advances ``status`` — the real decomposition runs only when an executor is injected
-at graph-build time. This keeps the deterministic graph tests independent of any
-model call.
+``select_unit`` remains the DAG cycle/unsatisfiable guard (and is reused by the planner).
+
+Without an executor wired (skeleton/tests), the node is a pass-through that only advances
+``status`` — the real decomposition runs only when an executor is injected at graph-build
+time. This keeps the deterministic graph tests independent of any model call.
 """
 
 from __future__ import annotations
@@ -96,39 +101,61 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
     if prd is None:
         return {"status": Status.HALTED, "errors": [{"node": "plan", "message": "no prd in state"}]}
 
-    unit = select_unit(prd.contract)
-    if unit is None:
+    contract = prd.contract
+    # Cycle / unsatisfiable-DAG guard (preserved from the single-unit selector): if no unit is
+    # ever buildable, halt here rather than producing plans for an unexecutable PRD.
+    if select_unit(contract) is None:
         return {
             "status": Status.HALTED,
             "errors": [{"node": "plan", "message": "no work unit with satisfied dependencies"}],
         }
 
-    result = executor.run_plan(
-        _plan_prompt(unit),
-        system_prompt=_system_prompt(prd.contract, _prior_lessons(prd.contract)),
-        allowed_tools=_PLAN_READ_ONLY,
-        disallowed_tools=_PLAN_BLOCKED,
-        max_turns=_PLAN_MAX_TURNS,
-        raise_on_error=False,  # surface failures (e.g. max-turns) into state, don't crash the graph
-    )
-    if result.is_error:
-        return {
-            "status": Status.HALTED,
-            "errors": [{"node": "plan", "message": f"plan call failed: {result.text}"}],
-        }
+    # Plan EVERY auto-gated unit, in declaration (topological) order. Human-gated units are
+    # skipped — they build for manual QA behind a draft PR, no implementation plan needed.
+    auto_units = [u for u in contract.work_units if contract.gate_for(u) != "human"]
+    # Built ONCE and reused across the per-unit calls so the static constitution/lessons context
+    # caches across them (AC-8) instead of being re-sent for each unit.
+    system_prompt = _system_prompt(contract, _prior_lessons(contract))
+    plans: list[dict] = []
+    cost_events: list[dict] = []
+    for unit in auto_units:
+        result = executor.run_plan(
+            _plan_prompt(unit),
+            system_prompt=system_prompt,
+            allowed_tools=_PLAN_READ_ONLY,
+            disallowed_tools=_PLAN_BLOCKED,
+            max_turns=_PLAN_MAX_TURNS,
+            raise_on_error=False,  # surface failures (e.g. max-turns) into state, don't crash
+        )
+        # Ledger this attempt's spend on EVERY return (including the halt below), so a plan that
+        # fails partway still counts the calls it made.
+        cost_events.append(cost_event("plan", unit.id, result))
+        if result.is_error:
+            return {
+                "status": Status.HALTED,
+                "cost_events": cost_events,
+                "errors": [
+                    {"node": "plan", "message": f"plan call failed for {unit.id}: {result.text}"}
+                ],
+            }
+        plans.append(
+            {
+                "unit_id": unit.id,
+                "title": unit.title,
+                "layers": list(unit.layers),
+                "target_modules": list(unit.target_modules),
+                "test_contract": unit.test_contract,
+                "steps": result.text,
+                "cost_usd": result.cost_usd,
+                "usage": usage_breakdown(result.usage),
+            }
+        )
     return {
-        "work_units": list(prd.contract.work_units),
-        "selected_unit": unit,
-        "plan": {
-            "unit_id": unit.id,
-            "title": unit.title,
-            "target_modules": list(unit.target_modules),
-            "test_contract": unit.test_contract,
-            "steps": result.text,
-            "cost_usd": result.cost_usd,
-            "usage": usage_breakdown(result.usage),
-        },
-        "cost_events": [cost_event("plan", unit.id, result)],
+        "work_units": list(contract.work_units),
+        # Representative selection (prepare_worktree recomputes the real one from the level plan).
+        "selected_unit": auto_units[0] if auto_units else select_unit(contract),
+        "plans": plans,
+        "cost_events": cost_events,
         "status": Status.AWAITING_PLAN_APPROVAL,
     }
 
