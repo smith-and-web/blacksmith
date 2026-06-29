@@ -284,9 +284,10 @@ def test_fanout_cost_events_capture_each_unit_and_retry_spend(tmp_path):
     # Each unit's spend landed in the ledger: WU-X built once, WU-Y twice (base + retry). The
     # retry's extra spend — previously dropped on the fan-out path — is now counted.
     assert by_unit == {"WU-X": 1, "WU-Y": 2}
-    # Exactly one plan event, and nothing double-counted: 3 implement events for 3 attempts (no
+    # One plan event per auto unit (the planner plans both up front, WU-PLAN-ALL-UNITS), and
+    # nothing double-counted on the implement side: 3 implement events for 3 attempts (no
     # re-adding of the pre-level baseline threaded in for the budget check).
-    assert sum(1 for e in events if e["node"] == "plan") == 1
+    assert sum(1 for e in events if e["node"] == "plan") == 2
     assert len(implement_events) == 3
     assert all(e["cost_usd"] == 0.02 for e in implement_events)
     saver.conn.close()

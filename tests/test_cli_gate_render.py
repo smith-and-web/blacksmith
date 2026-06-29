@@ -70,6 +70,36 @@ def test_plan_gate_renders_plan_text_and_modules_not_raw_json():
     assert json.dumps(PLAN_PAYLOAD, indent=2, default=str) not in text
 
 
+def test_plan_gate_renders_every_units_plan():
+    # The multi-unit plan payload (WU-PLAN-ALL-UNITS) surfaces a plan for EVERY auto unit at the
+    # single gate — the gap that previously left units after the first unshown.
+    payload = {
+        "gate": "plan",
+        "plans": [
+            {
+                "unit_id": "WU-01", "title": "first unit", "target_modules": ["a.py"],
+                "test_contract": "a works", "steps": "1. do ALPHA",
+                "cost_usd": 0.10, "usage": {"input_tokens": 100, "output_tokens": 10},
+            },
+            {
+                "unit_id": "WU-03", "title": "third unit", "target_modules": ["c.py"],
+                "test_contract": "c works", "steps": "1. do GAMMA",
+                "cost_usd": 0.20, "usage": {"input_tokens": 200, "output_tokens": 20},
+            },
+        ],
+    }
+    renderer, out = _plain_renderer()
+    renderer.gate(payload)
+    text = out.getvalue()
+    # BOTH units' ids, steps and modules appear — not just the first.
+    assert "WU-01" in text and "WU-03" in text
+    assert "do ALPHA" in text and "do GAMMA" in text
+    assert "a.py" in text and "c.py" in text
+    # A combined total across the units, and the summary names how many are being approved.
+    assert "plan total: $0.30 across 2 units" in text
+    assert "2 work units" in text
+
+
 def test_pr_gate_renders_diffstat_and_pass_marker():
     renderer, out = _plain_renderer()
     renderer.gate(PR_PAYLOAD)

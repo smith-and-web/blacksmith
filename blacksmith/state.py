@@ -114,6 +114,10 @@ class BlacksmithState(TypedDict, total=False):
     # earlier levels' records.
     level_builds: Annotated[list[LevelBuild], operator.add]
     plan: dict[str, Any]
+    # One implementation plan per auto-gated unit (WU-PLAN-ALL-UNITS), surfaced together behind
+    # the single approve_plan gate so a multi-unit PRD's later units are no longer built with no
+    # plan and no approval. Human-gated units are absent (they get manual QA via a draft PR).
+    plans: list[dict[str, Any]]
     worktree_path: str
     # The single shared branch every unit's commits land on, so one combined PR can be
     # opened against it. Set once when the run's lone worktree is created.

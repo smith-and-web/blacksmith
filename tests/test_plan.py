@@ -60,16 +60,27 @@ def test_select_unit_none_when_all_done():
 # --- plan node ---------------------------------------------------------------
 
 
-def test_plan_node_selects_one_and_builds_plan():
+def test_plan_node_plans_all_auto_units():
     prd = parse_prd(VENDORED_PRD)
     fake = FakeExecutor(text="1. write config\n2. write tests")
     out = plan({"prd": prd}, executor=fake)
 
-    assert out["selected_unit"].id == "WU-01"  # exactly one unit selected
-    assert out["plan"]["unit_id"] == "WU-01"
-    expected_modules = list(prd.contract.work_unit_by_id("WU-01").target_modules)
-    assert out["plan"]["target_modules"] == expected_modules
-    assert out["plan"]["steps"] == "1. write config\n2. write tests"
+    auto = [u for u in prd.contract.work_units if prd.contract.gate_for(u) != "human"]
+    human = [u for u in prd.contract.work_units if prd.contract.gate_for(u) == "human"]
+    assert human  # the vendored PRD has human-gated unit(s), so the skip below is meaningful
+
+    # A plan per AUTO unit, in declaration order; human-gated units are skipped (they get
+    # manual QA via a draft PR). One plan model call per auto unit — not just the first.
+    assert [p["unit_id"] for p in out["plans"]] == [u.id for u in auto]
+    human_ids = {u.id for u in human}
+    assert all(p["unit_id"] not in human_ids for p in out["plans"])
+    assert len(fake.calls) == len(auto)
+
+    first = out["plans"][0]
+    assert first["unit_id"] == "WU-01"
+    assert first["target_modules"] == list(prd.contract.work_unit_by_id("WU-01").target_modules)
+    assert first["steps"] == "1. write config\n2. write tests"
+    assert out["selected_unit"].id == "WU-01"
     assert out["status"] == Status.AWAITING_PLAN_APPROVAL
     assert len(out["work_units"]) == 11
 
@@ -130,5 +141,5 @@ def test_plan_node_wired_into_graph(tmp_path):
     snapshot = g.get_state(cfg)
     assert snapshot.next == ("approve_plan",)  # planned, now paused at the HITL gate
     assert snapshot.values["selected_unit"].id == "WU-01"
-    assert snapshot.values["plan"]["unit_id"] == "WU-01"
+    assert snapshot.values["plans"][0]["unit_id"] == "WU-01"
     saver.conn.close()

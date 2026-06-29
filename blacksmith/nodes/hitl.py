@@ -21,11 +21,12 @@ from blacksmith.state import BlacksmithState, Status
 
 
 def approve_plan(state: BlacksmithState) -> dict:
+    # Surface a plan for EVERY auto-gated unit (WU-PLAN-ALL-UNITS), not just the first, so the
+    # human approves the whole multi-unit PRD at this one gate.
     decision = _decide(
         {
             "gate": "plan",
-            "unit": _unit_summary(state.get("selected_unit")),
-            "plan": state.get("plan"),
+            "plans": state.get("plans") or [],
         }
     )
     approvals = {**state.get("approvals", {}), "plan": decision}
