@@ -172,6 +172,26 @@ class MultiExecutor:
         return _result("done")
 
 
+class CodeThenQAExecutor:
+    """Realistic split: writes code for an auto unit but NOTHING for a manual-QA unit (a
+    'verify it on a real machine' unit has no diff to produce). Records every implement
+    prompt so a test can assert the human-gated unit's implement was skipped entirely —
+    the regression guard for the empty-diff halt that used to tear the whole run down."""
+
+    def __init__(self):
+        self.implement_prompts = []
+
+    def run_plan(self, prompt, **kwargs):
+        return _result("1. write out.txt")
+
+    def run_implement(self, prompt, **kwargs):
+        self.implement_prompts.append(prompt)
+        if "Layers: qa" in prompt:  # a real implementer produces no diff for manual QA
+            return _result("nothing to implement — this is a manual QA step")
+        Path(kwargs["cwd"], "out.txt").write_text("implemented\n")  # the auto unit's code
+        return _result("done")
+
+
 class RecordingGate:
     """Gate stand-in that records its calls — the human path must never invoke it."""
 
@@ -324,6 +344,38 @@ def test_gate_failure_still_halts_and_deletes_branch(tmp_path):
     branch = final.values["branch"]
     assert branch and _branches(repo, branch) == ""
     assert approver.gates == ["plan"]  # never reached the PR-approval gate
+    saver.conn.close()
+
+
+def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
+    """The real-world failure that tore runs down: an auto unit builds the code, then a
+    dependent manual-QA unit produces NO diff (there is nothing to implement). The run must
+    still open a draft PR for the auto unit's work and end AWAITING_QA — not halt on
+    "implement produced no file changes". The QA unit's implement is skipped entirely
+    (no executor call, no wasted spend, no risk of re-editing the committed code)."""
+    # gate_cmd="false" would FAIL if the auto gate ever ran for the QA unit — it must not.
+    # WU-CODE's own gate runs on the real run_gate, so use a passing command for it.
+    repo = _target_repo(tmp_path, gate_cmd="true")
+    gh = _recording_gh("https://github.com/owner/demo/pull/9")
+    executor = CodeThenQAExecutor()
+    graph, saver = _wire(tmp_path, repo, gh=gh, executor=executor)
+    approver = _approver()
+
+    final = drive(graph, _write_prd(tmp_path, _THREE), approver=approver, thread_id="qaonly")
+
+    # The run parked the human-gated WU-B behind a draft PR with WU-A's committed code.
+    assert final.values["status"] == Status.AWAITING_QA, final.values.get("errors")
+    creates = _pr_creates(gh)
+    assert len(creates) == 1 and "--draft" in creates[0]
+    body = _create_arg(creates[0], "--body")
+    assert "WU-A" in body and "WU-B" in body  # auto code + the QA unit being verified
+    # The human-gated unit never reached the executor: no implement prompt for a qa layer.
+    assert executor.implement_prompts  # the auto unit WAS implemented
+    assert not any("Layers: qa" in p for p in executor.implement_prompts)
+    # The branch is preserved for the draft PR.
+    branch = final.values["branch"]
+    assert branch and branch in _branches(repo, branch)
+    assert approver.gates == ["plan"]  # QA happens on the draft PR, not via an approval gate
     saver.conn.close()
 
 

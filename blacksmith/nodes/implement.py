@@ -155,6 +155,26 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
             "errors": [{"node": "implement", "message": "missing prd/selected_unit/worktree_path"}],
         }
 
+    # A human-gated unit is verified by a human on the draft PR — not by the executor and not
+    # by the automated gate (PRD §4 human-gated routing). It has nothing to implement: a
+    # manual-QA unit produces no diff, and running the model here would be wasteful and could
+    # re-edit the prior units' already-committed work. So skip the executor entirely and emit
+    # an empty implementation; ``route_after_implement`` then sends this unit to
+    # ``open_draft_pr``, which packages the prior auto units' commits already on the shared
+    # branch. This mirrors the plan node, which likewise skips human-gated units (no plan).
+    # Without this, a QA-only unit hit the empty-diff halt below and tore down the whole run.
+    if prd.contract.gate_for(unit) == "human":
+        return {
+            "implementation": {
+                "files_touched": [],
+                "diff_summary": "",
+                "blocked": [],
+                "cost_usd": 0.0,
+                "usage": {},
+            },
+            "status": Status.IMPLEMENTING,
+        }
+
     guard = make_pre_edit_guard(worktree_root=worktree_path)
     # Escalation (WU-ESCALATE-ON-FAIL): the first attempt runs the cheaper first-attempt
     # model (config.models.implement, default Sonnet). After a gate failure the run resets the
