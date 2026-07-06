@@ -32,7 +32,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
-from blacksmith.config import LimitsConfig
+from blacksmith.config import LimitsConfig, ReviewConfig
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
@@ -41,6 +41,7 @@ from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
+from blacksmith.nodes.review import review as _run_review
 from blacksmith.planner import execution_levels
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import (
@@ -94,6 +95,7 @@ def prepare_worktree(
     *,
     worktree_manager: IsolationManager | None = None,
     limits: LimitsConfig | None = None,
+    review: ReviewConfig | None = None,
 ) -> dict:
     """Create the run's ONE shared clone/branch and seed the level execution plan.
 
@@ -143,8 +145,16 @@ def prepare_worktree(
         update["limits"] = {
             "max_fix_attempts": limits.max_fix_attempts,
             "max_run_cost_usd": limits.max_run_cost_usd,
+            "max_review_revisions": limits.max_review_revisions,
         }
         update["fix_attempts"] = 0
+    # Seed the review loop's on/off switch into state ONCE (WU-REVIEW-LOOP), same pattern as
+    # ``limits`` above: only when the graph is wired with a ReviewConfig (production). A graph
+    # compiled without one leaves ``review_enabled`` unset, so route_after_test_gate's PASS
+    # branch never routes to ``review`` and every existing test's behaviour is unchanged.
+    if review is not None:
+        update["review_enabled"] = review.enabled
+        update["review_revisions"] = 0
     return update
 
 
@@ -351,6 +361,10 @@ def next_unit(state: BlacksmithState) -> dict:
         "escalated": False,
         "fix_attempts": 0,
         "last_gate_output": "",
+        # The post-gate review loop is likewise per-unit (WU-REVIEW-LOOP): the new unit has
+        # not been reviewed yet and gets its own fresh revision budget.
+        "review_clean": False,
+        "review_revisions": 0,
         "status": Status.IMPLEMENTING,
     }
 
@@ -394,6 +408,80 @@ def prepare_fix_retry(state: BlacksmithState) -> dict:
         "last_gate_output": (state.get("test_results") or {}).get("output", ""),
         "status": Status.IMPLEMENTING,
     }
+
+
+# --- post-gate review loop (WU-REVIEW-LOOP) -----------------------------------
+# Additive, bounded loop on the test gate's PASS branch (never the FAILURE branch): a
+# stronger model adversarially reviews the just-passed unit's diff (blacksmith.nodes.review,
+# WU-REVIEW-NODE). A blocking finding revises the unit (feeding the findings back into the
+# next implement prompt exactly as a fix-retry feeds back the gate output) and re-gates;
+# once revisions are exhausted or the run is over budget, the unit still proceeds to
+# next_unit/approve_pr -- carrying its unresolved findings forward -- rather than halting.
+
+
+def review_node(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
+    """Thin wrapper around ``blacksmith.nodes.review.review`` for the graph.
+
+    Surfaces THIS call's findings under a plain, last-write-wins key
+    (``review_current_findings``) alongside the review node's own ``review_findings``
+    (a reducer that keeps accumulating the full cross-unit/cross-revision history
+    unchanged). The revision/retention routing below reads ``review_current_findings``
+    so it never has to reconstruct "this call's verdict" out of that growing history.
+    """
+    result = _run_review(state, executor=executor)
+    if "review_findings" in result:
+        result = {**result, "review_current_findings": result["review_findings"]}
+    return result
+
+
+def _format_review_feedback(findings: list[dict]) -> str:
+    """Render this call's BLOCKING findings as feedback text for the next implement
+    prompt -- fed back via ``last_gate_output``, the exact same channel a fix-retry uses
+    to feed back the gate's output, so no implement-prompt change is needed."""
+    blocking = [f for f in findings if f.get("severity") == "blocking"]
+    lines = [f"- {f.get('file', '(unknown file)')}: {f.get('detail', '')}" for f in blocking]
+    return (
+        "A REVIEWER flagged blocking issue(s) in your PASSING diff. Fix the CODE (never "
+        "weaken tests/assertions to silence the finding); the unit will be re-gated and "
+        "re-reviewed after your fix:\n" + "\n".join(lines)
+    )
+
+
+def prepare_review_revision(state: BlacksmithState) -> dict:
+    """A blocking review finding, with revisions remaining and within budget: feed the
+    findings into the next implement prompt (via ``last_gate_output``, exactly as
+    ``prepare_fix_retry`` feeds back the gate output), bump ``review_revisions``, and
+    reset this unit's review verdict so the loop re-reviews after the next gate pass.
+
+    Unlike ``prepare_fix_retry``/``prepare_escalation``, this does NOT reset the shared
+    worktree: the unit already PASSED the test gate, so its passing commit is kept and the
+    next implement attempt revises it in place, committing the fix as a further commit."""
+    findings = state.get("review_current_findings") or []
+    return {
+        "review_revisions": state.get("review_revisions", 0) + 1,
+        "review_clean": False,
+        "last_gate_output": _format_review_feedback(findings),
+        "status": Status.IMPLEMENTING,
+    }
+
+
+def finalize_review(state: BlacksmithState) -> dict:
+    """Review-driven revisions are exhausted or the run is over budget: retain this
+    unit's outstanding BLOCKING findings in ``unresolved_review_findings`` and proceed --
+    never ``human_halt``. Routing to next_unit/approve_pr happens on the outgoing edge."""
+    findings = state.get("review_current_findings") or []
+    blocking = [f for f in findings if f.get("severity") == "blocking"]
+    return {"unresolved_review_findings": blocking}
+
+
+def _can_review_revise(state: BlacksmithState) -> bool:
+    """Whether a blocking review finding may still trigger a revision retry
+    (WU-REVIEW-LOOP): revisions remain under ``limits.max_review_revisions`` AND the run
+    is within its cost cap. Mirrors ``_can_fix_retry``'s shape but is a SEPARATE,
+    independent bound -- it reuses ``_within_budget`` (the shared cost-cap check) and
+    never touches the self-heal/escalation counters."""
+    max_revisions = int((state.get("limits") or {}).get("max_review_revisions", 0) or 0)
+    return state.get("review_revisions", 0) < max_revisions and _within_budget(state)
 
 
 # --- parallel fan-out (WU-PARALLEL-FANOUT) -----------------------------------
@@ -735,12 +823,24 @@ def route_after_implement(state: BlacksmithState) -> str:
     return "auto_fix"
 
 
+def _next_unit_or_approve(state: BlacksmithState) -> str:
+    """The plain post-gate advance decision (PRD §4): loop to ``next_unit`` while units
+    remain in the level plan (shared branch), else proceed to the single PR-approval gate.
+
+    Shared by a gate pass with the review loop OFF (or already clean), and by the review
+    loop's own clean/exhausted exits (WU-REVIEW-LOOP) — one place decides "what's next"."""
+    levels = state.get("execution_levels") or []
+    nxt = _next_position(levels, state.get("level_cursor", 0), state.get("unit_in_level", 0))
+    return "next_unit" if nxt is not None else "approve_pr"
+
+
 def route_after_test_gate(state: BlacksmithState) -> str:
     """Deterministic routing on the test result — a graph edge, not a model decision.
 
-    A failed gate halts. On a pass, loop to ``next_unit`` while units remain in the level
-    plan (shared branch); on the last unit of the last level, proceed to the single
-    PR-approval gate.
+    A failed gate halts. On a pass, if the additive post-gate review loop is enabled
+    (``config.review.enabled``, WU-REVIEW-LOOP) and this unit is not yet review-clean,
+    route to ``review`` instead of the plain next_unit/approve_pr decision; otherwise (the
+    loop is off, or was already clean) proceed exactly as before.
 
     A gate failure recovers in a bounded order before it halts:
     1. Self-heal (WU-GATE-SELF-HEAL): while same-model retries remain for this unit and the
@@ -749,7 +849,10 @@ def route_after_test_gate(state: BlacksmithState) -> str:
     2. Escalation (WU-ESCALATE-ON-FAIL): once the retries are spent, re-implement once with
        the stronger model (still within the cost cap).
     3. Halt: retries spent AND already escalated, or no ``pre_implement_ref`` (a test double
-       that cannot escalate), or the cost cap is reached — halt with no PR."""
+       that cannot escalate), or the cost cap is reached — halt with no PR.
+
+    This FAILURE branch (and its counters) is untouched by the review loop — the review
+    loop is a separate bounded loop on the PASS branch only."""
     results = state.get("test_results") or {}
     if not results.get("passed"):
         if _can_fix_retry(state):
@@ -757,9 +860,25 @@ def route_after_test_gate(state: BlacksmithState) -> str:
         if _will_escalate(state) and _within_budget(state):
             return "escalate"
         return "human_halt"
-    levels = state.get("execution_levels") or []
-    nxt = _next_position(levels, state.get("level_cursor", 0), state.get("unit_in_level", 0))
-    return "next_unit" if nxt is not None else "approve_pr"
+    if state.get("review_enabled") and not state.get("review_clean"):
+        return "review"
+    return _next_unit_or_approve(state)
+
+
+def route_after_review(state: BlacksmithState) -> str:
+    """Route after the additive post-gate review call (WU-REVIEW-LOOP).
+
+    A clean verdict proceeds exactly like a gate pass with no review (the plain
+    next_unit/approve_pr decision). A blocking finding revises the unit -- bounded by
+    ``limits.max_review_revisions`` and the cost cap -- before re-gating and re-reviewing.
+    Once revisions are exhausted or the run is over budget, the unit still proceeds
+    (carrying its unresolved findings forward via ``finalize_review``) rather than halting
+    -- the review loop never routes to ``human_halt``."""
+    if state.get("review_clean"):
+        return _next_unit_or_approve(state)
+    if _can_review_revise(state):
+        return "prepare_review_revision"
+    return "finalize_review"
 
 
 def _is_fanout_level(state: BlacksmithState, level: int) -> bool:
@@ -870,12 +989,18 @@ def build_graph(
     gate: GateFn | None = None,
     limits: LimitsConfig | None = None,
     fix: FixFn | None = None,
+    review: ReviewConfig | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
 
     ``limits`` enables the gate self-heal loop (WU-GATE-SELF-HEAL): when provided it is
     seeded into state by ``prepare_worktree`` so routing can bound the retries. Left unset
-    (every graph wired without it) the loop is OFF and routing behaves exactly as before."""
+    (every graph wired without it) the loop is OFF and routing behaves exactly as before.
+
+    ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP) the same way:
+    when provided, ``config.review.enabled`` is seeded into state so ``route_after_test_gate``
+    can route a PASS to ``review`` instead of straight to next_unit/approve_pr. Left unset
+    (every graph wired without it) the review node is never entered."""
     graph = StateGraph(BlacksmithState)
 
     graph.add_node("ingest_prd", ingest_prd)
@@ -883,7 +1008,9 @@ def build_graph(
     graph.add_node("approve_plan", approve_plan)
     graph.add_node(
         "prepare_worktree",
-        _node_with(prepare_worktree, worktree_manager=worktree_manager, limits=limits),
+        _node_with(
+            prepare_worktree, worktree_manager=worktree_manager, limits=limits, review=review
+        ),
     )
     graph.add_node("implement", _node_with(implement, executor=executor))
     graph.add_node("auto_fix", _node_with(auto_fix, fix=fix))
@@ -902,6 +1029,9 @@ def build_graph(
     graph.add_node("next_unit", next_unit)
     graph.add_node("escalate", prepare_escalation)
     graph.add_node("fix_retry", prepare_fix_retry)
+    graph.add_node("review", _node_with(review_node, executor=executor))
+    graph.add_node("prepare_review_revision", prepare_review_revision)
+    graph.add_node("finalize_review", finalize_review)
     graph.add_node("approve_pr", approve_pr)
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner))
     graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner))
@@ -956,6 +1086,7 @@ def build_graph(
             "next_unit": "next_unit",
             "fix_retry": "fix_retry",
             "escalate": "escalate",
+            "review": "review",
         },
     )
     # Self-heal: discard the failed attempt, reset the worktree, and re-implement the SAME
@@ -964,6 +1095,25 @@ def build_graph(
     # Escalation: once the retries are spent, re-implement the SAME unit once with the
     # stronger model, then re-gate (WU-ESCALATE-ON-FAIL).
     graph.add_edge("escalate", "implement")
+    # Post-gate review loop (WU-REVIEW-LOOP): clean proceeds like a gate pass with review off;
+    # a blocking finding revises (bounded) and re-implements the SAME unit in place, then
+    # re-gates and re-reviews; exhausted/over-budget still proceeds, never halts.
+    graph.add_conditional_edges(
+        "review",
+        route_after_review,
+        {
+            "next_unit": "next_unit",
+            "approve_pr": "approve_pr",
+            "prepare_review_revision": "prepare_review_revision",
+            "finalize_review": "finalize_review",
+        },
+    )
+    graph.add_edge("prepare_review_revision", "implement")
+    graph.add_conditional_edges(
+        "finalize_review",
+        _next_unit_or_approve,
+        {"next_unit": "next_unit", "approve_pr": "approve_pr"},
+    )
     # Loop: a size-1 next level builds on the same shared worktree/branch (no re-plan, no
     # new worktree), so its implement step sees the prior units' committed changes. A
     # multi-unit next level (CloneManager) instead fans out into per-unit build clones.
@@ -1039,6 +1189,7 @@ def compile_graph(
     fix: FixFn | None = None,
     store: BaseStore | None = None,
     limits: LimitsConfig | None = None,
+    review: ReviewConfig | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -1055,6 +1206,9 @@ def compile_graph(
 
     ``limits`` enables the gate self-heal loop (WU-GATE-SELF-HEAL); ``None`` (the default,
     every test that does not opt in) leaves the loop off and routing unchanged.
+
+    ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP); ``None`` (the
+    default) leaves the review node unreachable and routing unchanged.
     """
     return build_graph(
         pr_runner=pr_runner,
@@ -1063,6 +1217,7 @@ def compile_graph(
         gate=gate,
         limits=limits,
         fix=fix,
+        review=review,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),

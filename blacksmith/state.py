@@ -187,3 +187,24 @@ class BlacksmithState(TypedDict, total=False):
     # ``cost_events``/``errors``.
     review_clean: bool
     review_findings: Annotated[list[ReviewFinding], operator.add]
+    # Review loop wiring (WU-REVIEW-LOOP). ``review_enabled`` is seeded once by
+    # prepare_worktree from ``config.review.enabled`` ONLY when the graph is wired with a
+    # ReviewConfig (production); absent on a graph compiled without one, which keeps the
+    # review step OFF and every existing test's behaviour unchanged (mirrors ``limits``/
+    # the self-heal loop). ``review_revisions`` counts review-driven revision attempts
+    # already spent on the CURRENT unit, bounded by ``limits.max_review_revisions`` and
+    # reset to 0 by the level engine when it advances to the next unit, mirroring
+    # ``fix_attempts`` -- but this is a SEPARATE, independent bound from the self-heal
+    # loop and never touches its counters.
+    review_enabled: bool
+    review_revisions: int
+    # This unit's most recent review call's raw findings (WU-REVIEW-LOOP), last-write-wins
+    # -- unlike ``review_findings``, which accumulates every call across the whole run --
+    # so the revision-feedback and unresolved-findings-retention logic can read exactly the
+    # CURRENT verdict without wading through that cross-unit/cross-revision history.
+    review_current_findings: list[ReviewFinding]
+    # Blocking findings the review loop gave up on -- revisions exhausted or over budget
+    # (WU-REVIEW-LOOP) -- for a unit that still proceeds to next_unit/approve_pr rather
+    # than halting. A reducer (like ``unit_results``) so a multi-unit run's carried-forward
+    # findings from more than one unit all surface rather than being clobbered.
+    unresolved_review_findings: Annotated[list[ReviewFinding], operator.add]
