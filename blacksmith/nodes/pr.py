@@ -181,6 +181,22 @@ def _change_lines(
     return lines
 
 
+def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
+    """The "Reviewer notes" section (WU-REVIEW-RENDER): the same unresolved-findings /
+    resolved-via-revision summary shown at the approve_pr render, sourced straight from
+    state so it needs no plumbing through the gate payload. A clean review (no findings
+    the post-gate review loop gave up on) collapses to a single "Reviewer: clean" line."""
+    unresolved = state.get("unresolved_review_findings") or []
+    lines = ["", "**Reviewer notes:**"]
+    if not unresolved:
+        lines.append("Reviewer: clean")
+        return lines
+    lines.append(f"- resolved via revision: {state.get('review_revisions', 0)}")
+    for finding in unresolved:
+        lines.append(f"- {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}")
+    return lines
+
+
 def _pr_body(state: BlacksmithState, units: Sequence[WorkUnit] | None = None) -> str:
     units = list(_built_units(state) if units is None else units)
     lines: list[str] = []
@@ -210,6 +226,7 @@ def _pr_body(state: BlacksmithState, units: Sequence[WorkUnit] | None = None) ->
                         indent="  ",
                     )
                 )
+    lines.extend(_reviewer_notes_lines(state))
     # If this run originated from a GitHub issue, link it so merging the PR closes it.
     # blacksmith only *links* the issue here — it never auto-merges or auto-closes (§5).
     issue_number = state.get("issue_number")

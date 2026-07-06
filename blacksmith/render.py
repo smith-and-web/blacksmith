@@ -183,6 +183,17 @@ class Renderer:
             f"output {usage.get('output_tokens', 0)}"
         )
 
+    @staticmethod
+    def _review_summary(payload: dict) -> tuple[list, int]:
+        """The PR gate's reviewer summary (WU-REVIEW-RENDER): any outstanding blocking
+        findings the post-gate review loop gave up on, plus how many revision rounds it
+        spent getting there. Read straight off the gate payload's ``unresolved_review_findings``
+        / ``review_revisions`` keys (mirroring the state fields of the same name); absent
+        on a payload with no review data, which renders as a clean review."""
+        unresolved = payload.get("unresolved_review_findings") or []
+        resolved = payload.get("review_revisions") or 0
+        return unresolved, resolved
+
     def _plain_gate(self, payload: dict) -> None:
         out = self._out
         print(f"\n{self._gate_summary(payload)}", file=out)
@@ -214,6 +225,18 @@ class Renderer:
             print("\nFiles touched:", file=out)
             for path in impl.get("files_touched") or []:
                 print(f"  - {path}", file=out)
+            unresolved, resolved = self._review_summary(payload)
+            if not unresolved:
+                print("\nreview: clean", file=out)
+            else:
+                print("\nUnresolved review findings:", file=out)
+                for finding in unresolved:
+                    print(
+                        f"  - {finding.get('file', '(unknown file)')}: "
+                        f"{finding.get('detail', '')}",
+                        file=out,
+                    )
+                print(f"resolved via revision: {resolved}", file=out)
 
     def _rendered_gate(self, payload: dict) -> None:
         console = self._console
@@ -262,6 +285,22 @@ class Renderer:
             for path in impl.get("files_touched") or []:
                 files.append(f"• {path}\n")
             console.print(Panel(files or Text("(none)"), title="files touched", expand=False))
+            unresolved, resolved = self._review_summary(payload)
+            if not unresolved:
+                console.print(Text("review: clean", style="dim"))
+            else:
+                findings = Text()
+                for finding in unresolved:
+                    findings.append(
+                        f"• {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}\n"
+                    )
+                console.print(
+                    Panel(
+                        findings, title="unresolved review findings",
+                        border_style="yellow", expand=False,
+                    )
+                )
+                console.print(Text(f"resolved via revision: {resolved}", style="dim"))
 
     # -- per-node progress ----------------------------------------------------
 
