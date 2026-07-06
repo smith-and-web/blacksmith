@@ -188,8 +188,14 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     # failed attempt is discarded without touching prior units' committed work.
     pre_implement_ref = _git(worktree_path, "rev-parse", "HEAD").strip()
     run_attempt = executor.run_implement_escalate if escalating else executor.run_implement
+    # The turn budget is configurable ([limits].max_implement_turns) so a large unit can be
+    # given more room; falls back to the default when the graph is wired without limits.
+    max_turns = int((state.get("limits") or {}).get("max_implement_turns") or _IMPLEMENT_MAX_TURNS)
+    # A continuation (resume_partial_implement) keeps the prior capped attempt's partial work in
+    # the worktree and asks the agent to FINISH it, rather than re-implementing from scratch.
+    resuming = bool(state.get("resume_partial_implement"))
     result = run_attempt(
-        _implement_prompt(unit, prior_failure=state.get("last_gate_output")),
+        _implement_prompt(unit, prior_failure=state.get("last_gate_output"), resuming=resuming),
         system_prompt=_system_prompt(prd.contract, _read_project_context(worktree_path)),
         cwd=worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
@@ -199,7 +205,7 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
         disallowed_tools=_DISALLOWED_TOOLS,
         permission_mode="default",
         can_use_tool=guard,
-        max_turns=_IMPLEMENT_MAX_TURNS,
+        max_turns=max_turns,
         raise_on_error=False,  # surface failures into state, don't crash the graph
     )
     # Ledger event for THIS attempt (WU-COST-EVENTS), built once and emitted on EVERY return
@@ -207,10 +213,22 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     # this attempt's spend and the unit still appears in the per-unit metrics.
     event = cost_event("implement", unit.id, result)
     if result.is_error:
+        # A turn-cap is a RECOVERABLE, budget-shaped failure: report it legibly (never the
+        # agent's reasoning dump) and tag ``implement_error_kind`` so routing can continue the
+        # partial work instead of discarding the run. Any other error keeps the raw text.
+        kind = result.error_kind or "other"
+        if kind == "max_turns":
+            message = (
+                f"implement exceeded its turn budget ({max_turns} turns) on {unit.id} "
+                f"without finishing (session {result.session_id or 'unknown'})"
+            )
+        else:
+            message = f"implement call failed: {result.text}"
         return {
             "status": Status.HALTED,
             "cost_events": [event],
-            "errors": [{"node": "implement", "message": f"implement call failed: {result.text}"}],
+            "implement_error_kind": kind,
+            "errors": [{"node": "implement", "message": message}],
         }
 
     try:
@@ -303,7 +321,9 @@ def _git(worktree_path: str, *args: str) -> str:
     return result.stdout
 
 
-def _implement_prompt(unit: WorkUnit, *, prior_failure: str | None = None) -> str:
+def _implement_prompt(
+    unit: WorkUnit, *, prior_failure: str | None = None, resuming: bool = False
+) -> str:
     prompt = (
         "Implement this work unit fully inside the current working directory by creating or "
         "editing the target modules. Make the minimal changes needed to satisfy the test "
@@ -324,6 +344,17 @@ def _implement_prompt(unit: WorkUnit, *, prior_failure: str | None = None) -> st
         f"Target modules: {', '.join(unit.target_modules)}\n"
         f"Test contract (must be satisfied): {unit.test_contract}"
     )
+    if resuming:
+        # Continuation (WU turn-cap recovery): a prior attempt at THIS unit ran out of turns
+        # with real partial work already saved in the working directory. Continue it — do not
+        # start over — and spend the fresh budget finishing the remaining work.
+        prompt += (
+            "\n\nCONTINUATION: your PREVIOUS attempt at this unit ran out of turns before it "
+            "finished. Your partial work is ALREADY SAVED in the working directory. First read "
+            "the target modules to see what you have already done, then COMPLETE the remaining "
+            "work — do NOT restart from scratch or rewrite what is already correct. Be efficient: "
+            "you have a fresh turn budget but the unit must be finished within it."
+        )
     if prior_failure and prior_failure.strip():
         # Self-heal retry (WU-GATE-SELF-HEAL): a prior attempt at THIS unit failed the gate.
         # Feed the gate's output back so the retry fixes the real error instead of re-running

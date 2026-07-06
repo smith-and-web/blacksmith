@@ -178,11 +178,23 @@ class LimitsConfig(_Strict):
       and never alters the gate's FAILURE-branch counters or semantics. ``0`` disables
       review-driven revision (review may still run and report, but never triggers a
       revision retry).
+    * ``max_implement_turns`` — the per-attempt turn budget handed to the implementer.
+      A larger unit needs more turns; too small a budget makes implement hit the cap and
+      fail before finishing. This is the ceiling each attempt runs under (sequential AND
+      fan-out).
+    * ``max_implement_continuations`` — how many times a turn-capped implement attempt may
+      CONTINUE (keeping its partial work, fresh turn budget) before the run halts. A
+      turn-cap is a budget-shaped failure, not a broken one, so — unlike a gate failure —
+      the partial work is kept and finished rather than discarded. ``0`` disables the loop
+      (a turn cap halts immediately, the prior behaviour). Sequential path only, mirroring
+      escalation; a fan-out worker still records the cap and lets the join halt the level.
     """
 
     max_fix_attempts: int = Field(default=1, ge=0)
     max_run_cost_usd: float | None = Field(default=None, gt=0)
     max_review_revisions: int = Field(default=1, ge=0)
+    max_implement_turns: int = Field(default=40, ge=1)
+    max_implement_continuations: int = Field(default=1, ge=0)
 
 
 class ReviewConfig(_Strict):

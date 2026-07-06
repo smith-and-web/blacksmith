@@ -50,6 +50,17 @@ class ExecutorResult:
     cost_usd: float | None
     usage: dict[str, Any] | None
     session_id: str | None
+    # Why the call failed, when ``is_error`` (else None): ``"max_turns"`` when the agent hit
+    # its turn budget mid-task (a RECOVERABLE, budget-shaped failure — the partial work is
+    # real and worth continuing), ``"other"`` for any genuine error. The Agent SDK surfaces
+    # the turn cap either as a ResultMessage with ``subtype == "error_max_turns"`` or, on some
+    # paths, by raising "Reached maximum number of turns" during iteration — both map here.
+    error_kind: str | None = None
+
+    @property
+    def hit_turn_limit(self) -> bool:
+        """True when this call failed by exhausting its turn budget (recoverable)."""
+        return self.error_kind == "max_turns"
 
     @property
     def cache_read_tokens(self) -> int:
@@ -167,6 +178,7 @@ class Executor:
             # and raise_on_error=True callers still get a typed ExecutorError (not a bare
             # Exception). BaseException (KeyboardInterrupt, CancelledError) is deliberately not
             # caught, so Ctrl-C and task cancellation still propagate.
+            kind = "max_turns" if "maximum number of turns" in str(exc).lower() else "other"
             return ExecutorResult(
                 text=str(exc),
                 model=default_model,
@@ -175,6 +187,7 @@ class Executor:
                 cost_usd=None,
                 usage=None,
                 session_id=captured["session_id"],
+                error_kind=kind,
             )
 
     async def _aggregate(
@@ -207,14 +220,23 @@ class Executor:
                     if captured is not None:
                         captured["session_id"] = session_id
             text = result.result if result and result.result else "".join(texts)
+            is_error = bool(result.is_error) if result else False
+            # The SDK's ResultMessage carries WHY it ended in ``subtype`` (e.g. "success",
+            # "error_max_turns", "error_during_execution"). Classify the turn cap distinctly so
+            # a caller can recover from it rather than treating it like any other error.
+            subtype = getattr(result, "subtype", None) if result else None
+            error_kind = None
+            if is_error:
+                error_kind = "max_turns" if subtype == "error_max_turns" else "other"
             return ExecutorResult(
                 text=text or "",
                 model=model,
-                is_error=bool(result.is_error) if result else False,
+                is_error=is_error,
                 num_turns=result.num_turns if result else 0,
                 cost_usd=result.total_cost_usd if result else None,
                 usage=result.usage if result else None,
                 session_id=result.session_id if result else None,
+                error_kind=error_kind,
             )
         finally:
             if capture:
