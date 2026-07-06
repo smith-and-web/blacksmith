@@ -49,6 +49,17 @@ class ErrorRecord(TypedDict):
     message: str
 
 
+class ReviewFinding(TypedDict, total=False):
+    """One finding from the review node (WU-REVIEW-NODE), parsed from the reviewer
+    model's fenced JSON verdict. ``severity`` is ``"blocking"`` (a real correctness/
+    regression bug — flips ``review_clean`` to False) or ``"advisory"`` (surfaced but
+    non-gating; style/taste concerns are meant to stay out of both)."""
+
+    severity: str
+    file: str
+    detail: str
+
+
 class LevelBuild(TypedDict, total=False):
     """One unit's fan-out build outcome, produced by a ``build_unit`` worker and appended
     to ``level_builds`` (a reducer key — the only thing a parallel worker writes, so
@@ -167,3 +178,12 @@ class BlacksmithState(TypedDict, total=False):
     # escalation attempt's) spend instead of only plan + the final unit's
     # last-write-wins ``implementation`` slice.
     cost_events: Annotated[list[dict], operator.add]
+    # Additive post-gate review loop (WU-REVIEW-NODE). Set by the ``review`` node, which
+    # runs a stronger model over the CURRENT unit's diff after the gate has already
+    # passed. ``review_clean`` is last-write-wins (only the current unit's latest
+    # verdict matters for routing a future revision loop); ``review_findings`` is a
+    # reducer so every review call's findings (across units, and across any future
+    # revision retries) accumulate rather than being clobbered, mirroring
+    # ``cost_events``/``errors``.
+    review_clean: bool
+    review_findings: Annotated[list[ReviewFinding], operator.add]
