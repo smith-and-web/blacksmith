@@ -1,0 +1,202 @@
+"""Tests for the review node (WU-REVIEW-NODE).
+
+A stronger model adversarially reviews the diff of a unit that ALREADY PASSED the test
+gate, using read-only tools only. This unit adds only the node + state keys — no graph
+wiring — so these tests call ``review()`` directly with a FAKE executor.
+"""
+
+import operator
+from pathlib import Path
+from typing import Annotated, get_type_hints
+
+from blacksmith.contract import parse_prd
+from blacksmith.executor import ExecutorResult
+from blacksmith.nodes.review import review
+from blacksmith.state import BlacksmithState, ReviewFinding
+
+VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
+
+CLEAN_VERDICT = '```json\n{"verdict": "clean", "findings": []}\n```'
+NEEDS_CHANGES_VERDICT = (
+    '```json\n{"verdict": "needs_changes", "findings": '
+    '[{"severity": "blocking", "file": "blacksmith/foo.py", '
+    '"detail": "off-by-one in the loop bound"}]}\n```'
+)
+ADVISORY_ONLY_VERDICT = (
+    '```json\n{"verdict": "needs_changes", "findings": '
+    '[{"severity": "advisory", "file": "blacksmith/foo.py", "detail": "minor nit"}]}\n```'
+)
+
+
+def _result(text, *, is_error=False, model="claude-opus-4-8", cost=0.02, num_turns=2):
+    return ExecutorResult(
+        text=text,
+        model=model,
+        is_error=is_error,
+        num_turns=num_turns,
+        cost_usd=cost,
+        usage={
+            "input_tokens": 10, "output_tokens": 5,
+            "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
+        },
+        session_id="s1",
+    )
+
+
+class FakeExecutor:
+    def __init__(self, result):
+        self._result = result
+        self.calls: list[dict] = []
+
+    def run_review(self, prompt, **kwargs):
+        self.calls.append({"prompt": prompt, **kwargs})
+        return self._result
+
+
+def _state(**overrides):
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    state = {
+        "prd": prd,
+        "selected_unit": unit,
+        "worktree_path": "/tmp/does-not-matter",
+        "implementation": {
+            "files_touched": ["blacksmith/foo.py"],
+            "diff_summary": " 1 file changed, 2 insertions(+)",
+        },
+    }
+    state.update(overrides)
+    return state
+
+
+# --- (a) clean verdict --------------------------------------------------------
+
+
+def test_review_node_clean_verdict_is_clean():
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is True
+    assert out["review_findings"] == []
+
+
+# --- (b) needs_changes with a blocking finding --------------------------------
+
+
+def test_review_node_needs_changes_with_blocking_finding():
+    fake = FakeExecutor(_result(NEEDS_CHANGES_VERDICT))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is False
+    assert len(out["review_findings"]) == 1
+    finding = out["review_findings"][0]
+    assert finding["severity"] == "blocking"
+    assert finding["file"] == "blacksmith/foo.py"
+    assert "off-by-one" in finding["detail"]
+
+
+def test_review_node_advisory_only_finding_is_still_clean():
+    # Only BLOCKING findings gate; an advisory-only "needs_changes" verdict is surfaced
+    # but never flips review_clean False (style/taste is the linter's job, not review's).
+    fake = FakeExecutor(_result(ADVISORY_ONLY_VERDICT))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is True
+    assert out["review_findings"][0]["severity"] == "advisory"
+
+
+# --- (c) unparseable / empty verdicts fail open -------------------------------
+
+
+def test_review_node_unparseable_verdict_is_treated_as_clean():
+    fake = FakeExecutor(_result("I looked at it, seems fine, no fenced block here."))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is True
+    assert out["review_findings"] == []
+
+
+def test_review_node_empty_verdict_is_treated_as_clean():
+    fake = FakeExecutor(_result(""))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is True
+    assert out["review_findings"] == []
+
+
+def test_review_node_malformed_json_is_treated_as_clean():
+    fake = FakeExecutor(_result('```json\n{"verdict": "needs_changes", "findings": [\n```'))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is True
+    assert out["review_findings"] == []
+
+
+def test_review_node_error_result_treated_as_clean():
+    # The model call itself failed (e.g. max-turns) -- fail-open, never wedge a green unit.
+    fake = FakeExecutor(_result("Reached maximum number of turns", is_error=True, cost=0.5))
+    out = review(_state(), executor=fake)
+    assert out["review_clean"] is True
+    assert out["review_findings"] == []
+    # ...but the attempt's spend is still ledgered even though it fails open.
+    assert out["cost_events"][0]["cost_usd"] == 0.5
+
+
+# --- (d) cost_event recorded ---------------------------------------------------
+
+
+def test_review_node_records_one_cost_event():
+    fake = FakeExecutor(_result(CLEAN_VERDICT, cost=0.03, num_turns=4))
+    out = review(_state(), executor=fake)
+    events = out["cost_events"]
+    assert len(events) == 1
+    assert events[0]["node"] == "review"
+    assert events[0]["unit_id"] == "WU-01"
+    assert events[0]["cost_usd"] == 0.03
+    assert events[0]["num_turns"] == 4
+
+
+# --- tool surface --------------------------------------------------------------
+
+
+def test_review_node_uses_read_only_tools_only():
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=fake)
+    call = fake.calls[0]
+    assert set(call["allowed_tools"]) == {"Read", "Glob", "Grep"}
+    for tool in ("Write", "Edit", "Bash"):
+        assert tool in call["disallowed_tools"]
+
+
+def test_review_prompt_includes_diff_and_test_contract():
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=fake)
+    prompt = fake.calls[0]["prompt"]
+    assert "blacksmith/foo.py" in prompt
+    unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+    assert unit.test_contract in prompt
+
+
+# --- pass-through / guard behaviour --------------------------------------------
+
+
+def test_review_node_noop_without_executor():
+    out = review(_state())
+    assert out == {}
+
+
+def test_review_node_missing_selected_unit_records_error():
+    state = _state()
+    del state["selected_unit"]
+    out = review(state, executor=FakeExecutor(_result(CLEAN_VERDICT)))
+    assert out["errors"][0]["node"] == "review"
+
+
+def test_review_node_missing_prd_records_error():
+    state = _state()
+    del state["prd"]
+    out = review(state, executor=FakeExecutor(_result(CLEAN_VERDICT)))
+    assert out["errors"][0]["node"] == "review"
+
+
+# --- state shape -----------------------------------------------------------------
+
+
+def test_state_has_review_clean_and_appendonly_review_findings_field():
+    hints = get_type_hints(BlacksmithState, include_extras=True)
+    assert hints["review_clean"] is bool
+    assert hints["review_findings"] == Annotated[list[ReviewFinding], operator.add]

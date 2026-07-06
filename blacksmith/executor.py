@@ -130,6 +130,14 @@ class Executor:
         """
         return self.run(prompt, model=self._config.models.implement_escalate, **kwargs)
 
+    def run_review(self, prompt: str, **kwargs: Any) -> ExecutorResult:
+        """Run with the dedicated post-gate review model tier (WU-REVIEW-CONFIG/NODE).
+
+        Uses ``config.models.review`` — a separate tier from plan/implement/triage, still
+        routed through the same dedicated key (PRD §8).
+        """
+        return self.run(prompt, model=self._config.models.review, **kwargs)
+
     async def _collect(self, prompt: str, options: ClaudeAgentOptions) -> ExecutorResult:
         default_model = options.model or self._config.models.implement
         # The session_id is surfaced mid-stream (on AssistantMessage/ResultMessage). Capture
