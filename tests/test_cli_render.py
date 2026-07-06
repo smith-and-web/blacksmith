@@ -176,16 +176,18 @@ def test_progress_plain_emits_blacksmith_node_lines_with_zero_escapes():
     assert "blacksmith: plan" in text
 
 
-def test_progress_rendered_shows_phase_indicator_with_elapsed():
+def test_progress_rendered_marks_node_start_and_reports_prev_duration():
     err = _TTYStringIO()
     ticks = iter([0.0, 1.5])
     renderer = Renderer(out_stream=io.StringIO(), err_stream=err, clock=lambda: next(ticks))
     emit = _progress_emitter(quiet=False, renderer=renderer)
-    emit("implement")
+    emit("implement")  # announces implement the moment it STARTS (t=0.0)
+    emit("test_gate")  # closes implement with its measured duration, starts test_gate
     text = err.getvalue()
     assert "\x1b" in text  # styled, live indicator
-    assert "implement" in text
-    assert "1.5s" in text  # elapsed shown
+    assert "implement" in text  # start line shown when the node began
+    assert "test_gate" in text  # next node announced on start
+    assert "1.5s" in text  # implement's duration, printed when test_gate started
 
 
 def test_quiet_emits_no_progress():
