@@ -38,10 +38,12 @@ max_fix_attempts = 1
 #   finishing. Bump it for turn-heavy PRDs (or split the unit smaller).
 # max_implement_turns = 40
 # max_implement_continuations: how many times a turn-capped implement attempt may CONTINUE —
-#   keeping its partial work, fresh budget — before halting (default 1). A turn cap is a
+#   keeping its partial work, fresh budget — before halting (code default 1). A turn cap is a
 #   budget-shaped failure, not a broken one, so the partial work is finished rather than
-#   discarded. 0 disables it (a turn cap halts immediately). Sequential path only.
-# max_implement_continuations = 1
+#   discarded. 0 disables it (a turn cap halts immediately). Sequential path only. Set to 2
+#   here: turn-heavy units (e.g. a new module + config + cli wiring + tests) can need more
+#   than one continuation to finish.
+max_implement_continuations = 2
 
 [checkpointer]
 # SQLite checkpointer DB (PRD §12 decision 1). Relative to blacksmith's CWD.
