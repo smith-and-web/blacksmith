@@ -161,6 +161,21 @@ class BlacksmithState(TypedDict, total=False):
     # retry (and the escalation) can actually FIX the error instead of re-running blind. Set
     # by the fix-retry/escalation prep, cleared when the level engine advances to a new unit.
     last_gate_output: str
+    # Recoverable implement-continuation loop. When an implement attempt hits its turn budget
+    # (``error_kind == "max_turns"``) it HALTs, but unlike a gate failure the partial work is
+    # kept and the attempt is continued rather than discarded.
+    #   ``implement_error_kind`` — why the last implement HALTED ("max_turns" | "other"), read
+    #     by routing to decide whether a continuation is possible; cleared by the continuation
+    #     prep so a fresh cap is classified anew.
+    #   ``implement_continuations`` — continuations already spent on the CURRENT unit, bounded
+    #     by ``limits.max_implement_continuations``; reset to 0 by the level engine per unit
+    #     (mirrors ``fix_attempts``).
+    #   ``resume_partial_implement`` — a TRANSIENT flag set only on the continue_implement ->
+    #     implement edge: tells implement to KEEP the partial worktree and finish it (rather
+    #     than reset + restart). Every other edge into implement clears it, so it never leaks.
+    implement_error_kind: str
+    implement_continuations: int
+    resume_partial_implement: bool
     test_results: TestResults
     pr_url: str | None
     approvals: Approvals

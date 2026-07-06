@@ -32,6 +32,16 @@ max_fix_attempts = 1
 #   out = no cap. A hard whole-run cap can strand an already-committed multi-unit run, so
 #   pick a value with that in mind (a single-PRD run today costs ~$5-7.50).
 # max_run_cost_usd = 12.0
+#
+# max_implement_turns: the per-attempt turn budget for the implementer (default 40). A large
+#   unit needs more turns; too small a budget makes implement hit the cap and fail before
+#   finishing. Bump it for turn-heavy PRDs (or split the unit smaller).
+# max_implement_turns = 40
+# max_implement_continuations: how many times a turn-capped implement attempt may CONTINUE —
+#   keeping its partial work, fresh budget — before halting (default 1). A turn cap is a
+#   budget-shaped failure, not a broken one, so the partial work is finished rather than
+#   discarded. 0 disables it (a turn cap halts immediately). Sequential path only.
+# max_implement_continuations = 1
 
 [checkpointer]
 # SQLite checkpointer DB (PRD §12 decision 1). Relative to blacksmith's CWD.

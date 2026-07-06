@@ -146,8 +146,11 @@ def prepare_worktree(
             "max_fix_attempts": limits.max_fix_attempts,
             "max_run_cost_usd": limits.max_run_cost_usd,
             "max_review_revisions": limits.max_review_revisions,
+            "max_implement_turns": limits.max_implement_turns,
+            "max_implement_continuations": limits.max_implement_continuations,
         }
         update["fix_attempts"] = 0
+        update["implement_continuations"] = 0
     # Seed the review loop's on/off switch into state ONCE (WU-REVIEW-LOOP), same pattern as
     # ``limits`` above: only when the graph is wired with a ReviewConfig (production). A graph
     # compiled without one leaves ``review_enabled`` unset, so route_after_test_gate's PASS
@@ -308,6 +311,20 @@ def _can_fix_retry(state: BlacksmithState) -> bool:
     return _retry_eligible(state) and _within_budget(state)
 
 
+def _can_continue_implement(state: BlacksmithState) -> bool:
+    """Whether an implement HALT routes to a continuation rather than terminally halting.
+
+    Only a turn-cap halt (``implement_error_kind == "max_turns"``) is recoverable this way —
+    a genuine error still halts. Bounded by ``limits.max_implement_continuations`` and the
+    shared cost cap. This is a SEPARATE bound from the gate self-heal counters (a turn cap is
+    a budget-shaped failure on the implement step, not a gate failure), so it never touches
+    ``fix_attempts``/``escalated``."""
+    if state.get("implement_error_kind") != "max_turns":
+        return False
+    max_cont = int((state.get("limits") or {}).get("max_implement_continuations", 0) or 0)
+    return state.get("implement_continuations", 0) < max_cont and _within_budget(state)
+
+
 def _will_recover(state: BlacksmithState) -> bool:
     """A gate failure recovers (fix-retry or escalation) rather than terminally halting.
     The single source of truth for both the lesson-recording guard and what halting means."""
@@ -365,6 +382,10 @@ def next_unit(state: BlacksmithState) -> dict:
         # not been reviewed yet and gets its own fresh revision budget.
         "review_clean": False,
         "review_revisions": 0,
+        # The implement-continuation loop is per-unit too: the new unit gets its own fresh
+        # continuation budget and starts NOT resuming a partial attempt.
+        "implement_continuations": 0,
+        "resume_partial_implement": False,
         "status": Status.IMPLEMENTING,
     }
 
@@ -384,7 +405,9 @@ def prepare_escalation(state: BlacksmithState) -> dict:
     if worktree_path and ref:
         _git_run(worktree_path, "reset", "--hard", ref)
         _git_run(worktree_path, "clean", "-fd")
-    return {"escalated": True, "status": Status.IMPLEMENTING}
+    # This resets the worktree, so it is NOT a continuation of a partial attempt — clear the
+    # transient resume flag so the escalated re-implement starts clean.
+    return {"escalated": True, "resume_partial_implement": False, "status": Status.IMPLEMENTING}
 
 
 def prepare_fix_retry(state: BlacksmithState) -> dict:
@@ -406,6 +429,27 @@ def prepare_fix_retry(state: BlacksmithState) -> dict:
     return {
         "fix_attempts": state.get("fix_attempts", 0) + 1,
         "last_gate_output": (state.get("test_results") or {}).get("output", ""),
+        # Worktree was reset — a fresh re-implement, not a partial continuation.
+        "resume_partial_implement": False,
+        "status": Status.IMPLEMENTING,
+    }
+
+
+def prepare_implement_continuation(state: BlacksmithState) -> dict:
+    """An implement attempt hit its turn budget with continuations left and within budget:
+    CONTINUE it (recoverable turn-cap recovery), rather than discarding the run.
+
+    Unlike ``prepare_fix_retry``/``prepare_escalation``, this deliberately does NOT reset the
+    worktree: the capped attempt's partial work is real and worth keeping, so it is left in
+    place and ``resume_partial_implement`` tells the next implement to FINISH it (with a fresh
+    turn budget) instead of restarting. Bumps ``implement_continuations`` so the loop is
+    bounded, and clears ``implement_error_kind`` so the next attempt's outcome is classified
+    afresh. Same model as the capped attempt — a turn cap is a budget problem, not a
+    capability one, so it stays orthogonal to the gate-failure escalation."""
+    return {
+        "implement_continuations": state.get("implement_continuations", 0) + 1,
+        "resume_partial_implement": True,
+        "implement_error_kind": "",
         "status": Status.IMPLEMENTING,
     }
 
@@ -461,6 +505,10 @@ def prepare_review_revision(state: BlacksmithState) -> dict:
         "review_revisions": state.get("review_revisions", 0) + 1,
         "review_clean": False,
         "last_gate_output": _format_review_feedback(findings),
+        # A review revision feeds back via last_gate_output, not the partial-continuation
+        # channel — clear the resume flag so implement uses the review feedback, not the
+        # "finish your partial work" nudge.
+        "resume_partial_implement": False,
         "status": Status.IMPLEMENTING,
     }
 
@@ -554,6 +602,10 @@ def build_unit(
         "selected_unit": unit,
         "worktree_path": str(clone.path),
         "branch": clone.branch,
+        # Pass the limits through so the worker's implement honours the configurable turn
+        # budget (max_implement_turns). The continuation LOOP is sequential-only (like
+        # escalation): a turn cap here records a failed build and the join halts the level.
+        "limits": limits,
     }
     fix_attempts = 0
     last_gate_output = ""
@@ -809,12 +861,16 @@ def _route_or_halt(next_node: str) -> Callable[[BlacksmithState], str]:
 def route_after_implement(state: BlacksmithState) -> str:
     """Route a just-implemented unit (PRD §4).
 
-    A failed implement (status HALTED) discards the work via ``human_halt``. A human-gated
-    unit (any ``human`` layer) that implemented successfully bypasses the automated gate and
+    A failed implement (status HALTED) discards the work via ``human_halt`` — UNLESS it was a
+    recoverable turn-cap halt with continuations left (``_can_continue_implement``), which
+    routes to ``continue_implement`` to finish the partial work instead. A human-gated unit
+    (any ``human`` layer) that implemented successfully bypasses the automated gate and
     instead opens a DRAFT PR for manual QA (``open_draft_pr`` -> AWAITING_QA, branch kept).
     An auto-gated unit proceeds to ``auto_fix`` (the deterministic formatter step), which
     then flows into the automated ``test_gate``."""
     if state.get("status") == Status.HALTED:
+        if _can_continue_implement(state):
+            return "continue_implement"
         return "human_halt"
     prd = state.get("prd")
     unit = state.get("selected_unit")
@@ -1029,6 +1085,7 @@ def build_graph(
     graph.add_node("next_unit", next_unit)
     graph.add_node("escalate", prepare_escalation)
     graph.add_node("fix_retry", prepare_fix_retry)
+    graph.add_node("continue_implement", prepare_implement_continuation)
     graph.add_node("review", _node_with(review_node, executor=executor))
     graph.add_node("prepare_review_revision", prepare_review_revision)
     graph.add_node("finalize_review", finalize_review)
@@ -1071,8 +1128,12 @@ def build_graph(
             "auto_fix": "auto_fix",
             "human_halt": "human_halt",
             "open_draft_pr": "open_draft_pr",
+            "continue_implement": "continue_implement",
         },
     )
+    # Turn-cap recovery: an implement attempt that ran out of turns continues from its partial
+    # work (kept, not reset) with a fresh budget, then re-enters implement (WU recoverable-impl).
+    graph.add_edge("continue_implement", "implement")
     # Deterministic auto-fix runs between implement and the gate, then always flows into it.
     # A unit with no fix_cmd makes auto_fix a pass-through, so this is the prior implement->gate
     # path with one (usually free) step inserted.
