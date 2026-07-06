@@ -27,6 +27,9 @@ DEFAULT_PLAN_MODEL = "claude-sonnet-4-6"
 DEFAULT_IMPLEMENT_MODEL = "claude-sonnet-4-6"
 DEFAULT_IMPLEMENT_ESCALATE_MODEL = "claude-opus-4-8"
 DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5"
+# Review tier (WU-REVIEW-CONFIG): a single dedicated model used for the additive
+# post-gate review loop. Reuses the same dedicated key as every other tier (PRD §8).
+DEFAULT_REVIEW_MODEL = "claude-opus-4-8"
 
 # Default name for blacksmith's runtime config, discovered by walking up to the
 # git root (WU-INSTALL) so a global install can be run from anywhere inside a repo.
@@ -83,12 +86,15 @@ class ModelTiers(_Strict):
 
     ``implement`` is the FIRST-attempt implement model (defaults to Sonnet);
     ``implement_escalate`` is the stronger model used for the single escalation retry.
+    ``review`` is the dedicated model for the additive post-gate review loop
+    (WU-REVIEW-CONFIG); it is a separate tier and does not affect plan/implement/triage.
     """
 
     plan: str = DEFAULT_PLAN_MODEL
     implement: str = DEFAULT_IMPLEMENT_MODEL
     implement_escalate: str = DEFAULT_IMPLEMENT_ESCALATE_MODEL
     triage: str = DEFAULT_TRIAGE_MODEL
+    review: str = DEFAULT_REVIEW_MODEL
 
 
 class TargetConfig(_Strict):
@@ -152,8 +158,9 @@ class LimitsConfig(_Strict):
 
     When a unit's test gate fails, blacksmith can re-implement the unit with the gate's
     output fed back in, rather than discarding the (expensive) run on a fixable error.
-    These two knobs bound that recovery so it can never spiral — the whole point of the
-    feature is to recover cheaply, not to keep paying:
+    These knobs bound that recovery (and the separate post-gate review loop) so neither
+    can ever spiral — the whole point of the feature is to recover cheaply, not to keep
+    paying:
 
     * ``max_fix_attempts`` — same-model retries (cheap first-attempt model) WITH the gate
       error fed back, attempted BEFORE the single stronger-model escalation. ``0`` disables
@@ -165,10 +172,29 @@ class LimitsConfig(_Strict):
       halts with a "cost cap reached" error. ``None`` (the default) means no cap; it is
       left off by default because a hard whole-run cap can strand a multi-unit run's
       already-committed units, so the value is best chosen per project.
+    * ``max_review_revisions`` — bounds the SEPARATE post-gate review loop
+      (WU-REVIEW-CONFIG): the maximum number of review-driven revision attempts on a
+      unit that already PASSED the test gate. It is independent of ``max_fix_attempts``
+      and never alters the gate's FAILURE-branch counters or semantics. ``0`` disables
+      review-driven revision (review may still run and report, but never triggers a
+      revision retry).
     """
 
     max_fix_attempts: int = Field(default=1, ge=0)
     max_run_cost_usd: float | None = Field(default=None, gt=0)
+    max_review_revisions: int = Field(default=1, ge=0)
+
+
+class ReviewConfig(_Strict):
+    """Additive post-gate review loop settings (WU-REVIEW-CONFIG).
+
+    A SEPARATE, bounded loop that runs only AFTER the test gate PASSES; it never
+    alters how the gate itself decides pass/fail. ``enabled`` (default ``True``) is a
+    plain on/off toggle — disabling it makes a run behave exactly as it does today,
+    with no review step attempted regardless of ``[limits].max_review_revisions``.
+    """
+
+    enabled: bool = True
 
 
 class ApiConfig(_Strict):
@@ -196,6 +222,7 @@ class BlacksmithConfig(_Strict):
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:

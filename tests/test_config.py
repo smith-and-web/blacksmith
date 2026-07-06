@@ -16,7 +16,9 @@ from blacksmith.config import (
     BlacksmithConfig,
     CheckpointerConfig,
     ConfigError,
+    LimitsConfig,
     ModelTiers,
+    ReviewConfig,
     find_config,
     find_git_root,
 )
@@ -58,6 +60,69 @@ def test_defaults_applied_when_optional_sections_omitted():
     assert cfg.checkpointer == CheckpointerConfig()
     assert cfg.api == ApiConfig()
     assert cfg.target.default_branch == "main"  # field default within [target]
+
+
+def test_review_model_tier_defaults():
+    # WU-REVIEW-CONFIG: config.models gains a `review` field, defaulting to Opus.
+    tiers = ModelTiers()
+    assert tiers.review == "claude-opus-4-8"
+
+
+def test_max_review_revisions_defaults():
+    # WU-REVIEW-CONFIG: config.limits gains `max_review_revisions`, an int >= 0
+    # defaulting to 1, independent of the existing self-heal `max_fix_attempts`.
+    limits = LimitsConfig()
+    assert limits.max_review_revisions == 1
+    assert isinstance(limits.max_review_revisions, int)
+
+
+def test_max_review_revisions_rejects_negative():
+    with pytest.raises(ValidationError):
+        LimitsConfig(max_review_revisions=-1)
+
+
+def test_review_section_enabled_defaults_true():
+    # WU-REVIEW-CONFIG: a new [review] section gains `enabled`, defaulting to True,
+    # surfaced as config.review.enabled.
+    review = ReviewConfig()
+    assert review.enabled is True
+
+
+def test_review_defaults_when_config_omits_new_keys():
+    # An existing config that omits [review] and the new keys entirely still loads,
+    # with the new fields defaulting.
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.models.review == "claude-opus-4-8"
+    assert cfg.limits.max_review_revisions == 1
+    assert cfg.review == ReviewConfig()
+    assert cfg.review.enabled is True
+
+
+def test_review_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.review == ReviewConfig()
+    assert cfg.limits == LimitsConfig()
+
+
+def test_explicit_review_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[models]\n"
+        'review = "claude-sonnet-4-6"\n'
+        "\n"
+        "[limits]\n"
+        "max_review_revisions = 3\n"
+        "\n"
+        "[review]\n"
+        "enabled = false\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.models.review == "claude-sonnet-4-6"
+    assert cfg.limits.max_review_revisions == 3
+    assert cfg.review.enabled is False
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):
