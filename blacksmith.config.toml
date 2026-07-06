@@ -5,14 +5,16 @@
 # repo and is read by the test gate (PRD §12 decision 4).
 
 [target]
-# Absolute path to the repository blacksmith operates on.
-repo_path = "/path/to/target-repo"
+# Absolute path to the repository blacksmith operates on. Optional: when omitted (or
+# commented out), the target resolves to the git root of the current working directory
+# (WU-INSTALL) — so running blacksmith from inside a repo targets that repo.
+# repo_path = "/absolute/path/to/target-repo"
 default_branch = "main"
 
 [models]
 # Per-node model tiering (PRD §8). Current model IDs only — no date suffixes.
 plan = "claude-sonnet-4-6"     # cheaper/faster: planning + triage
-implement = "claude-opus-4-8"  # strongest: implementation
+implement = "claude-sonnet-5"  # implementation
 triage = "claude-haiku-4-5"
 
 [limits]

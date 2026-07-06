@@ -137,24 +137,36 @@ RECURSION_LIMIT = 150
 def _step(graph, payload, config, *, on_node):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
-    Uses LangGraph's built-in ``stream`` (stream_mode="updates") so each node update
-    arrives as it runs; ``on_node(node)`` is invoked per node for progress output. This
-    drives the same nodes in the same order as ``invoke`` — it only observes them. Returns
-    a dict carrying ``__interrupt__`` when the graph paused at a gate (matching ``invoke``).
+    Streams ``stream_mode=["updates", "debug"]``. The ``debug`` stream emits a ``task``
+    event when a node is ABOUT to run, so ``on_node(node)`` fires as the node *starts* —
+    not after it finishes. This is what keeps a 700s ``plan`` from looking like a hung
+    ``ingest`` on the CLI (the previous ``updates``-only stream only named a node once its
+    update arrived, i.e. on completion). The ``updates`` stream is still consulted for the
+    ``__interrupt__`` payload the gate driver depends on. This only observes the graph — it
+    drives the same nodes in the same order as ``invoke``.
 
     The graph-invocation ``config`` is augmented with ``RECURSION_LIMIT`` so large
     multi-unit DAGs don't trip LangGraph's default-25 super-step ceiling.
     """
     config = {**config, "recursion_limit": RECURSION_LIMIT}
     interrupt = None
-    for chunk in graph.stream(payload, config, stream_mode="updates"):
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug"]):
+        if mode == "debug":
+            if (
+                on_node is not None
+                and isinstance(chunk, dict)
+                and chunk.get("type") == "task"
+            ):
+                name = (chunk.get("payload") or {}).get("name")
+                if name:
+                    on_node(name)
+            continue
+        # mode == "updates": the only source of the gate's __interrupt__ payload.
         if not isinstance(chunk, dict):
             continue
         for node, update in chunk.items():
             if node == "__interrupt__":
                 interrupt = update
-            elif on_node is not None:
-                on_node(node)
     return {"__interrupt__": interrupt} if interrupt is not None else {}
 
 

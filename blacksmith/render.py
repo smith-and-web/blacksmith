@@ -79,6 +79,10 @@ class Renderer:
         )
         self._clock = clock
         self._start: float | None = None
+        # Per-node progress timing: a node's duration is printed when the NEXT node
+        # starts (progress() now fires on node START, via the debug stream).
+        self._last_node: str | None = None
+        self._last_node_start: float | None = None
 
     # -- final report ---------------------------------------------------------
 
@@ -305,19 +309,30 @@ class Renderer:
     # -- per-node progress ----------------------------------------------------
 
     def progress(self, node: str) -> None:
-        """Emit a concise phase indicator for ``node`` to the progress stream.
+        """Announce that ``node`` is STARTING, to the progress stream.
 
-        Rendered mode shows the current node plus elapsed wall-clock; plain / non-TTY
-        mode degrades to one flat ``blacksmith: <node>`` line (the machine path).
+        Called as each node begins (the debug stream drives it), so the running node is
+        named while it works rather than only after it finishes. Plain / non-TTY mode
+        degrades to one flat ``blacksmith: <node>`` line (the machine path). Rendered mode
+        prints a "⚙ <node>" start line, and closes out the previous node with its measured
+        duration ("✓ <prev> · N.Ns") — so the slow step is visible the moment it begins and
+        its cost is reported the moment the next one starts.
         """
+        now = self._clock()
         if self._start is None:
-            self._start = self._clock()
+            self._start = now
         if not self.err_rendered:
             print(f"blacksmith: {node}", file=self._err)
             return
-        elapsed = self._clock() - self._start
+        if self._last_node is not None and self._last_node_start is not None:
+            done = Text()
+            done.append("✓ ", style="green")
+            done.append(self._last_node, style="dim")
+            done.append(f"  ·  {now - self._last_node_start:5.1f}s", style="dim")
+            self._err_console.print(done)
         line = Text()
         line.append("⚙ ", style="cyan")
         line.append(node, style="bold cyan")
-        line.append(f"  ·  {elapsed:5.1f}s", style="dim")
         self._err_console.print(line)
+        self._last_node = node
+        self._last_node_start = now
