@@ -21,6 +21,7 @@ from pathlib import Path
 
 from blacksmith.cli import drive
 from blacksmith.config import LimitsConfig
+from blacksmith.executor import ExecutorResult
 from blacksmith.gate import GateResult
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.nodes.pr import CommandResult
@@ -314,4 +315,97 @@ def test_fanout_cost_cap_blocks_retry_and_level_halts(tmp_path):
     messages = " ".join(e["message"] for e in final.values.get("errors", []))
     assert "cost cap" in messages
     assert _pr_creates(gh) == []
+    saver.conn.close()
+
+
+class FanoutTurnCapExecutor:
+    """``run_implement`` hits the turn cap for the first ``cap_times`` attempts of the unit whose
+    id is ``cap_unit``, then completes it; other units pass first try. A capped attempt leaves
+    PARTIAL work in the clone (so a continuation can be shown to KEEP it, not reset); the
+    completing attempt records whether that partial survived and writes the unit's real target."""
+
+    def __init__(self, cap_unit, cap_times):
+        self.cap_unit = cap_unit
+        self.cap_times = cap_times
+        self.attempts: Counter = Counter()
+        self.prompts_by_unit: dict[str, list[str]] = {}
+        self.saw_partial_on_continue: dict[str, bool] = {}
+
+    def run_plan(self, prompt, **kwargs):
+        return ExecutorResult(
+            text="plan", model="m", is_error=False, num_turns=1, cost_usd=0.01, usage={},
+            session_id="s",
+        )
+
+    @staticmethod
+    def _unit_id(prompt):
+        return re.search(r"^Unit (\S+):", prompt, re.M).group(1)
+
+    @staticmethod
+    def _target(prompt):
+        return re.search(r"^Target modules: (.+)$", prompt, re.M).group(1).split(",")[0].strip()
+
+    def run_implement(self, prompt, **kwargs):
+        uid = self._unit_id(prompt)
+        cwd = Path(kwargs["cwd"])
+        self.attempts[uid] += 1
+        self.prompts_by_unit.setdefault(uid, []).append(prompt)
+        if uid == self.cap_unit and self.attempts[uid] <= self.cap_times:
+            (cwd / "partial.txt").write_text(f"partial {self.attempts[uid]}\n")
+            return ExecutorResult(
+                text="...agent reasoning...", model="m", is_error=True, num_turns=40,
+                cost_usd=0.05, usage={}, session_id="cap", error_kind="max_turns",
+            )
+        if uid == self.cap_unit:
+            self.saw_partial_on_continue[uid] = (cwd / "partial.txt").exists()
+        (cwd / self._target(prompt)).write_text(f"content from {uid}\n")
+        return ExecutorResult(
+            text="done", model="m", is_error=False, num_turns=3, cost_usd=0.02, usage={},
+            session_id="ok",
+        )
+
+
+def test_fanout_unit_turn_cap_continues_from_partial_then_passes(tmp_path):
+    # A parallel level where WU-Y's first attempt hits the turn cap, then CONTINUES (keeping its
+    # partial work) and finishes; WU-X passes first try. Both land on the one combined branch.
+    repo = _target_repo(tmp_path)
+    executor = FanoutTurnCapExecutor(cap_unit="WU-Y", cap_times=1)
+    gh = _recording_gh("https://github.com/owner/demo/pull/21")
+    gate = FlakyUnitGate(unit_substr="never", fail_times=0)  # every gate passes
+    limits = LimitsConfig(max_implement_continuations=1)
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate, limits=limits)
+
+    final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="fan-cont")
+
+    # WU-Y ran TWICE (capped base + one continuation that finished); WU-X once.
+    assert executor.attempts["WU-Y"] == 2
+    assert executor.attempts["WU-X"] == 1
+    # The continuation was told to CONTINUE and it KEPT the partial work (clone not reset).
+    assert "CONTINUATION" in executor.prompts_by_unit["WU-Y"][1]
+    assert executor.saw_partial_on_continue["WU-Y"] is True
+    # Both units recovered onto the one combined branch -> one combined PR.
+    assert len(_pr_creates(gh)) == 1
+    assert "wu-x" in gh.push_logs[0] and "wu-y" in gh.push_logs[0]
+    assert final.values["status"] == Status.DONE
+    saver.conn.close()
+
+
+def test_fanout_unit_turn_cap_exhausts_continuations_then_level_halts(tmp_path):
+    # WU-Y caps on every attempt: base + one continuation both cap, the budget is spent, and the
+    # level halts legibly (turn-budget wording, unit named) with nothing cherry-picked, no PR.
+    repo = _target_repo(tmp_path)
+    executor = FanoutTurnCapExecutor(cap_unit="WU-Y", cap_times=99)
+    gh = _recording_gh("https://github.com/owner/demo/pull/22")
+    gate = FlakyUnitGate(unit_substr="never", fail_times=0)
+    limits = LimitsConfig(max_implement_continuations=1)
+    graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate, limits=limits)
+
+    final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="fan-cont-exhaust")
+
+    assert executor.attempts["WU-Y"] == 2  # base + exactly one continuation, then halt
+    assert final.values["status"] == Status.HALTED
+    assert _pr_creates(gh) == []
+    assert _git_pushes(gh) == []
+    messages = " ".join(e["message"] for e in final.values.get("errors", []))
+    assert "turn budget" in messages and "WU-Y" in messages
     saver.conn.close()
