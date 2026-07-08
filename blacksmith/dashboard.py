@@ -456,7 +456,7 @@ function ensureThread(threadId) {
   document.getElementById("fleet").appendChild(el);
 
   const entry = {
-    el, node: null, nodeStartTs: null,
+    el, node: null, nodeStartTs: null, lastSeq: -1,
     steps: [], units: new Map(), findings: [], status: "running", prUrl: null,
     // Live wiring: one SSE connection per active run, straight to that thread's stream.
     es: new EventSource("/live/" + encodeURIComponent(threadId)),
@@ -471,6 +471,13 @@ function currentStep(entry) { return entry.steps[entry.steps.length - 1] || null
 function handleEvent(threadId, frame) {
   const entry = threads.get(threadId);
   if (!entry) return;
+  // De-dupe replays: the SSE endpoint re-sends the whole thread from seq 0 on every
+  // (re)connect, and EventSource auto-reconnects after the server's bounded poll window —
+  // so without this the entire timeline is re-ingested and every step is double-counted.
+  if (frame.seq != null) {
+    if (frame.seq <= entry.lastSeq) return;
+    entry.lastSeq = frame.seq;
+  }
   const payload = frame.payload || {};
   if (frame.kind === "node_start") {
     entry.node = payload.node;
