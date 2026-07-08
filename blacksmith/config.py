@@ -224,6 +224,30 @@ class ReviewConfig(_Strict):
     enabled: bool = True
 
 
+class SandboxConfig(_Strict):
+    """Additive, opt-in sandbox self-verify channel settings (WU-SANDBOX-CONFIG).
+
+    OFF by default (``enabled=false``): with the default config, a run's tool surface,
+    prompt, and behaviour are byte-for-byte unchanged from today — no HOST command
+    execution is ever added. When explicitly enabled, this section only configures
+    where an agent-run command is allowed to execute: inside a container built from
+    ``image``, over the mounted clone, never on the host. It never alters the test
+    gate's (``blacksmith/gate.py``) authoritative pass/fail semantics.
+
+    * ``enabled`` — plain on/off toggle, default ``False``.
+    * ``image`` — the container image name to run the sandbox in.
+    * ``setup_cmd`` — optional command run once in the container after it starts (e.g.
+      installing the target toolchain). ``None`` (the default) runs no setup step.
+    * ``exec_timeout_s`` — the per-command wall-clock ceiling inside the sandbox,
+      an int > 0, default 120.
+    """
+
+    enabled: bool = False
+    image: str = "python:3.12-slim"
+    setup_cmd: str | None = None
+    exec_timeout_s: int = Field(default=120, gt=0)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -251,6 +275,7 @@ class BlacksmithConfig(_Strict):
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:

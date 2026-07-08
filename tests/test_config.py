@@ -19,6 +19,7 @@ from blacksmith.config import (
     LimitsConfig,
     ModelTiers,
     ReviewConfig,
+    SandboxConfig,
     find_config,
     find_git_root,
 )
@@ -123,6 +124,56 @@ def test_explicit_review_config_loads(tmp_path):
     assert cfg.models.review == "claude-sonnet-4-6"
     assert cfg.limits.max_review_revisions == 3
     assert cfg.review.enabled is False
+
+
+def test_sandbox_section_defaults():
+    # WU-SANDBOX-CONFIG: [sandbox] is off by default, with sane defaults for the
+    # other fields so enabling it later requires no other config changes.
+    sandbox = SandboxConfig()
+    assert sandbox.enabled is False
+    assert isinstance(sandbox.image, str) and sandbox.image
+    assert sandbox.setup_cmd is None
+    assert sandbox.exec_timeout_s == 120
+    assert isinstance(sandbox.exec_timeout_s, int)
+
+
+def test_sandbox_exec_timeout_s_rejects_non_positive():
+    with pytest.raises(ValidationError):
+        SandboxConfig(exec_timeout_s=0)
+    with pytest.raises(ValidationError):
+        SandboxConfig(exec_timeout_s=-5)
+
+
+def test_sandbox_defaults_when_config_omits_section():
+    # A config that omits [sandbox] entirely still loads, with enabled=false and the
+    # defaults — behaving exactly as today (backward compatible).
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.sandbox == SandboxConfig()
+    assert cfg.sandbox.enabled is False
+
+
+def test_sandbox_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.sandbox == SandboxConfig()
+
+
+def test_explicit_sandbox_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[sandbox]\n"
+        "enabled = true\n"
+        'image = "kindling-sandbox:latest"\n'
+        'setup_cmd = "pip install -e ."\n'
+        "exec_timeout_s = 30\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.sandbox.enabled is True
+    assert cfg.sandbox.image == "kindling-sandbox:latest"
+    assert cfg.sandbox.setup_cmd == "pip install -e ."
+    assert cfg.sandbox.exec_timeout_s == 30
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):
