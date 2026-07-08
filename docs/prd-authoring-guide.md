@@ -189,6 +189,29 @@ Be specific; these are the guardrails that stop an over-eager agent.
   the DAG into a draft PR (`AWAITING_QA`) rather than running to a merged-style PR.
 - Don't put secrets, API keys, or absolute local paths in the PRD (it may be public).
 
+### 7.1 Size each unit to fit one implement turn budget
+
+The implementer runs under a bounded **turn budget per attempt** (`[limits].max_implement_turns`,
+default 40). A unit that can't be finished within that budget hits the cap. blacksmith *will*
+recover — it continues the partial work (up to `[limits].max_implement_continuations`) and
+self-heals gate failures — but **recovery is a safety net, not a substitute for right-sizing.**
+Every continuation / retry / escalation re-runs a full multi-minute implement attempt, so an
+oversized unit costs *multiples* of a right-sized one. (Real example: one oversized unit needed
+~5 implement attempts and drove a run to ~$32; splitting it would have been a fraction of that.)
+
+- **Rule of thumb: one unit ≈ one new module (or one focused change) *plus its tests*.** If a
+  unit *introduces* a module AND *wires it into* several call sites AND *adds the consumer*,
+  that's 2–3 units, not one.
+- **Signs a unit is too big — split it:** `target_modules` lists a brand-new module *plus*
+  several existing files to edit; the `test_contract` strings together multiple "and" clauses
+  covering distinct behaviours; it touches a new module + graph/CLI wiring + tests all at once.
+- **How to split:** put the new artifact (schema / module / config) in one unit and its
+  wiring / consumption in a dependent unit — e.g. `*-SINK` (new module + config) → `*-EMIT`
+  (wire it into the drive loop), rather than one unit doing both. Artifacts that don't touch
+  the same files can be **siblings in the same level** — they fan out and build in parallel.
+- **Prefer more small units over fewer big ones.** They gate cleanly, recover cheaply,
+  parallelise, and produce a legible, watchable run.
+
 ---
 
 ## 8. Copy-paste template (valid against Contract v1)
@@ -249,6 +272,9 @@ work_units:
 - [ ] `work_units` has ≥1 entry; **no duplicate ids**.
 - [ ] Every unit: `id`, `title`, ≥1 `layers` (all declared), ≥1 `target_modules`,
       non-empty `test_contract`.
+- [ ] Each unit is **sized to fit one implement turn budget** (§7.1): roughly one new module
+      or focused change + tests. Split anything that adds a module *and* wires it *and* adds
+      its consumer.
 - [ ] Every `depends_on` points at a real id; the DAG is acyclic.
 - [ ] **No extra/unknown frontmatter keys.**
 - [ ] Body has headings containing: `purpose`, `scope`, `untouchables`, `acceptance`.
