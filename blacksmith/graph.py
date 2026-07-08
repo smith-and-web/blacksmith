@@ -43,6 +43,7 @@ from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
 from blacksmith.planner import execution_levels
+from blacksmith.sandbox import SandboxError, SandboxManager
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import (
     Clone,
@@ -96,6 +97,7 @@ def prepare_worktree(
     worktree_manager: IsolationManager | None = None,
     limits: LimitsConfig | None = None,
     review: ReviewConfig | None = None,
+    sandbox: SandboxManager | None = None,
 ) -> dict:
     """Create the run's ONE shared clone/branch and seed the level execution plan.
 
@@ -109,7 +111,16 @@ def prepare_worktree(
     re-enters ``implement`` (never this node), so the clone is created exactly once. A
     single-unit PRD reduces to the prior behaviour: one level, one unit, one clone, one PR.
     The isolation path is stored under ``worktree_path`` (the name predates the clone
-    model)."""
+    model).
+
+    When ``sandbox`` is injected AND ``sandbox.config.enabled`` (WU-SANDBOX-LIFECYCLE),
+    this also starts the run's ONE sandbox container over the freshly-created clone —
+    reused across every unit built on this clone, never recreated per-unit. Best-effort:
+    a start failure is swallowed here (it disables the sandbox tool for the run, an
+    additive self-verify channel) and NEVER halts the run — the test gate remains the
+    sole authoritative pass/fail backstop regardless. Left unset (``sandbox=None``, the
+    default, every graph compiled without one) or disabled, this is a byte-for-byte
+    no-op."""
     if worktree_manager is None:
         return {}  # skeleton pass-through
     prd = state.get("prd")
@@ -158,6 +169,16 @@ def prepare_worktree(
     if review is not None:
         update["review_enabled"] = review.enabled
         update["review_revisions"] = 0
+    # Start the run's ONE sandbox container over this clone (WU-SANDBOX-LIFECYCLE), reused
+    # across every unit built on it. Additive and opt-in: a graph compiled without a sandbox
+    # (``sandbox=None``, every existing test) or one wired with ``enabled=False`` is a
+    # byte-for-byte no-op. A start failure never halts the run -- it just leaves the sandbox
+    # tool unavailable for this run; the test gate is unaffected either way.
+    if sandbox is not None and sandbox.config.enabled:
+        try:
+            sandbox.start(worktree.path)
+        except SandboxError:
+            pass
     return update
 
 
@@ -818,7 +839,10 @@ def human_halt(state: BlacksmithState) -> dict:
 
 
 def cleanup_worktree(
-    state: BlacksmithState, *, worktree_manager: IsolationManager | None = None
+    state: BlacksmithState,
+    *,
+    worktree_manager: IsolationManager | None = None,
+    sandbox: SandboxManager | None = None,
 ) -> dict:
     """Remove the run's isolation directory on a terminal path (PRD §5). Cleanup must
     never fail the run.
@@ -827,7 +851,18 @@ def cleanup_worktree(
     cleanup — there is no source-repo branch to keep or delete (the branch lives only in
     the clone and, once pushed, on the real remote). For the legacy WorktreeManager the
     branch lives in the shared source repo, so the worktree's branch is kept when a PR
-    was opened (the PR needs it) and deleted otherwise so re-runs don't collide."""
+    was opened (the PR needs it) and deleted otherwise so re-runs don't collide.
+
+    Stops the run's sandbox container FIRST (WU-SANDBOX-LIFECYCLE), best-effort and
+    unconditional on every terminal path -- including after a halt, since ``human_halt``
+    routes here too -- so a started container is never leaked. A graph compiled without a
+    sandbox, or one wired with ``enabled=False``, is a byte-for-byte no-op; ``stop()`` is
+    idempotent, so this is safe even when ``start`` was never called or already failed."""
+    if sandbox is not None and sandbox.config.enabled:
+        try:
+            sandbox.stop()
+        except SandboxError:
+            pass
     if worktree_manager is None:
         return {}
     worktree_path = state.get("worktree_path")
@@ -1071,6 +1106,7 @@ def build_graph(
     limits: LimitsConfig | None = None,
     fix: FixFn | None = None,
     review: ReviewConfig | None = None,
+    sandbox: SandboxManager | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
 
@@ -1081,7 +1117,14 @@ def build_graph(
     ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP) the same way:
     when provided, ``config.review.enabled`` is seeded into state so ``route_after_test_gate``
     can route a PASS to ``review`` instead of straight to next_unit/approve_pr. Left unset
-    (every graph wired without it) the review node is never entered."""
+    (every graph wired without it) the review node is never entered.
+
+    ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE):
+    when provided AND ``sandbox.config.enabled``, ``prepare_worktree`` starts it once over the
+    run's clone (reused across every unit) and ``cleanup_worktree`` stops it, best-effort, on
+    every terminal path. Left unset (the default, every existing test) or disabled, neither
+    node touches it and the graph behaves exactly as today -- the test gate's pass/fail
+    semantics are never affected either way."""
     graph = StateGraph(BlacksmithState)
 
     graph.add_node("ingest_prd", ingest_prd)
@@ -1090,7 +1133,11 @@ def build_graph(
     graph.add_node(
         "prepare_worktree",
         _node_with(
-            prepare_worktree, worktree_manager=worktree_manager, limits=limits, review=review
+            prepare_worktree,
+            worktree_manager=worktree_manager,
+            limits=limits,
+            review=review,
+            sandbox=sandbox,
         ),
     )
     graph.add_node("implement", _node_with(implement, executor=executor))
@@ -1119,7 +1166,8 @@ def build_graph(
     graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner))
     graph.add_node("human_halt", human_halt)
     graph.add_node(
-        "cleanup_worktree", _node_with(cleanup_worktree, worktree_manager=worktree_manager)
+        "cleanup_worktree",
+        _node_with(cleanup_worktree, worktree_manager=worktree_manager, sandbox=sandbox),
     )
 
     graph.add_edge(START, "ingest_prd")
@@ -1276,6 +1324,7 @@ def compile_graph(
     store: BaseStore | None = None,
     limits: LimitsConfig | None = None,
     review: ReviewConfig | None = None,
+    sandbox: SandboxManager | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -1295,6 +1344,10 @@ def compile_graph(
 
     ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP); ``None`` (the
     default) leaves the review node unreachable and routing unchanged.
+
+    ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE);
+    ``None`` (the default) or one with ``config.enabled=False`` leaves ``prepare_worktree``/
+    ``cleanup_worktree`` byte-for-byte unchanged -- no container is ever started or stopped.
     """
     return build_graph(
         pr_runner=pr_runner,
@@ -1304,6 +1357,7 @@ def compile_graph(
         limits=limits,
         fix=fix,
         review=review,
+        sandbox=sandbox,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),
