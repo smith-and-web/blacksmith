@@ -35,6 +35,11 @@ _STATUS_STYLES = {
     Status.AWAITING_QA: "bold yellow",
 }
 
+# Terminal statuses that mean the run SUCCEEDED (a PR exists): a fully-approved run (DONE) or a
+# human-gated unit parked behind a draft PR for manual QA (AWAITING_QA). On these, accumulated
+# ``errors`` were all recovered from, so the report summarises rather than lists them.
+_SUCCESS_STATUSES = frozenset({Status.DONE, Status.AWAITING_QA})
+
 
 def _stream_is_rendered(stream, *, plain: bool, no_color: bool) -> bool:
     """Decide ONCE whether ``stream`` gets rich output.
@@ -92,22 +97,35 @@ class Renderer:
         Plain mode prints the same ``status:`` / ``PR:`` / ``error […]`` / cost / token
         lines the machine path parses; rendered mode wraps a color-coded status panel
         around the same facts.
-        """
-        if not self.rendered:
-            self._plain_report(status, pr_url, errors, cost_line, token_line)
-            return
-        self._rendered_report(status, pr_url, errors, cost_line, token_line)
 
-    def _plain_report(self, status, pr_url, errors, cost_line, token_line) -> None:
+        On a SUCCESSFUL terminal status (DONE / AWAITING_QA — a PR exists) every entry in the
+        append-only ``errors`` ledger was RECOVERED from (a turn cap that continued, a gate
+        failure that self-healed): the run still finished. Listing them as ``error […]`` reads
+        as a "failed successfully" report, so they are summarised as a single recovered-count
+        line instead. Errors are only shown verbatim when the run did NOT succeed (HALTED),
+        where they are the actual reason.
+        """
+        errors = list(errors or [])
+        succeeded = status in _SUCCESS_STATUSES
+        shown = [] if succeeded else errors
+        recovered = len(errors) if succeeded else 0
+        if not self.rendered:
+            self._plain_report(status, pr_url, shown, recovered, cost_line, token_line)
+            return
+        self._rendered_report(status, pr_url, shown, recovered, cost_line, token_line)
+
+    def _plain_report(self, status, pr_url, errors, recovered, cost_line, token_line) -> None:
         print(f"\nstatus: {status}", file=self._out)
         if pr_url:
             print(f"PR: {pr_url}", file=self._out)
         for err in errors:
             print(f"error [{err.get('node')}]: {err.get('message')}", file=self._out)
+        if recovered:
+            print(f"recovered: {recovered} transient failure(s)", file=self._out)
         print(cost_line, file=self._out)
         print(token_line, file=self._out)
 
-    def _rendered_report(self, status, pr_url, errors, cost_line, token_line) -> None:
+    def _rendered_report(self, status, pr_url, errors, recovered, cost_line, token_line) -> None:
         style = _STATUS_STYLES.get(status, "bold")
         body = Text()
         body.append("status: ", style="dim")
@@ -118,6 +136,12 @@ class Renderer:
         for err in errors:
             body.append(f"\nerror [{err.get('node')}]: ", style="red")
             body.append(str(err.get("message")), style="red")
+        if recovered:
+            body.append(
+                f"\nrecovered from {recovered} transient failure(s) "
+                "(turn caps / gate retries)",
+                style="dim",
+            )
         body.append(f"\n{cost_line}", style="dim")
         body.append(f"\n{token_line}", style="dim")
         self._console.print(Panel(body, title="blacksmith", border_style=style, expand=False))
