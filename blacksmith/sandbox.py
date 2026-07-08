@@ -23,7 +23,9 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
+
+from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server, tool
 
 # A "timed out" exec still needs a concrete, non-zero exit code so callers can treat
 # it like any other failing command rather than special-casing it.
@@ -180,3 +182,95 @@ class SandboxManager:
         return ExecResult(
             exit_code=proc.returncode, stdout=proc.stdout or "", stderr=proc.stderr or ""
         )
+
+
+# --- run_command tool (WU-SANDBOX-TOOL) ------------------------------------------------
+#
+# A controlled tool the implementer can call to self-verify its work -- e.g. run the
+# target repo's own test/lint commands -- WITHOUT ever touching the host. Every command
+# issued through this tool is routed, unchanged, into ``SandboxManager.exec`` (above),
+# which runs it inside the docker container over the bind-mounted clone. There is no
+# other execution path here: no ``subprocess`` call, no shell, nothing that could reach
+# the host. This is purely an ADDITIVE self-verify channel -- it never replaces or
+# alters how the test gate (:mod:`blacksmith.gate`) decides pass/fail; that remains the
+# sole authoritative backstop, run on the host exactly as today.
+
+RUN_COMMAND_TOOL_NAME = "run_command"
+
+# Bounds the stdout/stderr tail included in the result handed back to the agent, so one
+# huge command's output (a verbose test run, a build log) can never balloon the calling
+# turn's tokens. Mirrors the same tail-bounding pattern used for gate-failure feedback in
+# ``nodes.implement`` (``_FEEDBACK_TAIL_CHARS``).
+DEFAULT_TAIL_CHARS = 4000
+
+
+def _tail(text: str, limit: int) -> str:
+    """Return the last ``limit`` characters of ``text``, noting when it was cut down."""
+    if len(text) <= limit:
+        return text
+    return f"...[truncated, showing last {limit} chars]...\n{text[-limit:]}"
+
+
+def format_exec_result(result: ExecResult, *, tail_chars: int = DEFAULT_TAIL_CHARS) -> str:
+    """Render an :class:`ExecResult` as the compact text returned to the agent.
+
+    Always leads with the exit code (so the agent can tell pass/fail without parsing
+    prose), then each non-empty stream, tail-bounded independently so a large stdout
+    can't crowd out a small-but-critical stderr (or vice versa).
+    """
+    lines = [f"exit_code={result.exit_code}"]
+    if result.stdout:
+        lines.append("stdout:")
+        lines.append(_tail(result.stdout, tail_chars))
+    if result.stderr:
+        lines.append("stderr:")
+        lines.append(_tail(result.stderr, tail_chars))
+    return "\n".join(lines)
+
+
+def make_run_command_tool(
+    manager: SandboxManager,
+    *,
+    exec_timeout_s: int,
+    tail_chars: int = DEFAULT_TAIL_CHARS,
+) -> SdkMcpTool[Any]:
+    """Build the ``run_command`` SDK tool bound to ``manager``.
+
+    The handler NEVER executes on the host: every command it receives goes straight
+    into ``manager.exec`` (WU-SANDBOX-MANAGER), which runs it inside the sandbox
+    container over the mounted clone via ``docker exec``. The timeout is always
+    ``exec_timeout_s`` (``[sandbox].exec_timeout_s``) -- the agent cannot extend it, so
+    a hung command inside the sandbox is killed and reported, never left to hang the
+    turn. The result is the compact, bounded text from :func:`format_exec_result`.
+    """
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        result = manager.exec(args["command"], timeout=exec_timeout_s)
+        text = format_exec_result(result, tail_chars=tail_chars)
+        return {"content": [{"type": "text", "text": text}], "is_error": not result.ok}
+
+    return tool(
+        RUN_COMMAND_TOOL_NAME,
+        "Run a shell command INSIDE the sandbox container, over the mounted clone -- "
+        "never on the host. Use it to self-verify your work (e.g. the project's own "
+        "test/lint commands) before finishing. Returns the exit code plus a bounded "
+        "stdout/stderr tail.",
+        {"command": str},
+    )(handler)
+
+
+def create_sandbox_mcp_server(
+    manager: SandboxManager,
+    *,
+    exec_timeout_s: int,
+    tail_chars: int = DEFAULT_TAIL_CHARS,
+) -> McpSdkServerConfig:
+    """Build the in-process MCP server exposing ``run_command`` for a call's
+    ``ClaudeAgentOptions.mcp_servers`` -- an in-process (no subprocess, no IPC) tool
+    server per the Claude Agent SDK's ``create_sdk_mcp_server``/``tool`` support."""
+    return create_sdk_mcp_server(
+        name="blacksmith-sandbox",
+        tools=[
+            make_run_command_tool(manager, exec_timeout_s=exec_timeout_s, tail_chars=tail_chars)
+        ],
+    )
