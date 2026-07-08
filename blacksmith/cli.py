@@ -147,14 +147,24 @@ RECURSION_LIMIT = 150
 def _step(graph, payload, config, *, on_node, on_event=None):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
-    Streams ``stream_mode=["updates", "debug"]``. The ``debug`` stream emits a ``task``
-    event when a node is ABOUT to run and a ``task_result`` event when it finishes, so
-    ``on_node(node)`` fires as the node *starts* — not after it finishes. This is what
+    Streams ``stream_mode=["updates", "debug", "custom"]``. The ``debug`` stream emits a
+    ``task`` event when a node is ABOUT to run and a ``task_result`` event when it finishes,
+    so ``on_node(node)`` fires as the node *starts* — not after it finishes. This is what
     keeps a 700s ``plan`` from looking like a hung ``ingest`` on the CLI (the previous
     ``updates``-only stream only named a node once its update arrived, i.e. on completion).
     The ``updates`` stream is still consulted for the ``__interrupt__`` payload the gate
     driver depends on. This only observes the graph — it drives the same nodes in the same
     order as ``invoke``.
+
+    The ``custom`` stream (WU-LIVE-INTRA-NODE) carries whatever a node's executor call
+    wrote via ``get_stream_writer()`` from INSIDE its (possibly long) call — per-turn /
+    tool_use activity, and each review finding as it is produced — so the live view shows
+    progress WITHIN a node, not only at its boundaries. Each chunk is tagged with the
+    currently-running node (tracked from the same ``debug`` "task" events used for
+    ``on_node``) and forwarded to ``on_event`` under its own ``kind`` (the emitter sets
+    ``"kind": "node_activity"``; default to that if a chunk omits it). This is a pure
+    ADDITIVE OBSERVATION channel — a node with no stream writer bound (or with the sink
+    disabled/failing) emits nothing here and the graph's control flow is entirely unaffected.
 
     ``on_event(kind, payload)``, when given, additionally receives ``node_start`` /
     ``node_end`` events for the additive live sink (WU-RUN-EVENTS): ``node_end`` carries
@@ -168,7 +178,16 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     config = {**config, "recursion_limit": RECURSION_LIMIT}
     interrupt = None
     starts: dict[str, float] = {}
-    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug"]):
+    current_node: str | None = None
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+        if mode == "custom":
+            if on_event is not None and isinstance(chunk, dict):
+                kind = chunk.get("kind") or "node_activity"
+                activity = {k: v for k, v in chunk.items() if k != "kind"}
+                if current_node is not None:
+                    activity.setdefault("node", current_node)
+                on_event(kind, activity)
+            continue
         if mode == "debug":
             if not isinstance(chunk, dict):
                 continue
@@ -179,6 +198,7 @@ def _step(graph, payload, config, *, on_node, on_event=None):
                 task_id = cpayload.get("id")
                 if task_id is not None:
                     starts[task_id] = time.monotonic()
+                current_node = name
                 if on_node is not None:
                     on_node(name)
                 if on_event is not None:

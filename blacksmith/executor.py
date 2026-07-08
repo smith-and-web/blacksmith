@@ -15,6 +15,8 @@ tests inject a fake query function and need neither the CLI nor the network.
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,8 +28,10 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     ResultMessage,
     TextBlock,
+    ToolUseBlock,
     query,
 )
+from langgraph.config import get_stream_writer
 
 from blacksmith import transcript
 from blacksmith.config import BlacksmithConfig
@@ -37,6 +41,61 @@ QueryFn = Callable[..., AsyncIterator[Any]]
 
 class ExecutorError(Exception):
     """Raised when a Claude Agent SDK call fails or returns an error result."""
+
+
+def _emit_activity(payload: dict[str, Any]) -> None:
+    """Emit one intra-node activity event on LangGraph's custom stream (WU-LIVE-INTRA-NODE).
+
+    Fail-open by construction: ``get_stream_writer()`` raises when called outside a
+    LangGraph node/task runtime context (e.g. a unit test invoking the executor directly,
+    or any caller that never runs inside a compiled graph), and the default writer is a
+    silent no-op when the graph IS running but nobody is consuming ``stream_mode="custom"``.
+    Either way this never raises and never affects the executor's return value -- a purely
+    additive OBSERVATION channel, exactly like the metrics/live-run-event sinks. Every event
+    carries ``"kind": "node_activity"`` so the drive loop's ``_step`` can forward it to the
+    run-event sink unchanged.
+    """
+    try:
+        writer = get_stream_writer()
+        writer({"kind": "node_activity", **payload})
+    except Exception:
+        pass
+
+
+# A single fenced ```json ... ``` (or bare) block containing a review verdict object. A
+# small, independent mirror of ``nodes.review``'s own parsing (that module imports
+# ``Executor``, so importing back here would be circular) -- used only to drive the live
+# "finding" activity events; best-effort, never raises.
+_FINDING_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _extract_review_findings(text: str) -> list[dict[str, Any]]:
+    """Best-effort parse of a review call's fenced JSON verdict into its findings list.
+
+    Fail-open: any unparseable input (no fenced block, invalid JSON, wrong shape) returns
+    an empty list rather than raising -- this only feeds the live activity stream, never
+    the graph's actual review verdict (``nodes.review`` parses the real one independently).
+    """
+    if not text or not text.strip():
+        return []
+    match = _FINDING_FENCE_RE.search(text)
+    if match:
+        block = match.group(1)
+    else:
+        stripped = text.strip()
+        block = stripped if stripped.startswith("{") and stripped.endswith("}") else None
+    if block is None:
+        return []
+    try:
+        parsed = json.loads(block)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    findings = parsed.get("findings")
+    if not isinstance(findings, list):
+        return []
+    return [f for f in findings if isinstance(f, dict)]
 
 
 @dataclass(frozen=True)
@@ -115,11 +174,18 @@ class Executor:
         *,
         model: str,
         raise_on_error: bool = True,
+        emit_findings: bool = False,
         **option_kwargs: Any,
     ) -> ExecutorResult:
-        """Run one prompt to completion and return a structured result."""
+        """Run one prompt to completion and return a structured result.
+
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
         options = self.build_options(model=model, **option_kwargs)
-        result = asyncio.run(self._collect(prompt, options))
+        result = asyncio.run(self._collect(prompt, options, emit_findings=emit_findings))
         if raise_on_error and result.is_error:
             raise ExecutorError(f"executor call failed (model={result.model}): {result.text!r}")
         return result
@@ -145,11 +211,14 @@ class Executor:
         """Run with the dedicated post-gate review model tier (WU-REVIEW-CONFIG/NODE).
 
         Uses ``config.models.review`` — a separate tier from plan/implement/triage, still
-        routed through the same dedicated key (PRD §8).
+        routed through the same dedicated key (PRD §8). ``emit_findings=True`` so each
+        parsed finding is streamed as a "finding" activity event (WU-LIVE-INTRA-NODE).
         """
-        return self.run(prompt, model=self._config.models.review, **kwargs)
+        return self.run(prompt, model=self._config.models.review, emit_findings=True, **kwargs)
 
-    async def _collect(self, prompt: str, options: ClaudeAgentOptions) -> ExecutorResult:
+    async def _collect(
+        self, prompt: str, options: ClaudeAgentOptions, *, emit_findings: bool = False
+    ) -> ExecutorResult:
         default_model = options.model or self._config.models.implement
         # The session_id is surfaced mid-stream (on AssistantMessage/ResultMessage). Capture
         # it into this holder as _aggregate sees it so the error path below can link the
@@ -164,10 +233,16 @@ class Executor:
                 async with ClaudeSDKClient(options=options) as client:
                     await client.query(prompt)
                     return await self._aggregate(
-                        client.receive_response(), default_model, captured
+                        client.receive_response(),
+                        default_model,
+                        captured,
+                        emit_findings=emit_findings,
                     )
             return await self._aggregate(
-                self._query(prompt=prompt, options=options), default_model, captured
+                self._query(prompt=prompt, options=options),
+                default_model,
+                captured,
+                emit_findings=emit_findings,
             )
         except Exception as exc:
             # The Agent SDK signals some failures — notably "Reached maximum number of turns",
@@ -191,7 +266,12 @@ class Executor:
             )
 
     async def _aggregate(
-        self, messages, default_model: str, captured: dict[str, str | None] | None = None
+        self,
+        messages,
+        default_model: str,
+        captured: dict[str, str | None] | None = None,
+        *,
+        emit_findings: bool = False,
     ) -> ExecutorResult:
         texts: list[str] = []
         model = default_model
@@ -204,6 +284,7 @@ class Executor:
         capture = self._config.transcripts.enabled
         events: list[dict] = []
         session_id: str | None = None
+        turn = 0
         try:
             async for message in messages:
                 if capture:
@@ -214,6 +295,16 @@ class Executor:
                     if captured is not None:
                         captured["session_id"] = session_id
                     texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
+                    # Intra-node activity (WU-LIVE-INTRA-NODE): one "turn" event per assistant
+                    # turn, plus one "tool_use" event per tool call within it -- best-effort,
+                    # additive OBSERVATION only (see ``_emit_activity``).
+                    turn += 1
+                    _emit_activity({"activity": "turn", "turn": turn})
+                    for block in message.content:
+                        if isinstance(block, ToolUseBlock):
+                            _emit_activity(
+                                {"activity": "tool_use", "tool": block.name, "turn": turn}
+                            )
                 elif isinstance(message, ResultMessage):
                     result = message
                     session_id = message.session_id or session_id
@@ -228,6 +319,11 @@ class Executor:
             error_kind = None
             if is_error:
                 error_kind = "max_turns" if subtype == "error_max_turns" else "other"
+            if emit_findings and not is_error:
+                # Review call (WU-LIVE-INTRA-NODE): stream each parsed finding, in order, as
+                # its own "finding" activity event -- fail-open (see _extract_review_findings).
+                for finding in _extract_review_findings(text or ""):
+                    _emit_activity({"activity": "finding", "finding": finding})
             return ExecutorResult(
                 text=text or "",
                 model=model,
