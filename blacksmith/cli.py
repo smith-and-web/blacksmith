@@ -28,6 +28,16 @@ from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, fi
 from blacksmith.contract import ContractError, parse_prd
 from blacksmith.costs import run_costs
 from blacksmith.dashboard import serve as serve_dashboard
+from blacksmith.events import (
+    NODE_END,
+    NODE_START,
+    RUN_STATUS,
+    UNIT_RESULT,
+    LiveSink,
+    build_live_store,
+    run_status_payload,
+    unit_result_payloads,
+)
 from blacksmith.executor import Executor
 from blacksmith.gate import run_fix, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -134,32 +144,70 @@ def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str
 RECURSION_LIMIT = 150
 
 
-def _step(graph, payload, config, *, on_node):
+def _step(graph, payload, config, *, on_node, on_event=None):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
-    Streams ``stream_mode=["updates", "debug"]``. The ``debug`` stream emits a ``task``
-    event when a node is ABOUT to run, so ``on_node(node)`` fires as the node *starts* —
-    not after it finishes. This is what keeps a 700s ``plan`` from looking like a hung
-    ``ingest`` on the CLI (the previous ``updates``-only stream only named a node once its
-    update arrived, i.e. on completion). The ``updates`` stream is still consulted for the
-    ``__interrupt__`` payload the gate driver depends on. This only observes the graph — it
-    drives the same nodes in the same order as ``invoke``.
+    Streams ``stream_mode=["updates", "debug", "custom"]``. The ``debug`` stream emits a
+    ``task`` event when a node is ABOUT to run and a ``task_result`` event when it finishes,
+    so ``on_node(node)`` fires as the node *starts* — not after it finishes. This is what
+    keeps a 700s ``plan`` from looking like a hung ``ingest`` on the CLI (the previous
+    ``updates``-only stream only named a node once its update arrived, i.e. on completion).
+    The ``updates`` stream is still consulted for the ``__interrupt__`` payload the gate
+    driver depends on. This only observes the graph — it drives the same nodes in the same
+    order as ``invoke``.
+
+    The ``custom`` stream (WU-LIVE-INTRA-NODE) carries whatever a node's executor call
+    wrote via ``get_stream_writer()`` from INSIDE its (possibly long) call — per-turn /
+    tool_use activity, and each review finding as it is produced — so the live view shows
+    progress WITHIN a node, not only at its boundaries. Each chunk is tagged with the
+    currently-running node (tracked from the same ``debug`` "task" events used for
+    ``on_node``) and forwarded to ``on_event`` under its own ``kind`` (the emitter sets
+    ``"kind": "node_activity"``; default to that if a chunk omits it). This is a pure
+    ADDITIVE OBSERVATION channel — a node with no stream writer bound (or with the sink
+    disabled/failing) emits nothing here and the graph's control flow is entirely unaffected.
+
+    ``on_event(kind, payload)``, when given, additionally receives ``node_start`` /
+    ``node_end`` events for the additive live sink (WU-RUN-EVENTS): ``node_end`` carries
+    the node's wall-clock ``duration``. It is a pure OBSERVATION hook — it never alters
+    which nodes run or in what order, and the emitter itself is best-effort (a failed
+    live-sink write is swallowed at the call site, exactly like the metrics sink).
 
     The graph-invocation ``config`` is augmented with ``RECURSION_LIMIT`` so large
     multi-unit DAGs don't trip LangGraph's default-25 super-step ceiling.
     """
     config = {**config, "recursion_limit": RECURSION_LIMIT}
     interrupt = None
-    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug"]):
+    starts: dict[str, float] = {}
+    current_node: str | None = None
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+        if mode == "custom":
+            if on_event is not None and isinstance(chunk, dict):
+                kind = chunk.get("kind") or "node_activity"
+                activity = {k: v for k, v in chunk.items() if k != "kind"}
+                if current_node is not None:
+                    activity.setdefault("node", current_node)
+                on_event(kind, activity)
+            continue
         if mode == "debug":
-            if (
-                on_node is not None
-                and isinstance(chunk, dict)
-                and chunk.get("type") == "task"
-            ):
-                name = (chunk.get("payload") or {}).get("name")
-                if name:
+            if not isinstance(chunk, dict):
+                continue
+            ctype = chunk.get("type")
+            cpayload = chunk.get("payload") or {}
+            name = cpayload.get("name")
+            if ctype == "task" and name:
+                task_id = cpayload.get("id")
+                if task_id is not None:
+                    starts[task_id] = time.monotonic()
+                current_node = name
+                if on_node is not None:
                     on_node(name)
+                if on_event is not None:
+                    on_event(NODE_START, {"node": name})
+            elif ctype == "task_result" and name:
+                if on_event is not None:
+                    started = starts.pop(cpayload.get("id"), None)
+                    duration = None if started is None else time.monotonic() - started
+                    on_event(NODE_END, {"node": name, "duration": duration})
             continue
         # mode == "updates": the only source of the gate's __interrupt__ payload.
         if not isinstance(chunk, dict):
@@ -187,7 +235,7 @@ def _gate_payload(result, snapshot) -> dict:
     return {}
 
 
-def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None):
+def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None, on_event=None):
     """Drive the graph through its approval gates to END, consulting ``approver``.
 
     Shared by a fresh ``drive`` and a ``resume``: each iteration reads the current
@@ -210,7 +258,9 @@ def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None)
         approved = approver(payload, snapshot.values)
         if on_wait is not None:
             on_wait(time.monotonic() - wait_start)
-        result = _step(graph, Command(resume=approved), config, on_node=on_node)
+        result = _step(
+            graph, Command(resume=approved), config, on_node=on_node, on_event=on_event
+        )
 
 
 def _isolate_fresh_run(graph, config, thread_id: str) -> None:
@@ -242,9 +292,56 @@ def _isolate_fresh_run(graph, config, thread_id: str) -> None:
     graph.checkpointer.delete_thread(thread_id)
 
 
+def _safe_event_emitter(sink: LiveSink, thread_id: str):
+    """Wrap a live sink in a BEST-EFFORT emitter (WU-RUN-EVENTS).
+
+    Returns ``emit(kind, payload)`` which writes one event for ``thread_id`` and swallows
+    ANY exception, so a live-sink write failure never affects the run — exactly like the
+    metrics sink. The live channel is purely additive OBSERVATION.
+    """
+
+    def emit(kind: str, payload: dict) -> None:
+        try:
+            sink.emit(thread_id, kind, payload)
+        except Exception:
+            pass
+
+    return emit
+
+
+def _live_emitter(config: BlacksmithConfig, thread_id: str):
+    """Build the best-effort live run-event emitter for ``thread_id``, or ``None``.
+
+    Returns ``None`` when the sink is disabled (``[live] enabled=false``) or cannot be
+    opened, so the drive loop emits nothing and the run behaves exactly as today. Opening
+    the sink is itself swallowed (a bad ``db_path`` yields ``None``, never a raised error).
+    """
+    if not config.live.enabled:
+        return None
+    try:
+        conn = build_live_store(config.live.db_path)
+    except Exception:
+        return None
+    return _safe_event_emitter(LiveSink(conn), thread_id)
+
+
+def _emit_run_summary(on_event, values) -> None:
+    """Emit end-of-unit + end-of-run summary events from the FINAL state (WU-RUN-EVENTS).
+
+    Derived entirely from the EXISTING ``cost_events`` / ``unit_results`` reducers — no new
+    graph state. Each ``on_event`` call is best-effort (the emitter swallows errors), so a
+    live-sink failure here never affects the run's outcome.
+    """
+    if on_event is None:
+        return
+    for payload in unit_result_payloads(values):
+        on_event(UNIT_RESULT, payload)
+    on_event(RUN_STATUS, run_status_payload(values))
+
+
 def drive(
     graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None,
-    on_wait=None,
+    on_wait=None, on_event=None,
 ):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
@@ -264,13 +361,16 @@ def drive(
     payload = {"prd_path": str(prd_path)}
     if issue_number is not None:
         payload["issue_number"] = issue_number
-    result = _step(graph, payload, config, on_node=on_node)
-    return _drive_gates(
-        graph, config, approver=approver, on_node=on_node, result=result, on_wait=on_wait
+    result = _step(graph, payload, config, on_node=on_node, on_event=on_event)
+    final = _drive_gates(
+        graph, config, approver=approver, on_node=on_node, result=result,
+        on_wait=on_wait, on_event=on_event,
     )
+    _emit_run_summary(on_event, final.values)
+    return final
 
 
-def resume(graph, thread_id: str, *, approver, on_node=None, on_wait=None):
+def resume(graph, thread_id: str, *, approver, on_node=None, on_wait=None, on_event=None):
     """Continue an interrupted run from its persisted SQLite checkpoint (WU-RESUME).
 
     Re-attaches to ``thread_id`` and drives the *existing* graph state to END. It sends
@@ -286,9 +386,12 @@ def resume(graph, thread_id: str, *, approver, on_node=None, on_wait=None):
             f"no checkpoint found for thread-id {thread_id!r}; nothing to resume "
             "(start a run with `blacksmith <prd>` first)"
         )
-    return _drive_gates(
-        graph, config, approver=approver, on_node=on_node, on_wait=on_wait
+    final = _drive_gates(
+        graph, config, approver=approver, on_node=on_node, on_wait=on_wait,
+        on_event=on_event,
     )
+    _emit_run_summary(on_event, final.values)
+    return final
 
 
 def _cli_approver(
@@ -781,6 +884,7 @@ def _resume(argv: list[str] | None = None) -> int:
             approver=_resolve_approver(args, renderer),
             on_node=_progress_emitter(args.quiet, renderer),
             on_wait=_track_wait,
+            on_event=_live_emitter(config, args.thread_id),
         )
     except ResumeError as exc:
         print(f"resume: {exc}", file=sys.stderr)
@@ -975,6 +1079,7 @@ def main(argv: list[str] | None = None) -> int:
             on_node=_progress_emitter(args.quiet, renderer),
             issue_number=args.issue,
             on_wait=_track_wait,
+            on_event=_live_emitter(config, args.thread_id),
         )
     except FreshRunError as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)

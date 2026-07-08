@@ -140,6 +140,21 @@ class MetricsConfig(_Strict):
     db_path: Path = Path(".blacksmith/metrics.sqlite")
 
 
+class LiveConfig(_Strict):
+    """Live run-event sink settings (WU-RUN-EVENTS).
+
+    A SEPARATE, additive OBSERVATION channel from ``[checkpointer]`` / ``[store]`` /
+    ``[metrics]``: its own append-only ``db_path`` records a durable, thread-keyed stream
+    of structured run events (node_start/node_end, unit_result, run_status) for live
+    viewing. It is never read back into the graph and, exactly like the metrics sink, is
+    best-effort — with ``enabled=false`` or on any write error a run is byte-for-byte
+    unaffected.
+    """
+
+    enabled: bool = True
+    db_path: Path = Path(".blacksmith/live.sqlite")
+
+
 class TranscriptsConfig(_Strict):
     """Per-call transcript capture settings (WU-TRANSCRIPT-CAPTURE).
 
@@ -232,6 +247,7 @@ class BlacksmithConfig(_Strict):
     checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
     store: StoreConfig = Field(default_factory=StoreConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
+    live: LiveConfig = Field(default_factory=LiveConfig)
     transcripts: TranscriptsConfig = Field(default_factory=TranscriptsConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
