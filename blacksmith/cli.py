@@ -78,6 +78,10 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         fix=run_fix,
         store=build_store(config.store.db_path),
         limits=config.limits,
+        # Wire the post-gate adversarial review loop (WU-REVIEW-LOOP) into production. Without
+        # this the review node is never seeded/entered — the whole reviewer feature stays dark
+        # on real runs. ReviewConfig.enabled (default True) is the on/off switch.
+        review=config.review,
     )
 
 
