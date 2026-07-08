@@ -14,6 +14,12 @@ metrics routes. The sink is seeded directly with ``LiveSink``, exactly like the
 ``test_run_events`` suite, and a real server is started on an ephemeral port so these
 tests make real localhost requests. The SSE endpoint is bounded (a short, fixed number of
 empty polls before closing), so reading its response to completion never hangs a test.
+
+This file also covers ``GET /live`` (WU-LIVE-UI): the self-contained fleet page built on
+top of the two endpoints above. Since that view is visually QA'd on the PR, these tests
+are purely STRUCTURAL — they assert the response is HTML, that the markup carries the
+fleet + per-run mount points, that the inlined JS wires an ``EventSource`` to
+``/live/<thread_id>``, and that no external http(s) asset URL appears anywhere in the page.
 """
 
 from __future__ import annotations
@@ -46,6 +52,11 @@ def _running_server(metrics_db_path: Path, live_db_path: Path | None = None):
 def _get_json(port: int, path: str):
     with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as resp:
         return resp.status, json.loads(resp.read().decode("utf-8"))
+
+
+def _get_html(port: int, path: str):
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as resp:
+        return resp.status, resp.headers.get("Content-Type", ""), resp.read().decode("utf-8")
 
 
 def _get_sse(port: int, path: str):
@@ -185,3 +196,109 @@ def test_existing_api_runs_route_still_works_with_live_db_path_set(tmp_path):
 
     assert status == 200
     assert runs == []
+
+
+# --- GET /live (fleet page, WU-LIVE-UI) ----------------------------------------
+
+# Mount markers the page exposes so the vanilla JS can attach the fleet list, clone a
+# per-run card, and drill in to one run's timeline.
+LIVE_MOUNT_MARKERS = (
+    'id="fleet"',                    # fleet list: one card per active thread_id
+    'id="fleet-empty"',              # friendly "no active runs" state
+    'id="fleet-run-template"',       # per-run mount points, cloned once per active run
+    'id="run-panel"',                # drill-in to one run's full node/unit timeline
+)
+
+
+def test_live_page_served_as_html(tmp_path):
+    metrics_db = tmp_path / "metrics.sqlite"
+    live_db = tmp_path / "live.sqlite"
+
+    with _running_server(metrics_db, live_db) as (_host, port):
+        status, content_type, body = _get_html(port, "/live")
+
+    assert status == 200
+    assert "text/html" in content_type
+    assert body.lstrip().lower().startswith("<!doctype html")
+
+
+def test_live_page_served_with_no_configured_live_sink(tmp_path):
+    # live_db_path omitted entirely -> the page still serves (its data comes from client-
+    # side polling, not from anything read at request time).
+    metrics_db = tmp_path / "metrics.sqlite"
+
+    with _running_server(metrics_db) as (_host, port):
+        status, content_type, _body = _get_html(port, "/live")
+
+    assert status == 200
+    assert "text/html" in content_type
+
+
+def test_live_page_contains_fleet_and_per_run_mount_points(tmp_path):
+    metrics_db = tmp_path / "metrics.sqlite"
+    live_db = tmp_path / "live.sqlite"
+
+    with _running_server(metrics_db, live_db) as (_host, port):
+        _status, _content_type, body = _get_html(port, "/live")
+
+    for marker in LIVE_MOUNT_MARKERS:
+        assert marker in body, f"missing mount marker: {marker}"
+
+
+def test_live_page_wires_eventsource_to_live_thread_endpoint(tmp_path):
+    metrics_db = tmp_path / "metrics.sqlite"
+    live_db = tmp_path / "live.sqlite"
+
+    with _running_server(metrics_db, live_db) as (_host, port):
+        _status, _content_type, body = _get_html(port, "/live")
+
+    # The fleet page opens a live SSE connection per active run, straight to the same
+    # per-thread stream exercised above.
+    assert "EventSource" in body
+    assert "/live/" in body
+    assert "/api/runs/active" in body
+
+
+def test_live_page_has_no_external_asset_urls(tmp_path):
+    metrics_db = tmp_path / "metrics.sqlite"
+    live_db = tmp_path / "live.sqlite"
+
+    with _running_server(metrics_db, live_db) as (_host, port):
+        _status, _content_type, body = _get_html(port, "/live")
+
+    # OFFLINE: no absolute http(s) URL and no external CDN reference anywhere in the page.
+    lowered = body.lower()
+    assert "http://" not in lowered
+    assert "https://" not in lowered
+    for host in ("cdnjs", "jsdelivr", "unpkg", "googleapis", "cloudflare", "bootstrapcdn"):
+        assert host not in lowered, f"external CDN reference found: {host}"
+
+
+def test_live_page_inlines_css_and_js(tmp_path):
+    metrics_db = tmp_path / "metrics.sqlite"
+    live_db = tmp_path / "live.sqlite"
+
+    with _running_server(metrics_db, live_db) as (_host, port):
+        _status, _content_type, body = _get_html(port, "/live")
+
+    assert "<style>" in body
+    assert "<script>" in body
+    assert 'rel="stylesheet"' not in body
+
+
+def test_existing_live_thread_stream_route_still_works_alongside_live_page(tmp_path):
+    # /live/<thread_id> (SSE) and /live (the fleet page) must coexist without either
+    # route shadowing the other.
+    live_db = tmp_path / "live.sqlite"
+    _seed(live_db)
+    metrics_db = tmp_path / "metrics.sqlite"
+
+    with _running_server(metrics_db, live_db) as (_host, port):
+        page_status, page_ctype, _page_body = _get_html(port, "/live")
+        stream_status, stream_ctype, frames = _get_sse(port, "/live/alpha")
+
+    assert page_status == 200
+    assert "text/html" in page_ctype
+    assert stream_status == 200
+    assert stream_ctype == "text/event-stream"
+    assert [f["kind"] for f in frames] == [NODE_START, NODE_END, RUN_STATUS]
