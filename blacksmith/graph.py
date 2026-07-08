@@ -563,10 +563,15 @@ def build_unit(
     while same-model retries remain (``limits.max_fix_attempts``) and the run is within its
     ``max_run_cost_usd`` ceiling, the build clone is reset HARD to its base tip and the unit
     is re-implemented WITH the gate output fed back, then re-gated — mirroring the sequential
-    path's fix-retry on this isolated build clone. Escalation is NOT done here (the sequential
-    path owns the single stronger-model retry); the fan-out worker only loops the cheap model.
-    Both knobs ride along in the ``Send`` payload (``limits`` + the run's pre-level spend), so a
-    fan-out run wired without limits keeps its prior behaviour: one attempt, then record/halt."""
+    path's fix-retry on this isolated build clone. A turn-cap halt likewise recovers here,
+    mirroring the sequential ``continue_implement``: the clone's partial work is KEPT (not
+    reset) and the attempt is continued with a fresh budget, bounded by
+    ``limits.max_implement_continuations`` and the cost cap — so recovery from a turn cap does
+    not depend on whether a unit landed in a parallel level. Only escalation stays
+    sequential-only (the sequential path owns the single stronger-model retry); the fan-out
+    worker loops the cheap model. Both knobs ride along in the ``Send`` payload (``limits`` +
+    the run's pre-level spend), so a fan-out run wired without limits keeps its prior
+    behaviour: one attempt, then record/halt."""
     unit = state["selected_unit"]
     level = state.get("level_cursor", 0)
     shared = state["shared_clone_path"]
@@ -603,11 +608,13 @@ def build_unit(
         "worktree_path": str(clone.path),
         "branch": clone.branch,
         # Pass the limits through so the worker's implement honours the configurable turn
-        # budget (max_implement_turns). The continuation LOOP is sequential-only (like
-        # escalation): a turn cap here records a failed build and the join halts the level.
+        # budget (max_implement_turns) AND the turn-cap continuation loop below (bounded by
+        # max_implement_continuations). Escalation stays sequential-only; a turn cap recovers.
         "limits": limits,
     }
+    max_cont = int(limits.get("max_implement_continuations", 0) or 0)
     fix_attempts = 0
+    continuations = 0
     last_gate_output = ""
     while True:
         # Feed the prior attempt's gate output back into the prompt (empty on the first attempt,
@@ -625,6 +632,21 @@ def build_unit(
         cost_events.extend(events)
         run_cost += _events_cost(events)
         if impl.get("status") == Status.HALTED:
+            within_budget = cap is None or run_cost < cap
+            # A turn-cap halt is RECOVERABLE here too, mirroring the sequential
+            # ``continue_implement``: KEEP this clone's partial work (do NOT reset to base_ref)
+            # and re-implement with a fresh budget and a "finish it" nudge, bounded by
+            # ``max_implement_continuations`` and the cost cap. Only escalation stays
+            # sequential-only; recovery from a turn cap must not depend on whether a unit
+            # happened to land in a parallel level.
+            if (
+                impl.get("implement_error_kind") == "max_turns"
+                and continuations < max_cont
+                and within_budget
+            ):
+                continuations += 1
+                sub["resume_partial_implement"] = True
+                continue
             message = impl["errors"][0]["message"] if impl.get("errors") else "implement failed"
             record.update(ok=False, error=f"unit {unit.id}: {message}")
             return {"level_builds": [record], "cost_events": cost_events}
@@ -655,6 +677,9 @@ def build_unit(
             fix_attempts += 1
             _git_run(clone.path, "reset", "--hard", base_ref)
             _git_run(clone.path, "clean", "-fd")
+            # The clone was reset — the next attempt is a fresh re-implement, not a
+            # continuation of partial work, so clear the resume nudge.
+            sub["resume_partial_implement"] = False
             continue
         error = f"gate failed for unit {unit.id}"
         if cap is not None and not within_budget and fix_attempts < max_fix:
