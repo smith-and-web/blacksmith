@@ -246,7 +246,7 @@ class EditingFakeExecutor:
         self.calls: list[dict] = []
 
     def run_implement(self, prompt, **kwargs):
-        self.calls.append(kwargs)
+        self.calls.append({**kwargs, "prompt": prompt})
         Path(kwargs["cwd"], "feature.txt").write_text("hello\n")
         return _result()
 
@@ -258,7 +258,7 @@ class BlockingFakeExecutor:
         self.calls: list[dict] = []
 
     def run_implement(self, prompt, **kwargs):
-        self.calls.append(kwargs)
+        self.calls.append({**kwargs, "prompt": prompt})
         target = str(Path(kwargs["cwd"], "Cargo.lock"))
         asyncio.run(kwargs["can_use_tool"]("Write", {"file_path": target}, None))
         return _result(text="blocked")
@@ -272,7 +272,7 @@ class OutsideWorktreeFakeExecutor:
         self.calls: list[dict] = []
 
     def run_implement(self, prompt, **kwargs):
-        self.calls.append(kwargs)
+        self.calls.append({**kwargs, "prompt": prompt})
         asyncio.run(
             kwargs["can_use_tool"]("Write", {"file_path": "/Users/someone/realrepo/cli.py"}, None)
         )
@@ -287,7 +287,7 @@ class MixedBlockFakeExecutor:
         self.calls: list[dict] = []
 
     def run_implement(self, prompt, **kwargs):
-        self.calls.append(kwargs)
+        self.calls.append({**kwargs, "prompt": prompt})
         asyncio.run(
             kwargs["can_use_tool"]("Write", {"file_path": "/Users/someone/realrepo/cli.py"}, None)
         )
@@ -458,3 +458,137 @@ def test_implement_injects_claude_md_into_system_prompt(tmp_path):
     system_prompt = fake.calls[0]["system_prompt"]
     assert "PROJECT CONTEXT" in system_prompt
     assert "keep functions tiny" in system_prompt
+
+
+# --- sandbox self-verify tool + prompt (WU-SANDBOX-IMPLEMENT) ----------------
+
+
+class _SandboxConfigStub:
+    """Mirrors ``blacksmith.sandbox.SandboxManager.config``'s ``enabled`` flag only —
+    the field the implement node actually consults."""
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
+
+
+class FakeSandboxForImplement:
+    """Minimal double for a started ``SandboxManager``. ``exec`` must never be called by
+    these tests — the fake executor never actually invokes the ``run_command`` tool, it
+    only inspects the kwargs the implement node built for the call."""
+
+    def __init__(self, *, enabled: bool):
+        self.config = _SandboxConfigStub(enabled)
+
+    def exec(self, command, timeout=None):
+        raise AssertionError("run_command must never be invoked from these tests")
+
+
+def test_implement_grants_run_command_tool_and_self_verify_prompt_when_sandbox_enabled(tmp_path):
+    from blacksmith.nodes.implement import (
+        _DISALLOWED_TOOLS,
+        _SANDBOX_SERVER_NAME,
+        _SANDBOX_TOOL_NAME,
+    )
+    from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME
+
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+    sandbox = FakeSandboxForImplement(enabled=True)
+
+    out = implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=fake,
+        sandbox=sandbox,
+    )
+
+    assert out["status"] == Status.TESTING
+    call = fake.calls[0]
+    # (a) the run_command sandbox tool is granted...
+    assert RUN_COMMAND_TOOL_NAME in _SANDBOX_TOOL_NAME
+    assert _SANDBOX_TOOL_NAME in call["allowed_tools"]
+    assert _SANDBOX_SERVER_NAME in call["mcp_servers"]
+    # ...while raw Bash (and every other escape tool) stays disallowed, unchanged.
+    assert call["disallowed_tools"] == _DISALLOWED_TOOLS
+    assert "Bash" in call["disallowed_tools"]
+    # ...and the prompt instructs the agent to self-verify in the sandbox before finishing.
+    prompt = call["prompt"].lower()
+    assert "run_command" in prompt
+    assert "sandbox" in prompt
+    assert "before you finish" in prompt
+    assert "fix" in prompt
+
+
+def test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_unchanged(tmp_path):
+    from blacksmith.nodes.implement import _ALLOWED_TOOLS, _implement_prompt
+
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    wt_baseline = _scratch_worktree(baseline_dir)
+    fake_baseline = EditingFakeExecutor()
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_baseline.path)},
+        executor=fake_baseline,
+    )
+
+    disabled_dir = tmp_path / "disabled"
+    disabled_dir.mkdir()
+    wt_disabled = _scratch_worktree(disabled_dir)
+    fake_disabled = EditingFakeExecutor()
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_disabled.path)},
+        executor=fake_disabled,
+        sandbox=FakeSandboxForImplement(enabled=False),
+    )
+
+    baseline_call = fake_baseline.calls[0]
+    disabled_call = fake_disabled.calls[0]
+    # No sandbox tool, no mcp_servers, and the identical (unqualified) allowed/disallowed
+    # tool lists and prompt/system_prompt text — a disabled (or unwired) sandbox changes
+    # nothing about the call.
+    assert "mcp_servers" not in baseline_call
+    assert "mcp_servers" not in disabled_call
+    assert baseline_call["allowed_tools"] == disabled_call["allowed_tools"] == _ALLOWED_TOOLS
+    assert baseline_call["disallowed_tools"] == disabled_call["disallowed_tools"]
+    assert baseline_call["prompt"] == disabled_call["prompt"]
+    assert baseline_call["system_prompt"] == disabled_call["system_prompt"]
+    # And the prompt is exactly today's no-shell instruction — sandboxed vocabulary never
+    # leaks in when disabled.
+    assert baseline_call["prompt"] == _implement_prompt(unit)
+    assert "run_command" not in baseline_call["prompt"].lower()
+    assert "sandbox" not in baseline_call["prompt"].lower()
+
+
+def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path):
+    # (c) the pre-edit guard (AC-7) is unaffected by the sandbox being enabled.
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    out = implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=BlockingFakeExecutor(),
+        sandbox=FakeSandboxForImplement(enabled=True),
+    )
+
+    assert out["implementation"]["blocked"]
+    assert "Cargo.lock" in out["errors"][0]["message"]
+    assert "untouchable" in out["errors"][0]["message"]
+
+
+def test_implement_prompt_sandbox_enabled_reverses_no_shell_instruction():
+    from blacksmith.nodes.implement import _implement_prompt
+
+    unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+    disabled = _implement_prompt(unit)
+    enabled = _implement_prompt(unit, sandbox_enabled=True)
+
+    assert "no shell" in disabled.lower() and "cannot run" in disabled.lower()
+    assert "no shell" not in enabled.lower()
+    assert "run_command" in enabled.lower()
+    assert "sandbox" in enabled.lower()
+    assert "before you finish" in enabled.lower()
