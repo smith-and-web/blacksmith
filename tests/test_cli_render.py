@@ -121,6 +121,42 @@ def test_errors_appear_in_plain_report():
     assert "\x1b" not in text
 
 
+def test_recovered_errors_are_summarised_not_listed_on_a_successful_run():
+    # A DONE run whose accumulated errors were all RECOVERED from (a turn cap that continued, a
+    # gate failure that self-healed) must NOT list them as "error [...]" — that reads as a
+    # "failed successfully" report. They are summarised as a recovered count instead.
+    out = io.StringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    values = {
+        "status": Status.DONE,
+        "pr_url": "https://github.com/owner/demo/pull/9",
+        "errors": [
+            {"node": "implement", "message": "implement exceeded its turn budget (40 turns)"},
+            {"node": "test_gate", "message": "gate failed for unit WU-X"},
+        ],
+    }
+    _report(_snapshot(values), renderer)
+    text = out.getvalue()
+    assert "status: done" in text
+    assert "PR: https://github.com/owner/demo/pull/9" in text
+    assert "error [" not in text  # recovered failures are NOT listed as errors
+    assert "recovered: 2 transient failure(s)" in text
+
+
+def test_rendered_successful_report_shows_recovered_summary_not_error_lines():
+    out = _TTYStringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    values = {
+        "status": Status.DONE,
+        "pr_url": "https://github.com/owner/demo/pull/9",
+        "errors": [{"node": "implement", "message": "implement exceeded its turn budget"}],
+    }
+    _report(_snapshot(values), renderer)
+    text = out.getvalue()
+    assert "recovered from 1 transient failure(s)" in text
+    assert "error [" not in text
+
+
 # -- plan gate: contract de-emphasised so the plan leads ---------------------
 
 
