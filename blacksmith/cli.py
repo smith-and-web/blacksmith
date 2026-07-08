@@ -767,8 +767,10 @@ def _dashboard(argv: list[str] | None = None) -> int:
 
     Binds ``127.0.0.1`` on an ephemeral port (``--port`` to fix it), prints the chosen
     ``http://127.0.0.1:<port>`` URL, and serves until interrupted. It reads the local
-    metrics SQLite sink (``[metrics] db_path``) in READ-ONLY mode — it never writes the
-    metrics DB, never mutates run state, and never runs the graph.
+    metrics SQLite sink (``[metrics] db_path``) AND the additive live-events sink
+    (``[live] db_path``) in READ-ONLY mode — it never writes either DB, never mutates run
+    state, and never runs the graph. The live sink powers the ``/live`` fleet view; without
+    it wired here that view renders but shows no runs.
     """
     parser = argparse.ArgumentParser(
         prog="blacksmith dashboard",
@@ -789,7 +791,9 @@ def _dashboard(argv: list[str] | None = None) -> int:
 
     load_dotenv(Path.cwd() / ".env")
     config = _load_config(args.config)
-    return serve_dashboard(config.metrics.db_path, port=args.port)
+    return serve_dashboard(
+        config.metrics.db_path, port=args.port, live_db_path=config.live.db_path
+    )
 
 
 def _validate(argv: list[str] | None = None) -> int:
