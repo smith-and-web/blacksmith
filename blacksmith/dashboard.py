@@ -368,8 +368,31 @@ LIVE_HTML = """<!doctype html>
   .empty { background: var(--panel); border: 1px dashed var(--line);
     border-radius: 8px; padding: 48px; text-align: center; color: var(--muted); }
   #run-panel { background: var(--panel); border: 1px solid var(--line);
-    border-radius: 8px; padding: 16px; }
+    border-radius: 8px; padding: 16px; display: flex; flex-direction: column;
+    max-height: 78vh; }
+  #run-panel-body { overflow-y: auto; }
   .close { float: right; cursor: pointer; color: var(--muted); }
+  .run-status { font-weight: 600; margin: 2px 0 16px; }
+  .run-status.running { color: var(--accent); }
+  .run-status.done { color: var(--ok); }
+  .run-status.halted { color: var(--bad); }
+  .run-status a { color: var(--accent); }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+       color: var(--muted); margin: 20px 0 8px; }
+  .step { border-left: 2px solid var(--line); padding: 8px 0 8px 14px; margin-bottom: 4px; }
+  .step.active { border-left-color: var(--accent); background: rgba(110,168,254,.06); }
+  .step.done { border-left-color: var(--ok); }
+  .step-head { display: flex; align-items: baseline; gap: 8px; }
+  .step-node { font-weight: 600; }
+  .step-dur { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .step-sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .chips { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px;
+    padding: 1px 9px; font-size: 12px; color: var(--muted); }
+  .step-live { margin-top: 7px; font-size: 12px; color: var(--accent); }
+  .badge { border-radius: 4px; padding: 0 6px; font-size: 11px; text-transform: uppercase; }
+  .badge.passed { color: var(--ok); }
+  .badge.escalated { color: #d6a75e; }
 </style>
 </head>
 <body>
@@ -411,9 +434,17 @@ LIVE_HTML = """<!doctype html>
 const FLEET_URL = "/api/runs/active";
 const REFRESH_MS = __REFRESH_MS__;
 const usd = (n) => n == null ? "—" : "$" + Number(n).toFixed(2);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtDur = (s) => (s == null ? 0 : s).toFixed(1) + "s";
 
-const threads = new Map(); // thread_id -> { el, es, node, nodeStartTs, units, findings, timeline }
+// Each run is a sequence of STEPS (one per node run — a node repeats across the recovery /
+// review / fan-out loops, so each node_start opens a fresh step). Within a step we roll the
+// raw activity firehose up into counts + a per-tool tally, and keep the latest activity line
+// for a live "what's it doing right now" indicator.
+const threads = new Map();
 let currentPanelThread = null;
+let panelStick = true; // auto-scroll the panel to the newest activity unless the user scrolls up
 
 function ensureThread(threadId) {
   if (threads.has(threadId)) return threads.get(threadId);
@@ -426,7 +457,7 @@ function ensureThread(threadId) {
 
   const entry = {
     el, node: null, nodeStartTs: null,
-    units: new Map(), findings: [], timeline: [], status: "running",
+    steps: [], units: new Map(), findings: [], status: "running", prUrl: null,
     // Live wiring: one SSE connection per active run, straight to that thread's stream.
     es: new EventSource("/live/" + encodeURIComponent(threadId)),
   };
@@ -435,20 +466,40 @@ function ensureThread(threadId) {
   return entry;
 }
 
+function currentStep(entry) { return entry.steps[entry.steps.length - 1] || null; }
+
 function handleEvent(threadId, frame) {
   const entry = threads.get(threadId);
   if (!entry) return;
-  entry.timeline.push(frame);
   const payload = frame.payload || {};
   if (frame.kind === "node_start") {
     entry.node = payload.node;
     entry.nodeStartTs = frame.ts;
+    entry.steps.push({ node: payload.node, startTs: frame.ts, endTs: null, duration: null,
+      turns: 0, tools: new Map(), last: null });
+  } else if (frame.kind === "node_end") {
+    const s = currentStep(entry);
+    if (s && s.node === payload.node) {
+      s.endTs = frame.ts;
+      s.duration = payload.duration != null ? payload.duration : frame.ts - s.startTs;
+    }
+  } else if (frame.kind === "node_activity") {
+    const s = currentStep(entry);
+    if (payload.activity === "finding") {
+      entry.findings.push(payload.finding || {});
+      if (s) s.last = "reviewer flagged " + ((payload.finding || {}).file || "an issue");
+    } else if (s && payload.activity === "tool_use") {
+      s.tools.set(payload.tool, (s.tools.get(payload.tool) || 0) + 1);
+      s.last = payload.tool;
+    } else if (s && payload.activity === "turn") {
+      s.turns += 1;
+      s.last = "turn " + (payload.turn == null ? s.turns : payload.turn);
+    }
   } else if (frame.kind === "unit_result") {
-    entry.units.set(payload.unit_id, payload.cost_usd);
-  } else if (frame.kind === "node_activity" && payload.activity === "finding") {
-    entry.findings.push(payload.finding || {});
+    entry.units.set(payload.unit_id, payload);
   } else if (frame.kind === "run_status") {
     entry.status = payload.status;
+    entry.prUrl = payload.pr_url || null;
     entry.es.close();
   }
   renderThread(threadId);
@@ -457,30 +508,78 @@ function handleEvent(threadId, frame) {
 function renderThread(threadId) {
   const entry = threads.get(threadId);
   if (!entry) return;
-  entry.el.querySelector(".current-node").textContent = entry.node || "—";
+  entry.el.querySelector(".current-node").textContent =
+    entry.status === "running" ? (entry.node || "—") : entry.status;
   const elapsed = entry.nodeStartTs ? Math.max(0, Date.now() / 1000 - entry.nodeStartTs) : 0;
   entry.el.querySelector(".elapsed").textContent = elapsed.toFixed(0) + "s";
   entry.el.querySelector(".unit-costs tbody").innerHTML =
-    Array.from(entry.units.entries()).map(([unitId, cost]) =>
-      `<tr><td>${unitId}</td><td>${usd(cost)}</td></tr>`).join("");
+    Array.from(entry.units.values()).map((u) =>
+      `<tr><td>${esc(u.unit_id)}</td><td>${usd(u.cost_usd)}</td></tr>`).join("");
   entry.el.querySelector(".findings").innerHTML = entry.findings.map((f) =>
-    `<li>${f.severity || "?"}: ${f.file || ""} — ${f.detail || ""}</li>`).join("");
+    `<li>${esc(f.severity || "?")}: ${esc(f.file)} — ${esc(f.detail)}</li>`).join("");
   if (currentPanelThread === threadId) renderRunPanel(threadId);
 }
 
 function showRunPanel(threadId) {
   currentPanelThread = threadId;
+  panelStick = true;
   renderRunPanel(threadId);
   document.getElementById("run-panel").classList.remove("hidden");
+}
+
+function renderStep(entry, s, isLast, running, nowS) {
+  const active = running && isLast && s.endTs == null;
+  const dur = s.duration != null ? s.duration : (active ? nowS - s.startTs : 0);
+  const toolCount = Array.from(s.tools.values()).reduce((a, b) => a + b, 0);
+  const chips = Array.from(s.tools.entries())
+    .map(([t, c]) => `<span class="chip">${esc(t)} ×${c}</span>`).join("");
+  const parts = [];
+  if (s.turns) parts.push(s.turns + " turn" + (s.turns === 1 ? "" : "s"));
+  if (toolCount) parts.push(toolCount + " tool call" + (toolCount === 1 ? "" : "s"));
+  const sub = parts.length ? `<div class="step-sub">${parts.join(" · ")}</div>` : "";
+  const live = active && s.last ? `<div class="step-live">▸ ${esc(s.last)}</div>` : "";
+  return `<div class="step ${active ? "active" : "done"}">
+      <div class="step-head"><span>${active ? "⚙" : "✓"}</span>` +
+      `<span class="step-node">${esc(s.node)}</span>` +
+      `<span class="step-dur">${fmtDur(dur)}</span></div>
+      ${sub}${chips ? `<div class="chips">${chips}</div>` : ""}${live}</div>`;
 }
 
 function renderRunPanel(threadId) {
   const entry = threads.get(threadId);
   const body = document.getElementById("run-panel-body");
   if (!entry) { body.innerHTML = ""; return; }
-  const rows = entry.timeline.map((f) =>
-    `<tr><td>${f.seq}</td><td>${f.kind}</td><td>${JSON.stringify(f.payload)}</td></tr>`).join("");
-  body.innerHTML = `<h2>Run ${threadId}</h2><table><tbody>${rows}</tbody></table>`;
+  const running = entry.status === "running";
+  const nowS = Date.now() / 1000;
+
+  let banner;
+  if (running) {
+    banner = `<div class="run-status running">● running · ${esc(entry.node || "starting")}</div>`;
+  } else if (entry.status === "done") {
+    const pr = entry.prUrl
+      ? ` · <a href="${esc(entry.prUrl)}" target="_blank" rel="noreferrer">PR</a>` : "";
+    banner = `<div class="run-status done">✓ done${pr}</div>`;
+  } else {
+    banner = `<div class="run-status halted">✕ ${esc(entry.status || "halted")}</div>`;
+  }
+
+  const steps = entry.steps
+    .map((s, i) => renderStep(entry, s, i === entry.steps.length - 1, running, nowS)).join("");
+
+  const unitRows = Array.from(entry.units.values()).map((u) =>
+    `<tr><td>${esc(u.unit_id)}</td>` +
+    `<td><span class="badge ${esc(u.gate_result)}">${esc(u.gate_result || "")}</span></td>` +
+    `<td>${usd(u.cost_usd)}</td></tr>`).join("");
+  const units = unitRows ? `<h3>Units</h3><table><tbody>${unitRows}</tbody></table>` : "";
+
+  const findings = entry.findings.length
+    ? `<h3>Reviewer findings</h3><ul class="findings">` + entry.findings.map((f) =>
+        `<li>${esc(f.severity || "?")}: ${esc(f.file)} — ${esc(f.detail)}</li>`).join("") + `</ul>`
+    : "";
+
+  body.innerHTML = `<h2>Run ${esc(threadId)}</h2>${banner}` +
+    `<h3>Steps</h3>${steps || "<div class='step-sub'>waiting…</div>"}${units}${findings}`;
+  if (panelStick) body.scrollTop = body.scrollHeight; // stick to the newest activity
 }
 
 async function refreshFleet() {
@@ -493,6 +592,9 @@ async function refreshFleet() {
       empty.classList.add("hidden");
       fleet.classList.remove("hidden");
       active.forEach((row) => ensureThread(row.thread_id));
+      // Convenience: with a single run and nothing open, auto-open its detail panel so you
+      // don't have to click to start watching.
+      if (active.length === 1 && currentPanelThread === null) showRunPanel(active[0].thread_id);
     } else if (threads.size === 0) {
       empty.classList.remove("hidden");
       fleet.classList.add("hidden");
@@ -501,6 +603,13 @@ async function refreshFleet() {
     // Best-effort polling: a transient fetch failure just retries on the next tick.
   }
 }
+
+// Auto-scroll that yields to the user: stick to the bottom, but stop if they scroll up, and
+// re-engage when they scroll back down.
+document.getElementById("run-panel-body").addEventListener("scroll", (e) => {
+  const b = e.target;
+  panelStick = b.scrollHeight - b.scrollTop - b.clientHeight < 40;
+});
 
 document.getElementById("run-panel-close").addEventListener("click", () => {
   document.getElementById("run-panel").classList.add("hidden");
