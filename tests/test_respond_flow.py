@@ -246,3 +246,30 @@ def test_empty_comments_is_a_noop(tmp_path):
     # No push, no PR creation — only the (faked) comment-fetch `gh` calls happened.
     assert not any(call[:2] == ["git", "push"] for call in runner.calls)
     assert not any(call[:3] == ["gh", "pr", "create"] for call in runner.calls)
+
+
+def test_pr_branch_clone_manager_fetches_a_remote_only_branch(tmp_path):
+    # The PR's branch lives on the REMOTE, not in the operator's local source checkout
+    # (blacksmith pushes each PR branch from a throwaway clone, so the source only tracks main).
+    # PRBranchCloneManager must fetch it from the repointed remote, not the --local clone's
+    # source origin. Regression for the "couldn't find remote ref" failure the original tests
+    # hid by seeding the branch into the source repo too.
+    branch = "blacksmith/wu-remote-only"
+    bare = _init_bare(tmp_path / "remote.git")
+    repo = _init_repo(tmp_path / "repo")
+    _git(repo, "remote", "add", "origin", str(bare))
+    _git(repo, "push", "origin", "main")
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.py").write_text("original\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "feat: original PR commit")
+    _git(repo, "push", "origin", branch)
+    _git(repo, "checkout", "main")
+    _git(repo, "branch", "-D", branch)  # exists ONLY on the remote now — the real respond state
+
+    clone = PRBranchCloneManager(repo, base_dir=tmp_path / "clones").create(branch)
+
+    assert _git(clone.path, "rev-parse", "--abbrev-ref", "HEAD").strip() == branch
+    assert (clone.path / "feature.py").read_text() == "original\n"
+    # origin points at the real remote (so the later push lands on the PR's branch).
+    assert _git(clone.path, "remote", "get-url", "origin").strip() == str(bare)

@@ -86,12 +86,18 @@ class PRBranchCloneManager(CloneManager):
         path = self.base_dir / branch.replace("/", "-")
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self._git(self.repo_path.parent, "clone", "--local", str(self.repo_path), str(path))
-        self._git(path, "fetch", "origin", branch)
-        self._git(path, "checkout", "-B", branch, f"origin/{branch}")
-        self._propagate_identity(path)
+        # Repoint origin at the source's REAL remote BEFORE fetching the PR branch. The
+        # `--local` clone's origin is the local source checkout, which usually does NOT have
+        # the PR's branch — blacksmith pushes each PR branch to the remote from a throwaway
+        # clone, so the operator's source checkout only tracks `main`. Fetching the branch from
+        # the local source therefore fails ("couldn't find remote ref"); the branch lives on the
+        # remote. (When the source has no remote, origin stays the local clone as a fallback.)
         source_origin = self._source_origin_url()
         if source_origin is not None:
             self._git(path, "remote", "set-url", "origin", source_origin)
+        self._git(path, "fetch", "origin", branch)
+        self._git(path, "checkout", "-B", branch, f"origin/{branch}")
+        self._propagate_identity(path)
         return Clone(path=path, branch=branch, repo_path=self.repo_path)
 
 
