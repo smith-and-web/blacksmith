@@ -25,7 +25,7 @@ from langgraph.types import Command
 
 from blacksmith import __version__
 from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, find_config
-from blacksmith.contract import ContractError, parse_prd
+from blacksmith.contract import ContractError, PRDContract, parse_prd
 from blacksmith.costs import run_costs
 from blacksmith.dashboard import serve as serve_dashboard
 from blacksmith.events import (
@@ -998,6 +998,7 @@ def run_respond(
     gate=None,
     fix=None,
     clone_manager=None,
+    contract: PRDContract | None = None,
     out=print,
 ) -> int:
     """Drive ``blacksmith respond`` for an already-resolved PR: look up its branch, run
@@ -1008,6 +1009,11 @@ def run_respond(
     appends a commit to the PR's existing branch on a passing revision). Returns 0 when
     there was nothing to do or the revision was pushed; 1 when the revision never passed
     the gate, or the PR's branch could not be resolved.
+
+    ``contract``, when given (WU-RESPOND-PRD-CONTRACT), is forwarded to
+    ``respond_to_pr`` so the revision's implementer system-prompt constitution carries
+    the PRD's real untouchables instead of the ``_default_contract`` placeholder. Left
+    as ``None`` (the default), ``respond_to_pr`` behaves byte-for-byte as before.
     """
     repo_path = Path(repo_path)
     try:
@@ -1028,6 +1034,7 @@ def run_respond(
             clone_manager=clone_manager,
             pr_runner=pr_runner,
             repo=repo,
+            contract=contract,
         )
     except RespondError as exc:
         # A push failure on a PASSING revision surfaces as the same clean "respond: ..."
@@ -1061,6 +1068,12 @@ def _respond(argv: list[str] | None = None) -> int:
         help="owner/repo for the PR, if it cannot be inferred from the local git remote.",
     )
     parser.add_argument(
+        "--prd", default=None, dest="prd_path", metavar="PATH",
+        help="Optional contract-conforming PRD markdown file. When given, its contract's "
+        "real untouchables are threaded into the revision's implementer system-prompt "
+        "constitution in place of the placeholder default.",
+    )
+    parser.add_argument(
         "--config",
         default=None,
         help="blacksmith config path (default: discovered by walking up to the git root).",
@@ -1071,12 +1084,21 @@ def _respond(argv: list[str] | None = None) -> int:
     config = _load_config(args.config)
     repo_path = config.resolve_repo_path()
 
+    contract = None
+    if args.prd_path is not None:
+        try:
+            contract = parse_prd(args.prd_path).contract
+        except ContractError as exc:
+            print(f"respond: {exc}")
+            return 1
+
     return run_respond(
         args.pr_number,
         config=config,
         repo_path=repo_path,
         executor=Executor(config),
         repo=args.repo,
+        contract=contract,
     )
 
 
