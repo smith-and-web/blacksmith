@@ -592,3 +592,133 @@ def test_implement_prompt_sandbox_enabled_reverses_no_shell_instruction():
     assert "run_command" in enabled.lower()
     assert "sandbox" in enabled.lower()
     assert "before you finish" in enabled.lower()
+
+
+# --- repo map injection (WU-REPO-MAP-INJECT) ---------------------------------
+
+
+def _commit_helper_module(wt):
+    """Add and commit a tracked python file with a known top-level symbol, so
+    ``build_repo_map`` (git ls-files-backed) picks it up."""
+    (Path(wt.path) / "helper.py").write_text("def known_symbol():\n    pass\n")
+    subprocess.run(["git", "-C", str(wt.path), "add", "-A"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(wt.path), "commit", "-m", "add helper"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_implement_injects_repo_map_when_index_enabled(tmp_path):
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+
+    out = implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+    )
+
+    assert out["status"] == Status.TESTING
+    system_prompt = fake.calls[0]["system_prompt"]
+    assert "REPO MAP" in system_prompt  # clearly-labelled section
+    assert "known_symbol" in system_prompt  # a known symbol from the worktree
+    # existing sections are unaffected by the addition
+    assert "CONSTITUTION" in system_prompt
+
+
+def test_implement_system_prompt_unchanged_when_index_disabled(tmp_path):
+    from blacksmith.config import IndexConfig
+
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    wt_baseline = _scratch_worktree(baseline_dir)
+    _commit_helper_module(wt_baseline)
+    fake_baseline = EditingFakeExecutor()
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_baseline.path)},
+        executor=fake_baseline,
+    )
+
+    disabled_dir = tmp_path / "disabled"
+    disabled_dir.mkdir()
+    wt_disabled = _scratch_worktree(disabled_dir)
+    _commit_helper_module(wt_disabled)
+    fake_disabled = EditingFakeExecutor()
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_disabled.path)},
+        executor=fake_disabled,
+        index_config=IndexConfig(enabled=False),
+    )
+
+    baseline_call = fake_baseline.calls[0]
+    disabled_call = fake_disabled.calls[0]
+    # No index_config at all vs. an explicitly disabled one produce the identical
+    # (byte-for-byte) system prompt -- no repo-map section, no other change.
+    assert baseline_call["system_prompt"] == disabled_call["system_prompt"]
+    assert "REPO MAP" not in baseline_call["system_prompt"]
+    assert "REPO MAP" not in disabled_call["system_prompt"]
+    # the constitution and (absent, since no CLAUDE.md here) project-context sections
+    # are present/absent exactly as before this unit
+    assert "CONSTITUTION" in baseline_call["system_prompt"]
+    assert "PROJECT CONTEXT" not in baseline_call["system_prompt"]
+
+
+def test_implement_untouchable_guard_unaffected_by_index_enabled(tmp_path):
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    out = implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=BlockingFakeExecutor(),
+        index_config=IndexConfig(enabled=True),
+    )
+
+    assert out["implementation"]["blocked"]
+    assert "Cargo.lock" in out["errors"][0]["message"]
+    assert "untouchable" in out["errors"][0]["message"]
+
+
+def test_system_prompt_appends_repo_map_after_project_context():
+    contract = parse_prd(VENDORED_PRD).contract
+    assert "REPO MAP" not in _system_prompt(contract)  # omitted when absent
+
+    with_map = _system_prompt(contract, "House rule.", "helper.py\n  def known_symbol():")
+    assert "REPO MAP" in with_map
+    assert "known_symbol" in with_map
+    # constitution and project context both precede (and outrank) the repo map
+    assert with_map.index("CONSTITUTION") < with_map.index("PROJECT CONTEXT") < with_map.index(
+        "REPO MAP"
+    )
+
+
+def test_build_repo_map_disabled_returns_none(tmp_path):
+    from blacksmith.config import IndexConfig
+    from blacksmith.nodes.implement import _build_repo_map
+
+    wt = _scratch_worktree(tmp_path)
+    assert _build_repo_map(str(wt.path), None) is None
+    assert _build_repo_map(str(wt.path), IndexConfig(enabled=False)) is None
+
+
+def test_build_repo_map_enabled_bounded_by_max_map_bytes(tmp_path):
+    from blacksmith.config import IndexConfig
+    from blacksmith.nodes.implement import _build_repo_map
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    result = _build_repo_map(str(wt.path), IndexConfig(enabled=True, max_map_bytes=5))
+    assert result is not None
+    assert len(result.encode("utf-8")) <= 5 + len("…(truncated)".encode())
