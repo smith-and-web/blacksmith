@@ -248,6 +248,26 @@ class SandboxConfig(_Strict):
     exec_timeout_s: int = Field(default=120, gt=0)
 
 
+class IndexConfig(_Strict):
+    """Additive, opt-in repo-map/search index settings (WU-INDEX-CONFIG).
+
+    OFF by default (``enabled=false``): with the default config, the implementer's
+    tool surface, prompt, and behaviour are byte-for-byte unchanged from today — no
+    repo map is injected and no ``search_code`` tool is granted. This unit only adds
+    the config surface; no graph/executor/implement behaviour changes here.
+
+    * ``enabled`` — plain on/off toggle, default ``False``.
+    * ``max_map_bytes`` — the size ceiling for the injected repo map, an int > 0,
+      default 12000, so the map can never balloon the implementer's prompt.
+    * ``exclude`` — extra path globs to omit from the map/search, on top of whatever
+      ``git ls-files`` already excludes. Empty by default.
+    """
+
+    enabled: bool = False
+    max_map_bytes: int = Field(default=12000, gt=0)
+    exclude: list[str] = Field(default_factory=list)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -276,6 +296,7 @@ class BlacksmithConfig(_Strict):
     api: ApiConfig = Field(default_factory=ApiConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
+    index: IndexConfig = Field(default_factory=IndexConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:

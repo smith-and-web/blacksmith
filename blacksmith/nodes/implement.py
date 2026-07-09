@@ -23,8 +23,10 @@ from pathlib import Path, PurePosixPath
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
+from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
+from blacksmith.index import SEARCH_CODE_TOOL_NAME, build_repo_map, create_index_mcp_server
 from blacksmith.nodes.plan import cost_event, usage_breakdown
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
@@ -58,6 +60,16 @@ _SANDBOX_TOOL_NAME = f"mcp__{_SANDBOX_SERVER_NAME}__{RUN_COMMAND_TOOL_NAME}"
 # wiring may pass the configured value through explicitly; this is the fallback.
 _DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
 
+# search_code tool (WU-SEARCH-TOOL): ADDITIVE and off by default, mirroring the sandbox
+# tool wiring above. Only when an ``IndexConfig`` with ``enabled=True`` is passed in is the
+# implementer granted the ``search_code`` tool (WU-CODE-INDEX, ``blacksmith.index``) via its
+# own in-process MCP server, read-only over the run's worktree. With no ``index_config`` (or
+# ``enabled=False``, the default) none of this is wired in and the tool surface is
+# byte-for-byte unchanged from before this unit -- raw Read/Glob/Grep stay available either
+# way.
+_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
+_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
+
 # Conventional-Commits header so the unit's commit is never rejected by a target repo's
 # commit-msg hook (commitlint / config-conventional) AFTER its expensive implementation
 # already ran — the failure that discarded whole runs. The header is valid by construction
@@ -88,6 +100,15 @@ def conventional_commit_message(unit: WorkUnit, *, commit_type: str = _COMMIT_TY
 # conventions into the run. See _read_project_context for why we read it ourselves
 # rather than enabling the SDK's setting_sources loader.
 _PROJECT_CONTEXT_FILE = "CLAUDE.md"
+
+# Repo map injection (WU-REPO-MAP-INJECT): ADDITIVE and OFF by default. Only when an
+# ``IndexConfig`` with ``enabled=True`` is passed in does the implement node build the
+# repo map (WU-CODE-INDEX, ``blacksmith.index.build_repo_map``) from the worktree and
+# inject it into the implementer's SYSTEM prompt as static, clearly-labelled context --
+# so it rides the prompt cache and gives the agent the codebase layout up front, cutting
+# blind Read/Glob/Grep exploration. Bounded by ``[index].max_map_bytes``. With no
+# ``index_config`` (or ``enabled=False``, the default), none of this runs and the system
+# prompt is byte-for-byte unchanged from before this unit.
 
 # Path-like untouchables (PRD §7). Matched against the file's POSIX path with fnmatch
 # (so `*` spans separators). The behavioral untouchables are NOT path-matchable.
@@ -164,6 +185,7 @@ def implement(
     executor: Executor | None = None,
     sandbox: SandboxManager | None = None,
     sandbox_exec_timeout_s: int = _DEFAULT_SANDBOX_EXEC_TIMEOUT_S,
+    index_config: IndexConfig | None = None,
 ) -> dict:
     if executor is None:
         return {"status": Status.IMPLEMENTING}  # skeleton pass-through
@@ -221,9 +243,19 @@ def implement(
     # mirroring the same ``sandbox is not None and sandbox.config.enabled`` check used by the
     # run-level lifecycle wiring (WU-SANDBOX-LIFECYCLE) in graph.py.
     sandbox_enabled = bool(sandbox is not None and sandbox.config.enabled)
-    allowed_tools = [*_ALLOWED_TOOLS, _SANDBOX_TOOL_NAME] if sandbox_enabled else _ALLOWED_TOOLS
+    # search_code tool (WU-SEARCH-TOOL): same additive gating as the sandbox tool above --
+    # only an explicitly enabled IndexConfig grants it.
+    index_enabled = bool(index_config is not None and index_config.enabled)
+    allowed_tools = list(_ALLOWED_TOOLS)
+    if sandbox_enabled:
+        allowed_tools.append(_SANDBOX_TOOL_NAME)
+    if index_enabled:
+        allowed_tools.append(_SEARCH_TOOL_NAME)
+    repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
-        "system_prompt": _system_prompt(prd.contract, _read_project_context(worktree_path)),
+        "system_prompt": _system_prompt(
+            prd.contract, _read_project_context(worktree_path), repo_map
+        ),
         "cwd": worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
         # "default" permission mode they evaluate to "ask" and route through the
@@ -237,12 +269,17 @@ def implement(
         "max_turns": max_turns,
         "raise_on_error": False,  # surface failures into state, don't crash the graph
     }
+    mcp_servers: dict = {}
     if sandbox_enabled:
-        call_kwargs["mcp_servers"] = {
-            _SANDBOX_SERVER_NAME: create_sandbox_mcp_server(
-                sandbox, exec_timeout_s=sandbox_exec_timeout_s
-            )
-        }
+        mcp_servers[_SANDBOX_SERVER_NAME] = create_sandbox_mcp_server(
+            sandbox, exec_timeout_s=sandbox_exec_timeout_s
+        )
+    if index_enabled:
+        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+            worktree_path, exclude=index_config.exclude
+        )
+    if mcp_servers:
+        call_kwargs["mcp_servers"] = mcp_servers
     result = run_attempt(
         _implement_prompt(
             unit,
@@ -457,7 +494,28 @@ def _read_project_context(worktree_path: str | Path) -> str | None:
     return path.read_text(encoding="utf-8").strip() or None
 
 
-def _system_prompt(contract: PRDContract, project_context: str | None = None) -> str:
+def _build_repo_map(worktree_path: str | Path, index_config: IndexConfig | None) -> str | None:
+    """Build the repo map from the worktree if the index is enabled, else ``None``.
+
+    ADDITIVE and off by default (see the ``index_config`` note above ``_PROJECT_CONTEXT_FILE``):
+    with no ``index_config`` or ``enabled=False`` this never calls into ``blacksmith.index``
+    at all, so the disabled path has zero behavioural change.
+    """
+    if index_config is None or not index_config.enabled:
+        return None
+    return (
+        build_repo_map(
+            worktree_path, max_bytes=index_config.max_map_bytes, exclude=index_config.exclude
+        )
+        or None
+    )
+
+
+def _system_prompt(
+    contract: PRDContract,
+    project_context: str | None = None,
+    repo_map: str | None = None,
+) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
     prompt = (
         f"You are blacksmith's implementer for the {contract.component} project "
@@ -471,5 +529,12 @@ def _system_prompt(contract: PRDContract, project_context: str | None = None) ->
             "\n\nPROJECT CONTEXT — the target repo's CLAUDE.md (this codebase's own "
             "conventions and guidance). Follow it, but the CONSTITUTION above wins on any "
             f"conflict:\n{project_context}"
+        )
+    if repo_map:
+        prompt += (
+            "\n\nREPO MAP — a structural outline of this repository (tracked files and their "
+            "top-level symbols, WU-CODE-INDEX), given up front as static context so you can "
+            "orient before exploring, rather than spending turns on blind Read/Glob/Grep:\n"
+            f"{repo_map}"
         )
     return prompt

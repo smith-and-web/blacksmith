@@ -16,6 +16,7 @@ from blacksmith.config import (
     BlacksmithConfig,
     CheckpointerConfig,
     ConfigError,
+    IndexConfig,
     LimitsConfig,
     ModelTiers,
     ReviewConfig,
@@ -174,6 +175,53 @@ def test_explicit_sandbox_config_loads(tmp_path):
     assert cfg.sandbox.image == "kindling-sandbox:latest"
     assert cfg.sandbox.setup_cmd == "pip install -e ."
     assert cfg.sandbox.exec_timeout_s == 30
+
+
+def test_index_section_defaults():
+    # WU-INDEX-CONFIG: [index] is off by default, with sane defaults for the other
+    # fields so enabling it later requires no other config changes.
+    index = IndexConfig()
+    assert index.enabled is False
+    assert index.max_map_bytes == 12000
+    assert isinstance(index.max_map_bytes, int)
+    assert index.exclude == []
+
+
+def test_index_max_map_bytes_rejects_non_positive():
+    with pytest.raises(ValidationError):
+        IndexConfig(max_map_bytes=0)
+    with pytest.raises(ValidationError):
+        IndexConfig(max_map_bytes=-1)
+
+
+def test_index_defaults_when_config_omits_section():
+    # A config that omits [index] entirely still loads, with enabled=false and the
+    # defaults — behaving exactly as today (backward compatible).
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.index == IndexConfig()
+    assert cfg.index.enabled is False
+
+
+def test_index_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.index == IndexConfig()
+
+
+def test_explicit_index_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[index]\n"
+        "enabled = true\n"
+        "max_map_bytes = 4000\n"
+        'exclude = ["*.lock", "vendor/**"]\n'
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.index.enabled is True
+    assert cfg.index.max_map_bytes == 4000
+    assert cfg.index.exclude == ["*.lock", "vendor/**"]
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):
