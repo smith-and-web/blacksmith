@@ -98,7 +98,15 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
 # Sonnet turns are cheap, so the budget is generous.
 _PLAN_MAX_TURNS = 20
 _PLAN_READ_ONLY = ["Read", "Glob", "Grep"]
-_PLAN_BLOCKED = ["Write", "Edit", "Bash"]  # known write/exec tool names
+# The planner is read-only. Block writes/exec AND sub-agent spawning: an unblocked ``Agent``
+# let the planner delegate to sub-agents that re-explore the repo on their own — blind to the
+# repo map / search_code index, inflating turns and cost (observed: 5 Agent calls in a 133-turn
+# plan). Mirrors the implementer's disallowed set (minus MultiEdit, which the SDK no longer
+# knows — see the review node). Keeps Read/Glob/Grep + the index tool as the only surface.
+_PLAN_BLOCKED = [
+    "Write", "Edit", "NotebookEdit",
+    "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
+]
 
 # search_code tool (WU-PLAN-SEARCH-TOOL): ADDITIVE and off by default, gated on the SAME
 # [index].enabled switch as the implementer indexing (blacksmith.nodes.implement) -- no
@@ -284,6 +292,11 @@ def _system_prompt(
             "\n\nREPO MAP — a structural outline of the target repository (tracked files "
             "and their top-level symbols, WU-CODE-INDEX), given up front as static context "
             "so you can orient before exploring:\n"
-            f"{repo_map}"
+            f"{repo_map}\n\n"
+            "USE THE INDEX FIRST. You have a `search_code` tool that returns ranked symbol "
+            "definitions and usages from this repo in ONE call. To locate code, prefer the map "
+            "above and `search_code` over Read/Glob/Grep — reach for Grep/Glob only when the "
+            "index doesn't answer the question. This is exactly what the index exists to "
+            "replace: scanning the repo with dozens of greps is slow and expensive."
         )
     return prompt

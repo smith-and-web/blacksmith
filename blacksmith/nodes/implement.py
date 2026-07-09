@@ -535,6 +535,10 @@ def _system_prompt(
             "\n\nREPO MAP — a structural outline of this repository (tracked files and their "
             "top-level symbols, WU-CODE-INDEX), given up front as static context so you can "
             "orient before exploring, rather than spending turns on blind Read/Glob/Grep:\n"
-            f"{repo_map}"
+            f"{repo_map}\n\n"
+            "USE THE INDEX FIRST. You have a `search_code` tool that returns ranked symbol "
+            "definitions and usages from this repo in ONE call. To locate code, prefer the map "
+            "above and `search_code` over Read/Glob/Grep — reach for Grep/Glob only when the "
+            "index doesn't answer the question."
         )
     return prompt
