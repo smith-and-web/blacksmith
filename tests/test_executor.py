@@ -89,6 +89,19 @@ def test_build_options_injects_dedicated_key_and_model(monkeypatch):
     assert options.env["ANTHROPIC_API_KEY"] == "sk-ant-test"
 
 
+def test_build_options_forwards_mcp_servers(monkeypatch):
+    # The index search_code / sandbox run_command tools are passed as in-process MCP servers
+    # through run()'s **option_kwargs. build_options must accept and forward them to
+    # ClaudeAgentOptions — otherwise a live tool-enabled call raises TypeError (the reviewer's
+    # finding; FakeExecutor's **kwargs hid it from the node tests).
+    ex = Executor(_config(monkeypatch), query_fn=FakeQuery([]))
+    server = object()
+    options = ex.build_options(model="claude-sonnet-5", mcp_servers={"blacksmith-index": server})
+    assert options.mcp_servers == {"blacksmith-index": server}
+    # A call with no MCP servers still yields a valid (empty) mapping, not a crash.
+    assert ex.build_options(model="claude-sonnet-5").mcp_servers == {}
+
+
 def test_run_plan_and_implement_use_tiered_models(monkeypatch):
     config = _config(monkeypatch)
     fake = FakeQuery([_result()])

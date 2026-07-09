@@ -82,6 +82,11 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         # this the review node is never seeded/entered — the whole reviewer feature stays dark
         # on real runs. ReviewConfig.enabled (default True) is the on/off switch.
         review=config.review,
+        # Wire the repo-map / search_code index (WU-INDEX-*, WU-PLAN-*) into production. Without
+        # this the index config never reaches the graph and the whole indexing feature stays dark
+        # on real runs regardless of [index].enabled. IndexConfig.enabled (default False) is the
+        # on/off switch.
+        index=config.index,
     )
 
 
