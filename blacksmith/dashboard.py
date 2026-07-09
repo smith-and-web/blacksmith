@@ -64,6 +64,13 @@ DEFAULT_LIMIT = 100
 # stays current without hammering the read-only API.
 REFRESH_MS = 5000
 
+# A run with no live event for this long is treated as no longer in-flight and dropped from
+# /api/runs/active — a backstop for a run killed before it could emit its terminal run_status
+# (a concluded run is dropped immediately on its run_status, regardless of this). Generous
+# vs the gap between a run's events (intra-node activity streams every few seconds; even a
+# quiet node boundary is well under this).
+ACTIVE_WINDOW_S = 900
+
 # GET /live/<thread_id>: after replaying whatever is already in the sink, poll this many
 # times (each separated by SSE_POLL_INTERVAL_S) for newly-appended events before closing
 # the stream. Bounded — never an infinite loop — so both a real client and a test that
@@ -671,20 +678,25 @@ def _fetch_run(db_path: str | Path, thread_id: str) -> tuple[dict | None, list[d
         store.close()
 
 
-def _fetch_active_runs(live_db_path: str | Path | None) -> list[dict]:
-    """Return one row per thread_id with recent activity in the live sink.
+def _fetch_active_runs(live_db_path: str | Path | None, *, now: float | None = None) -> list[dict]:
+    """Return one row ``{"thread_id", "status", "last_ts"}`` per IN-FLIGHT run in the sink.
 
-    Each row is ``{"thread_id", "status", "last_ts"}``: ``status`` is the terminal
-    status from that thread's most recent ``run_status`` event when it has concluded,
-    else ``"running"`` (the thread has activity but no terminal event yet). Sorted by
-    ``last_ts`` descending (most recently active first). Mirrors the metrics API: no
-    configured/absent/schema-less sink yields ``[]``, never an error.
+    "In-flight" is the live fleet, not run history, so a run is EXCLUDED when either:
+    - it has **concluded** — its most recent event is a terminal ``run_status`` (done /
+      halted / awaiting_qa); those belong to the metrics dashboard, not the live view; or
+    - it has gone **silent** — no event for ``ACTIVE_WINDOW_S`` (e.g. a process killed before
+      it could emit ``run_status``), so a dead run doesn't linger in the fleet forever.
+
+    An in-flight run reports ``status="running"``. Sorted by ``last_ts`` descending. Mirrors
+    the metrics API: no configured/absent/schema-less sink yields ``[]``, never an error.
+    ``now`` is injectable for tests; it defaults to wall-clock time.
     """
     if live_db_path is None:
         return []
     store = _open_ro(live_db_path)
     if store is None:
         return []
+    now = time.time() if now is None else now
     try:
         thread_ids = [row[0] for row in store.execute(
             "SELECT DISTINCT thread_id FROM run_events"
@@ -695,10 +707,13 @@ def _fetch_active_runs(live_db_path: str | Path | None) -> list[dict]:
             if not events:
                 continue
             last = events[-1]
-            status = last.payload.get("status") if last.kind == RUN_STATUS else "running"
+            if last.kind == RUN_STATUS:
+                continue  # concluded — it lives in run history now, not the live fleet
+            if now - last.ts > ACTIVE_WINDOW_S:
+                continue  # silent too long — treat as no longer in-flight (e.g. killed)
             active.append({
                 "thread_id": thread_id,
-                "status": status,
+                "status": "running",
                 "last_ts": last.ts,
             })
         active.sort(key=lambda row: row["last_ts"], reverse=True)

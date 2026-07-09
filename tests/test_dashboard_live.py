@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -90,28 +91,45 @@ def _seed(live_db_path: Path) -> None:
 # --- GET /api/runs/active -----------------------------------------------------
 
 
-def test_active_runs_lists_seeded_threads_with_latest_status(tmp_path):
+def test_active_runs_excludes_concluded_runs(tmp_path):
+    # A concluded run (terminal run_status) is history, not in-flight, so it must NOT appear
+    # in the live fleet — a still-running run does. (Recent timestamps, so neither is filtered
+    # by the silence window, which the unit test below covers on its own.)
     live_db = tmp_path / "live.sqlite"
-    _seed(live_db)
+    now = time.time()
+    store = build_live_store(live_db)
+    sink = LiveSink(store)
+    sink.emit("finished", NODE_START, {"node": "plan"}, ts=now - 20)
+    sink.emit("finished", RUN_STATUS, {"status": "done"}, ts=now - 10)
+    sink.emit("live-one", NODE_START, {"node": "implement"}, ts=now - 5)
+    store.close()
     metrics_db = tmp_path / "metrics.sqlite"
 
     with _running_server(metrics_db, live_db) as (_host, port):
         status, active = _get_json(port, "/api/runs/active")
 
     assert status == 200
-    by_thread = {row["thread_id"]: row for row in active}
-    assert set(by_thread) == {"alpha", "beta"}
+    # Only the in-flight run; the concluded one is dropped.
+    assert [row["thread_id"] for row in active] == ["live-one"]
+    assert active[0]["status"] == "running"
 
-    # alpha concluded: latest status comes from its run_status event.
-    assert by_thread["alpha"]["status"] == "done"
-    assert by_thread["alpha"]["last_ts"] == 101.0
 
-    # beta has activity but no run_status yet: reported as still running.
-    assert by_thread["beta"]["status"] == "running"
-    assert by_thread["beta"]["last_ts"] == 200.0
+def test_fetch_active_runs_drops_concluded_and_silent_runs(tmp_path):
+    # Deterministic (injected now): a running run is in-flight; a concluded run (run_status)
+    # and a run silent past ACTIVE_WINDOW_S are both dropped from the live fleet.
+    live_db = tmp_path / "live.sqlite"
+    now = 10_000.0
+    store = build_live_store(live_db)
+    sink = LiveSink(store)
+    sink.emit("running", NODE_START, {"node": "implement"}, ts=now - 30)
+    sink.emit("concluded", NODE_START, {"node": "plan"}, ts=now - 40)
+    sink.emit("concluded", RUN_STATUS, {"status": "halted"}, ts=now - 35)
+    sink.emit("silent", NODE_START, {"node": "implement"}, ts=now - dashboard.ACTIVE_WINDOW_S - 1)
+    store.close()
 
-    # Most-recently-active thread first.
-    assert [row["thread_id"] for row in active] == ["beta", "alpha"]
+    active = dashboard._fetch_active_runs(live_db, now=now)
+    assert [row["thread_id"] for row in active] == ["running"]
+    assert active[0]["status"] == "running"
 
 
 def test_active_runs_absent_sink_returns_empty_list(tmp_path):
