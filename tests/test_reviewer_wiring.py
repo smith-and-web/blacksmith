@@ -33,5 +33,8 @@ def test_build_graph_for_wires_the_review_config(monkeypatch):
     # run actually enters the review node rather than silently skipping it.
     assert captured["review"] is config.review
     assert captured["review"].enabled is True
-    # Regression guard: the self-heal limits stay wired too (they share this call site).
+    # Regression guard: every opt-in feature config that this call site owns stays forwarded, so
+    # none can go wired-but-dark (enabled in config yet never reaching the graph). ``limits`` and
+    # the ``index`` (repo map + search_code) share this exact failure mode.
     assert captured["limits"] is config.limits
+    assert captured["index"] is config.index
