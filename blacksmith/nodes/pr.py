@@ -181,19 +181,47 @@ def _change_lines(
     return lines
 
 
+def _dedup_findings(findings) -> list[dict]:
+    """De-dupe findings by (file, detail), preserving first-seen order. ``review_findings``
+    accumulates across units and re-review passes, so the same note can appear more than once."""
+    seen: set = set()
+    out: list[dict] = []
+    for finding in findings:
+        key = (finding.get("file"), finding.get("detail"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(finding)
+    return out
+
+
 def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
-    """The "Reviewer notes" section (WU-REVIEW-RENDER): the same unresolved-findings /
-    resolved-via-revision summary shown at the approve_pr render, sourced straight from
-    state so it needs no plumbing through the gate payload. A clean review (no findings
-    the post-gate review loop gave up on) collapses to a single "Reviewer: clean" line."""
+    """The "Reviewer notes" section (WU-REVIEW-RENDER): sourced straight from state so it
+    needs no plumbing through the gate payload. Surfaces BOTH the unresolved BLOCKING findings
+    the post-gate review loop gave up on AND the reviewer's ADVISORY findings — non-blocking
+    notes that never enter ``unresolved_review_findings`` (so they were silently dropped from
+    the PR before) but are still worth a reviewer's eyes. Only a review with neither collapses
+    to a single "Reviewer: clean" line."""
     unresolved = state.get("unresolved_review_findings") or []
+    advisory = _dedup_findings(
+        f for f in (state.get("review_findings") or []) if f.get("severity") == "advisory"
+    )
     lines = ["", "**Reviewer notes:**"]
-    if not unresolved:
+    if not unresolved and not advisory:
         lines.append("Reviewer: clean")
         return lines
-    lines.append(f"- resolved via revision: {state.get('review_revisions', 0)}")
+    revisions = state.get("review_revisions", 0)
+    if revisions:
+        lines.append(f"- resolved via revision: {revisions}")
     for finding in unresolved:
-        lines.append(f"- {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}")
+        lines.append(
+            f"- unresolved (blocking): {finding.get('file', '(unknown file)')}: "
+            f"{finding.get('detail', '')}"
+        )
+    for finding in advisory:
+        lines.append(
+            f"- advisory: {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}"
+        )
     return lines
 
 
