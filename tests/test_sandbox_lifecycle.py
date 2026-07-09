@@ -255,3 +255,31 @@ def test_build_graph_wires_the_sandbox_into_the_implement_node(monkeypatch):
     impl_injected = next(inj for fn, inj in calls if fn is implement_fn)
     assert impl_injected.get("sandbox") is sandbox
     assert impl_injected.get("sandbox_exec_timeout_s") == 42
+
+
+def test_build_graph_wires_index_config_into_plan_and_implement_nodes(monkeypatch):
+    # index_config drives the repo map + search_code tool. It must reach BOTH the plan node
+    # (already wired) AND the implement node — implement's add_node omitted it, so implement's
+    # index was dark (map + tool never offered) even with [index] enabled, while plan's worked.
+    # Guards build_graph's per-node injection, which the build_graph_for forwarding test misses.
+    from blacksmith import graph as graph_mod
+    from blacksmith.config import IndexConfig
+    from blacksmith.nodes.implement import implement as implement_fn
+    from blacksmith.nodes.plan import plan as plan_fn
+
+    calls: list[tuple] = []
+    real_node_with = graph_mod._node_with
+
+    def spy(fn, **injected):
+        calls.append((fn, injected))
+        return real_node_with(fn, **injected)
+
+    monkeypatch.setattr(graph_mod, "_node_with", spy)
+
+    index = IndexConfig(enabled=True)
+    graph_mod.build_graph(executor=object(), index=index)
+
+    plan_injected = next(inj for fn, inj in calls if fn is plan_fn)
+    impl_injected = next(inj for fn, inj in calls if fn is implement_fn)
+    assert plan_injected.get("index_config") is index
+    assert impl_injected.get("index_config") is index
