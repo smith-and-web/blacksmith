@@ -44,7 +44,9 @@ from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
 from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
+from blacksmith.nodes.pr import Runner, subprocess_runner
 from blacksmith.render import Renderer
+from blacksmith.respond import RespondResult, respond_to_pr
 from blacksmith.sandbox import SandboxConfig as SandboxSettings
 from blacksmith.sandbox import SandboxManager
 from blacksmith.state import Status
@@ -130,6 +132,10 @@ class FreshRunError(Exception):
 
 class RepoConsistencyError(Exception):
     """Raised when the target repo's git remote doesn't match the PRD's target repo."""
+
+
+class RespondCLIError(Exception):
+    """Raised when ``blacksmith respond`` cannot look up the target PR's branch."""
 
 
 def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str) -> str:
@@ -931,6 +937,143 @@ def _resume(argv: list[str] | None = None) -> int:
     return 0 if final.values.get("status") == Status.DONE else 1
 
 
+def _pr_branch(pr_number: int, *, repo: str | None, runner: Runner, cwd: Path | None) -> str:
+    """Look up PR ``pr_number``'s branch (``headRefName``) via ``gh pr view``.
+
+    Raises ``RespondCLIError`` (never a raw traceback) on a `gh` failure, unparseable
+    output, or a payload missing ``headRefName``.
+    """
+    argv = ["gh", "pr", "view", str(pr_number), "--json", "headRefName"]
+    if repo:
+        argv += ["--repo", repo]
+    result = runner(argv, cwd)
+    if result.returncode != 0:
+        raise RespondCLIError(
+            f"could not look up PR #{pr_number}'s branch via gh: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise RespondCLIError(
+            f"could not parse gh output for PR #{pr_number}: {exc}"
+        ) from exc
+    branch = data.get("headRefName") if isinstance(data, dict) else None
+    if not branch:
+        raise RespondCLIError(f"gh returned no branch (headRefName) for PR #{pr_number}")
+    return branch
+
+
+def _plural(count: int) -> str:
+    return "" if count == 1 else "s"
+
+
+def _render_respond_result(result: RespondResult, *, out=print) -> None:
+    """Render a concise, one-line outcome for ``blacksmith respond`` (WU-RESPOND-CLI)."""
+    if result.reason == "no_comments":
+        out(f"PR #{result.pr_number}: no review comments — nothing to do")
+        return
+    comments = f"{result.comment_count} review comment{_plural(result.comment_count)}"
+    attempts = f"{result.attempts} attempt{_plural(result.attempts)}"
+    if result.pushed:
+        out(
+            f"PR #{result.pr_number}: addressed {comments} in {attempts} — "
+            f"pushed an update to {result.branch}"
+        )
+        return
+    out(
+        f"PR #{result.pr_number}: {comments} addressed, but the revision still failed "
+        f"the test gate after {attempts} — nothing pushed"
+    )
+
+
+def run_respond(
+    pr_number: int,
+    *,
+    config: BlacksmithConfig,
+    repo_path: str | Path,
+    executor: Executor,
+    repo: str | None = None,
+    pr_runner: Runner = subprocess_runner,
+    gate=None,
+    fix=None,
+    clone_manager=None,
+    out=print,
+) -> int:
+    """Drive ``blacksmith respond`` for an already-resolved PR: look up its branch, run
+    the revise flow (WU-RESPOND-FLOW), and render the outcome.
+
+    This is a NEW, additive entry point — it never runs the normal ingest→plan→
+    implement→gate→PR graph and ``respond_to_pr`` never opens a new PR (it only ever
+    appends a commit to the PR's existing branch on a passing revision). Returns 0 when
+    there was nothing to do or the revision was pushed; 1 when the revision never passed
+    the gate, or the PR's branch could not be resolved.
+    """
+    repo_path = Path(repo_path)
+    try:
+        branch = _pr_branch(pr_number, repo=repo, runner=pr_runner, cwd=repo_path)
+    except RespondCLIError as exc:
+        out(f"respond: {exc}")
+        return 1
+
+    result = respond_to_pr(
+        pr_number=pr_number,
+        branch=branch,
+        repo_path=repo_path,
+        config=config,
+        executor=executor,
+        gate=gate,
+        fix=fix,
+        clone_manager=clone_manager,
+        pr_runner=pr_runner,
+        repo=repo,
+    )
+    _render_respond_result(result, out=out)
+    return 0 if result.reason in ("pushed", "no_comments") else 1
+
+
+def _respond(argv: list[str] | None = None) -> int:
+    """``blacksmith respond --pr N``: revise an already-open PR from its review comments.
+
+    ADDITIVE entry point (WU-RESPOND-CLI): loads config + .env, fetches the PR's review
+    comments (WU-PR-COMMENTS), and runs the revise flow (WU-RESPOND-FLOW) against that
+    PR's own branch. It never runs the normal ingest→plan→implement→gate→PR graph and
+    never opens a new PR — only ever appends a commit to the PR's existing branch, and
+    only once the revision passes the authoritative test gate.
+    """
+    parser = argparse.ArgumentParser(
+        prog="blacksmith respond",
+        description="Revise an already-open PR from its human review comments "
+        "(never runs the normal PRD graph; never opens a new PR).",
+    )
+    parser.add_argument(
+        "--pr", type=int, required=True, dest="pr_number", metavar="N",
+        help="Number of the (already-open) PR to revise.",
+    )
+    parser.add_argument(
+        "--repo", default=None,
+        help="owner/repo for the PR, if it cannot be inferred from the local git remote.",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="blacksmith config path (default: discovered by walking up to the git root).",
+    )
+    args = parser.parse_args(argv)
+
+    load_dotenv(Path.cwd() / ".env")
+    config = _load_config(args.config)
+    repo_path = config.resolve_repo_path()
+
+    return run_respond(
+        args.pr_number,
+        config=config,
+        repo_path=repo_path,
+        executor=Executor(config),
+        repo=args.repo,
+    )
+
+
 def _costs(argv: list[str] | None = None) -> int:
     """``blacksmith costs``: org-level usage + cost from the Admin API (read-only).
 
@@ -1000,6 +1143,8 @@ def main(argv: list[str] | None = None) -> int:
         return _validate(argv[1:])
     if argv and argv[0] == "resume":
         return _resume(argv[1:])
+    if argv and argv[0] == "respond":
+        return _respond(argv[1:])
     if argv and argv[0] == "costs":
         return _costs(argv[1:])
     if argv and argv[0] == "runs":
