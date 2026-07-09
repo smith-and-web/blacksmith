@@ -93,6 +93,10 @@ class SandboxConfig:
     setup_cmd: str | None = None
     container_name: str = DEFAULT_CONTAINER_NAME
     docker_bin: str = "docker"
+    # Per-command wall-clock ceiling the run_command tool applies to each ``exec`` (mirrors
+    # blacksmith.config.SandboxConfig.exec_timeout_s). Carried here so a manager fully
+    # describes its operation and the graph can hand the tool the configured timeout.
+    exec_timeout_s: int = 120
 
 
 @dataclass

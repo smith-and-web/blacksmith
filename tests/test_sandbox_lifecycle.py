@@ -228,3 +228,30 @@ def test_cleanup_swallows_a_failing_sandbox_stop(tmp_path):
     cleanup_worktree(state, worktree_manager=mgr, sandbox=sandbox)  # must not raise
 
     assert sandbox.stop_calls == 1
+
+
+def test_build_graph_wires_the_sandbox_into_the_implement_node(monkeypatch):
+    # Gap that hid for a whole feature: prepare_worktree/cleanup got the sandbox but the IMPLEMENT
+    # node's add_node omitted it, so the run_command tool was never granted even with a sandbox
+    # wired in. Spy on _node_with to assert the implement node is injected with the sandbox (and
+    # its exec timeout). The existing implement test passes sandbox directly, so only this — the
+    # graph wiring — guards the gap.
+    from blacksmith import graph as graph_mod
+    from blacksmith.nodes.implement import implement as implement_fn
+    from blacksmith.sandbox import SandboxConfig, SandboxManager
+
+    calls: list[tuple] = []
+    real_node_with = graph_mod._node_with
+
+    def spy(fn, **injected):
+        calls.append((fn, injected))
+        return real_node_with(fn, **injected)
+
+    monkeypatch.setattr(graph_mod, "_node_with", spy)
+
+    sandbox = SandboxManager(config=SandboxConfig(enabled=True, exec_timeout_s=42))  # inert
+    graph_mod.build_graph(executor=object(), sandbox=sandbox)
+
+    impl_injected = next(inj for fn, inj in calls if fn is implement_fn)
+    assert impl_injected.get("sandbox") is sandbox
+    assert impl_injected.get("sandbox_exec_timeout_s") == 42

@@ -1153,7 +1153,16 @@ def build_graph(
             sandbox=sandbox,
         ),
     )
-    graph.add_node("implement", _node_with(implement, executor=executor))
+    # The implement node grants the sandbox run_command tool when the sandbox is enabled
+    # (WU-SANDBOX-IMPLEMENT). prepare_worktree/cleanup already receive the sandbox; implement
+    # must too, or the container starts but the tool is never offered. The manager carries its
+    # own exec timeout, so hand that to the tool. sandbox=None (tests) leaves implement wired
+    # exactly as before.
+    implement_deps: dict = {"executor": executor}
+    if sandbox is not None:
+        implement_deps["sandbox"] = sandbox
+        implement_deps["sandbox_exec_timeout_s"] = sandbox.config.exec_timeout_s
+    graph.add_node("implement", _node_with(implement, **implement_deps))
     graph.add_node("auto_fix", _node_with(auto_fix, fix=fix))
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
     graph.add_node(

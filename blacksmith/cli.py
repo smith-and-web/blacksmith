@@ -45,6 +45,8 @@ from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
 from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
 from blacksmith.render import Renderer
+from blacksmith.sandbox import SandboxConfig as SandboxSettings
+from blacksmith.sandbox import SandboxManager
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager, WorktreeManager, normalize_remote_slug
 
@@ -87,6 +89,19 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         # on real runs regardless of [index].enabled. IndexConfig.enabled (default False) is the
         # on/off switch.
         index=config.index,
+        # Wire the sandbox self-verify container (WU-SANDBOX-*) into production. build_graph_for is
+        # the ONLY place a live SandboxManager is constructed — bridge blacksmith's own
+        # [sandbox] config into the manager's own SandboxConfig (the two were built separately and
+        # never connected, so the feature was dark on real runs). SandboxConfig.enabled (default
+        # False) is the on/off switch; the manager is inert until prepare_worktree starts it.
+        sandbox=SandboxManager(
+            config=SandboxSettings(
+                enabled=config.sandbox.enabled,
+                image=config.sandbox.image,
+                setup_cmd=config.sandbox.setup_cmd,
+                exec_timeout_s=config.sandbox.exec_timeout_s,
+            )
+        ),
     )
 
 
