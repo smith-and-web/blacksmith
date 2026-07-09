@@ -41,8 +41,11 @@ from blacksmith.state import BlacksmithState
 # Read-only tool surface (mirrors the plan node): the reviewer inspects the worktree's
 # already-committed diff but can never change it.
 _REVIEW_READ_ONLY = ["Read", "Glob", "Grep"]
+# NB: no "MultiEdit" — the Agent SDK folded it into Edit and no longer knows that name, so
+# denying it just logs "Permission deny rule 'MultiEdit' matches no known tool". Edit / Write /
+# NotebookEdit still cover every write path for the read-only reviewer.
 _REVIEW_BLOCKED = [
-    "Write", "Edit", "MultiEdit", "NotebookEdit",
+    "Write", "Edit", "NotebookEdit",
     "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
 ]
 _REVIEW_MAX_TURNS = 20
