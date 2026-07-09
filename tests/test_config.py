@@ -91,6 +91,24 @@ def test_review_section_enabled_defaults_true():
     assert review.enabled is True
 
 
+def test_review_panel_size_defaults_to_one():
+    # WU-REVIEW-PANEL-CONFIG: [review] gains `panel_size`, an int >= 1 defaulting to
+    # 1, surfaced as config.review.panel_size. The default of 1 must be
+    # byte-for-byte the current single-reviewer behaviour, and `enabled` still
+    # defaults to True alongside it.
+    review = ReviewConfig()
+    assert review.panel_size == 1
+    assert isinstance(review.panel_size, int)
+    assert review.enabled is True
+
+
+def test_review_panel_size_rejects_less_than_one():
+    with pytest.raises(ValidationError):
+        ReviewConfig(panel_size=0)
+    with pytest.raises(ValidationError):
+        ReviewConfig(panel_size=-1)
+
+
 def test_review_defaults_when_config_omits_new_keys():
     # An existing config that omits [review] and the new keys entirely still loads,
     # with the new fields defaulting.
@@ -99,12 +117,14 @@ def test_review_defaults_when_config_omits_new_keys():
     assert cfg.limits.max_review_revisions == 1
     assert cfg.review == ReviewConfig()
     assert cfg.review.enabled is True
+    assert cfg.review.panel_size == 1
 
 
 def test_review_defaults_when_optional_sections_omitted():
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
     assert cfg.review == ReviewConfig()
     assert cfg.limits == LimitsConfig()
+    assert cfg.review.panel_size == 1
 
 
 def test_explicit_review_config_loads(tmp_path):
@@ -121,11 +141,13 @@ def test_explicit_review_config_loads(tmp_path):
         "\n"
         "[review]\n"
         "enabled = false\n"
+        "panel_size = 3\n"
     )
     cfg = BlacksmithConfig.load(cfg_file)
     assert cfg.models.review == "claude-sonnet-4-6"
     assert cfg.limits.max_review_revisions == 3
     assert cfg.review.enabled is False
+    assert cfg.review.panel_size == 3
 
 
 def test_sandbox_section_defaults():
