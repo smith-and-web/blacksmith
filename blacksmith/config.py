@@ -268,6 +268,21 @@ class IndexConfig(_Strict):
     exclude: list[str] = Field(default_factory=list)
 
 
+class RespondConfig(_Strict):
+    """Additive ``blacksmith respond`` revise-loop settings (WU-RESPOND-CONFIG).
+
+    ``respond`` is a NEW, separate entry point (PRD-additive) for revising an already
+    opened PR from review comments; it never changes the normal ingest→plan→implement→
+    gate→PR run. This section only bounds how many revise→gate attempts a single
+    ``respond`` invocation makes before it stops.
+
+    * ``max_attempts`` — an int >= 1, default 1, capping the revise→gate cycles a single
+      ``respond`` invocation may run.
+    """
+
+    max_attempts: int = Field(default=1, ge=1)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
 
@@ -297,6 +312,7 @@ class BlacksmithConfig(_Strict):
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
+    respond: RespondConfig = Field(default_factory=RespondConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:
