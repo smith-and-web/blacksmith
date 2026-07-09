@@ -11,7 +11,7 @@ from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.graph import build_checkpointer, compile_graph
-from blacksmith.nodes.plan import plan, select_unit
+from blacksmith.nodes.plan import _PLAN_READ_ONLY, _SEARCH_TOOL_NAME, plan, select_unit
 from blacksmith.state import Status
 
 VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
@@ -236,3 +236,54 @@ def test_plan_node_builds_repo_map_once_not_per_unit(tmp_path, monkeypatch):
 
     assert len(out["plans"]) == len(auto)  # every auto unit still gets its own plan call
     assert len(calls) == 1  # the repo map itself is built exactly once, not once per unit
+
+
+# --- search_code tool grant (WU-PLAN-SEARCH-TOOL) -----------------------------
+
+
+def test_plan_node_grants_search_code_tool_when_index_enabled(tmp_path):
+    repo = _init_target_repo(tmp_path)
+    fake = FakeExecutor()
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+        repo_path=str(repo),
+    )
+
+    call = fake.calls[0]
+    assert _SEARCH_TOOL_NAME in call["allowed_tools"]
+    assert "blacksmith-index" in call["mcp_servers"]
+    # the plan tier stays read-only: raw Read/Glob/Grep stay available...
+    for raw_tool in _PLAN_READ_ONLY:
+        assert raw_tool in call["allowed_tools"]
+    # ...and no write/shell tool is ever added alongside search_code.
+    assert call["disallowed_tools"] == ["Write", "Edit", "Bash"]
+    for forbidden in ("Write", "Edit", "Bash"):
+        assert forbidden not in call["allowed_tools"]
+
+
+def test_plan_node_tool_surface_unchanged_when_index_disabled(tmp_path):
+    repo = _init_target_repo(tmp_path)
+
+    baseline = FakeExecutor()
+    plan({"prd": parse_prd(VENDORED_PRD)}, executor=baseline)  # today's call, no index kwargs
+
+    disabled = FakeExecutor()
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=disabled,
+        index_config=IndexConfig(enabled=False),
+        repo_path=str(repo),
+    )
+
+    baseline_call = baseline.calls[0]
+    disabled_call = disabled.calls[0]
+    # Byte-for-byte identical tool surface: an explicitly disabled index config (with a
+    # real repo_path) produces the exact same allowed_tools as no index config at all.
+    assert baseline_call["allowed_tools"] == disabled_call["allowed_tools"] == _PLAN_READ_ONLY
+    assert "mcp_servers" not in baseline_call
+    assert "mcp_servers" not in disabled_call
+    assert _SEARCH_TOOL_NAME not in baseline_call["allowed_tools"]
+    assert _SEARCH_TOOL_NAME not in disabled_call["allowed_tools"]

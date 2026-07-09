@@ -17,6 +17,14 @@ the codebase-indexing PRD) built ONCE — not once per unit — and injected as 
 context, so it caches across the per-unit calls exactly like the constitution/lessons
 sections above. Off by default; disabled the system prompt is byte-for-byte unchanged.
 
+The SAME ``config.index.enabled`` switch (WU-PLAN-SEARCH-TOOL) also grants the plan tier
+the ``search_code`` tool (the same in-process MCP tool built over ``index.search_code``
+for the implementer) alongside its existing read-only Read/Glob/Grep, so a plan session
+can find symbols/usages in one indexed call instead of many greps. No separate toggle,
+no new write/shell tool, and the tool is only wired when a target ``repo_path`` is given
+(no worktree exists yet at plan time). Disabled, the plan tool surface is byte-for-byte
+unchanged.
+
 Without an executor wired (skeleton/tests), the node is a pass-through that only advances
 ``status`` — the real decomposition runs only when an executor is injected at graph-build
 time. This keeps the deterministic graph tests independent of any model call.
@@ -31,7 +39,7 @@ from typing import Any
 from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.index import build_repo_map
+from blacksmith.index import SEARCH_CODE_TOOL_NAME, build_repo_map, create_index_mcp_server
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.state import BlacksmithState, Status
 
@@ -92,6 +100,15 @@ _PLAN_MAX_TURNS = 20
 _PLAN_READ_ONLY = ["Read", "Glob", "Grep"]
 _PLAN_BLOCKED = ["Write", "Edit", "Bash"]  # known write/exec tool names
 
+# search_code tool (WU-PLAN-SEARCH-TOOL): ADDITIVE and off by default, gated on the SAME
+# [index].enabled switch as the implementer indexing (blacksmith.nodes.implement) -- no
+# separate toggle. Only when the index is enabled AND a repo_path is given (the target
+# repo -- no worktree exists yet at plan time) is the planner granted the search_code tool
+# alongside its existing read-only Read/Glob/Grep; no write/shell tool is ever added, and
+# with the index disabled the tool surface is byte-for-byte unchanged from before this unit.
+_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
+_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
+
 
 def select_unit(contract: PRDContract, completed: Sequence[str] = ()) -> WorkUnit | None:
     """The lowest unit (declaration/topological order) whose deps are all completed."""
@@ -133,17 +150,29 @@ def plan(
     system_prompt = _system_prompt(
         contract, _prior_lessons(contract), _build_repo_map(repo_path, index_config)
     )
+    # search_code tool wiring (WU-PLAN-SEARCH-TOOL): built ONCE and reused across the
+    # per-unit calls below, exactly like system_prompt above -- not once per unit.
+    index_enabled = bool(index_config is not None and index_config.enabled and repo_path)
+    allowed_tools = list(_PLAN_READ_ONLY)
+    mcp_servers: dict = {}
+    if index_enabled:
+        allowed_tools.append(_SEARCH_TOOL_NAME)
+        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+            repo_path, exclude=index_config.exclude
+        )
     plans: list[dict] = []
     cost_events: list[dict] = []
     for unit in auto_units:
-        result = executor.run_plan(
-            _plan_prompt(unit),
-            system_prompt=system_prompt,
-            allowed_tools=_PLAN_READ_ONLY,
-            disallowed_tools=_PLAN_BLOCKED,
-            max_turns=_PLAN_MAX_TURNS,
-            raise_on_error=False,  # surface failures (e.g. max-turns) into state, don't crash
-        )
+        call_kwargs: dict = {
+            "system_prompt": system_prompt,
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": _PLAN_BLOCKED,
+            "max_turns": _PLAN_MAX_TURNS,
+            "raise_on_error": False,  # surface failures (e.g. max-turns) into state, don't crash
+        }
+        if mcp_servers:
+            call_kwargs["mcp_servers"] = mcp_servers
+        result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
         # Ledger this attempt's spend on EVERY return (including the halt below), so a plan that
         # fails partway still counts the calls it made.
         cost_events.append(cost_event("plan", unit.id, result))
