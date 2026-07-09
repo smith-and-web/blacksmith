@@ -167,21 +167,33 @@ def aggregate_panel_verdicts(
     Pure function — no executor/graph wiring. This only changes how ``review_clean`` /
     ``review_findings`` are COMPUTED for panel_size > 1; the single-reviewer path
     (panel_size == 1, i.e. a list of exactly one findings-list) keeps today's semantics
-    exactly since ``ceil(1/2) == 1``: any blocking finding from the sole reviewer flips
-    ``review_clean`` to False, matching the current "any blocking finding" rule.
+    EXACTLY: ``review_clean`` is the same presence-of-a-blocking-finding check the
+    pre-panel code always ran, and ``findings`` is that ONE reviewer's list returned
+    VERBATIM -- no ``(file, detail)`` de-dup pass -- so a reviewer that (degenerately)
+    reports the same finding twice is reproduced byte-for-byte, exactly as the
+    pre-panel path would.
 
     A reviewer "votes blocking" iff its own findings-list contains at least one
-    severity=="blocking" entry. ``review_clean`` is True iff FEWER than a majority
-    (``ceil(n/2)``) of reviewers voted blocking -- so a unit is only sent back for
-    revision on majority consensus among the panel, not a single dissenting vote.
+    severity=="blocking" entry. For panel_size > 1, ``review_clean`` is True iff FEWER
+    than a majority (``ceil(n/2)``) of reviewers voted blocking -- so a unit is only
+    sent back for revision on majority consensus among the panel, not a single
+    dissenting vote.
 
-    ``findings`` is the union of every reviewer's findings, de-duped by the
-    ``(file, detail)`` pair (first occurrence wins, severity preserved), preserving
-    reviewer order and within-reviewer order.
+    For panel_size > 1, ``findings`` is the union of every reviewer's findings,
+    de-duped by the ``(file, detail)`` pair (first occurrence wins, severity
+    preserved), preserving reviewer order and within-reviewer order. This dedup pass
+    only ever applies across MULTIPLE reviewers' lists -- the single-reviewer path
+    above never runs it.
     """
     n = len(findings_by_reviewer)
     if n == 0:
         return True, []
+    if n == 1:
+        # Single-reviewer path: return verbatim, no dedup -- BYTE-FOR-BYTE today's
+        # pre-panel behaviour, including a degenerate duplicate finding.
+        findings = findings_by_reviewer[0]
+        review_clean = not any(f.get("severity") == "blocking" for f in findings)
+        return review_clean, list(findings)
 
     blocking_votes = sum(
         1

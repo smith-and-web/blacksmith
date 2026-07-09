@@ -62,6 +62,17 @@ def test_single_reviewer_no_findings_is_clean():
     assert findings == []
 
 
+def test_single_reviewer_duplicate_findings_returned_verbatim():
+    # panel_size == 1 must be byte-for-byte the pre-panel path: no (file, detail)
+    # dedup, even in the degenerate case where the sole reviewer reports the exact
+    # same finding twice.
+    findings_by_reviewer = [[BLOCKING_A, dict(BLOCKING_A)]]
+    review_clean, findings = aggregate_panel_verdicts(findings_by_reviewer)
+    assert findings == [BLOCKING_A, BLOCKING_A]
+    assert len(findings) == 2
+    assert review_clean is False
+
+
 # --- (d) union de-dupes an identical finding raised by two reviewers -----------
 
 
