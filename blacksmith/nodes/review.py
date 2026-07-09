@@ -25,6 +25,17 @@ advisory findings still reports clean — advisory findings are surfaced, not ga
 
 One cost_event is recorded per call (node="review"), same ledger as plan/implement
 (WU-COST-EVENTS), so a review call's spend is never lost.
+
+WU-REVIEW-PANEL-NODE: the node runs ``state["review_panel_size"]`` (default 1, seeded by
+``prepare_worktree`` from ``config.review.panel_size``) independent ``run_review`` calls
+instead of just one. With ``panel_size == 1`` this is BYTE-FOR-BYTE today's behaviour: one
+call, the current neutral prompt, no emphasis text. With ``panel_size > 1``, each call gets
+a distinct EMPHASIS (correctness / security / regression / edge-cases, cycling) appended to
+its prompt so the panel covers diverse perspectives, and every call still ledgers its own
+cost_event. The N calls' parsed findings-lists are fed through
+``aggregate_panel_verdicts`` (WU-REVIEW-PANEL-AGGREGATE) to produce the same
+``review_clean``/``review_findings`` keys the revise loop already consumes -- the loop
+itself, its routing, and the gate are all unchanged.
 """
 
 from __future__ import annotations
@@ -54,6 +65,10 @@ _REVIEW_MAX_TURNS = 20
 # A single fenced ```json ... ``` (or bare ```` ``` ````) block containing the verdict object.
 _FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
+# Built-in emphasis rotation for a panel of reviewers (WU-REVIEW-PANEL-NODE). Cycled by
+# call index so a panel_size > len(_PANEL_EMPHASES) just repeats the rotation.
+_PANEL_EMPHASES = ("correctness", "security", "regression", "edge-cases")
+
 
 def review(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
     if executor is None:
@@ -65,26 +80,49 @@ def review(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
         return {"errors": [{"node": "review", "message": "missing prd/selected_unit"}]}
 
     implementation = state.get("implementation") or {}
-    result = executor.run_review(
-        _review_prompt(unit, implementation),
-        system_prompt=_system_prompt(prd.contract),
-        cwd=state.get("worktree_path"),
-        allowed_tools=_REVIEW_READ_ONLY,
-        disallowed_tools=_REVIEW_BLOCKED,
-        permission_mode="default",
-        max_turns=_REVIEW_MAX_TURNS,
-        raise_on_error=False,  # fail-open: a model error must never wedge a green unit
-    )
-    # Ledgered on every path (including a fail-open empty/unparseable verdict), same
-    # discipline as plan/implement, so a review call's spend is never lost.
-    event = cost_event("review", unit.id, result)
-    findings = [] if result.is_error else _parse_findings(result.text or "")
-    review_clean = not any(f.get("severity") == "blocking" for f in findings)
+    system_prompt = _system_prompt(prd.contract)
+    panel_size = state.get("review_panel_size") or 1
+    emphases = _panel_emphases(panel_size)
+
+    cost_events = []
+    findings_by_reviewer: list[list[dict]] = []
+    for emphasis in emphases:
+        result = executor.run_review(
+            _review_prompt(unit, implementation, emphasis=emphasis),
+            system_prompt=system_prompt,
+            cwd=state.get("worktree_path"),
+            allowed_tools=_REVIEW_READ_ONLY,
+            disallowed_tools=_REVIEW_BLOCKED,
+            permission_mode="default",
+            max_turns=_REVIEW_MAX_TURNS,
+            raise_on_error=False,  # fail-open: a model error must never wedge a green unit
+        )
+        # Ledgered on every call (including a fail-open empty/unparseable verdict), same
+        # discipline as plan/implement, so no reviewer's spend is ever lost.
+        cost_events.append(cost_event("review", unit.id, result))
+        findings_by_reviewer.append(
+            [] if result.is_error else _parse_findings(result.text or "")
+        )
+
+    review_clean, findings = aggregate_panel_verdicts(findings_by_reviewer)
     return {
         "review_clean": review_clean,
         "review_findings": findings,
-        "cost_events": [event],
+        "cost_events": cost_events,
     }
+
+
+def _panel_emphases(panel_size: int) -> list[str | None]:
+    """One entry per ``run_review`` call the node should make.
+
+    ``panel_size <= 1`` yields ``[None]`` -- a single call with no emphasis appended,
+    keeping the prompt (and therefore the node's output) BYTE-FOR-BYTE identical to
+    today's single-reviewer behaviour. ``panel_size > 1`` yields that many distinct
+    emphases cycling through the built-in rotation.
+    """
+    if panel_size <= 1:
+        return [None]
+    return [_PANEL_EMPHASES[i % len(_PANEL_EMPHASES)] for i in range(panel_size)]
 
 
 def _parse_findings(text: str) -> list[dict]:
@@ -165,11 +203,13 @@ def aggregate_panel_verdicts(
     return review_clean, union_findings
 
 
-def _review_prompt(unit: WorkUnit, implementation: dict[str, Any]) -> str:
+def _review_prompt(
+    unit: WorkUnit, implementation: dict[str, Any], *, emphasis: str | None = None
+) -> str:
     files = implementation.get("files_touched") or []
     files_line = ", ".join(files) if files else "(none recorded)"
     diff_summary = implementation.get("diff_summary") or "(no diff summary available)"
-    return (
+    prompt = (
         "This work unit's implementation has ALREADY PASSED the project's automated test "
         "gate. Adversarially review its diff for BLOCKING correctness or regression bugs "
         "the tests missed. Do NOT flag style, formatting, or taste issues — that is the "
@@ -191,6 +231,15 @@ def _review_prompt(unit: WorkUnit, implementation: dict[str, Any]) -> str:
         'Only "blocking" findings will halt anything — reserve it for real correctness '
         "bugs and regressions; use \"advisory\" for anything else worth mentioning."
     )
+    if emphasis is not None:
+        # WU-REVIEW-PANEL-NODE: one panel seat's rotation-assigned emphasis. Distinctly
+        # worded ("PANEL EMPHASIS") so it never collides with the neutral prompt text
+        # above, which already mentions "correctness"/"regression" generically.
+        prompt += (
+            f"\n\nPANEL EMPHASIS for this pass: {emphasis}. Weight your review toward "
+            f"{emphasis} issues in particular, without ignoring other categories."
+        )
+    return prompt
 
 
 def _system_prompt(contract: PRDContract) -> str:

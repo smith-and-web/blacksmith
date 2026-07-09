@@ -162,12 +162,14 @@ def prepare_worktree(
         }
         update["fix_attempts"] = 0
         update["implement_continuations"] = 0
-    # Seed the review loop's on/off switch into state ONCE (WU-REVIEW-LOOP), same pattern as
-    # ``limits`` above: only when the graph is wired with a ReviewConfig (production). A graph
-    # compiled without one leaves ``review_enabled`` unset, so route_after_test_gate's PASS
+    # Seed the review loop's on/off switch (and its panel size, WU-REVIEW-PANEL-NODE) into
+    # state ONCE (WU-REVIEW-LOOP), same pattern as ``limits`` above: only when the graph is
+    # wired with a ReviewConfig (production). A graph compiled without one leaves
+    # ``review_enabled``/``review_panel_size`` unset, so route_after_test_gate's PASS
     # branch never routes to ``review`` and every existing test's behaviour is unchanged.
     if review is not None:
         update["review_enabled"] = review.enabled
+        update["review_panel_size"] = review.panel_size
         update["review_revisions"] = 0
     # Start the run's ONE sandbox container over this clone (WU-SANDBOX-LIFECYCLE), reused
     # across every unit built on it. Additive and opt-in: a graph compiled without a sandbox

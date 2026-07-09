@@ -53,6 +53,19 @@ class FakeExecutor:
         return self._result
 
 
+class FakePanelExecutor:
+    """Returns a distinct canned result per call, in order -- for panel tests where each
+    of the N calls needs its own verdict."""
+
+    def __init__(self, results):
+        self._results = list(results)
+        self.calls: list[dict] = []
+
+    def run_review(self, prompt, **kwargs):
+        self.calls.append({"prompt": prompt, **kwargs})
+        return self._results.pop(0)
+
+
 def _state(**overrides):
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
@@ -200,3 +213,70 @@ def test_state_has_review_clean_and_appendonly_review_findings_field():
     hints = get_type_hints(BlacksmithState, include_extras=True)
     assert hints["review_clean"] is bool
     assert hints["review_findings"] == Annotated[list[ReviewFinding], operator.add]
+
+
+def test_state_has_review_panel_size_field():
+    hints = get_type_hints(BlacksmithState, include_extras=True)
+    assert hints["review_panel_size"] is int
+
+
+# --- panel (WU-REVIEW-PANEL-NODE) ------------------------------------------------
+
+
+def test_review_panel_size_3_issues_three_calls_with_distinct_emphases():
+    fake = FakePanelExecutor(
+        [_result(CLEAN_VERDICT), _result(CLEAN_VERDICT), _result(CLEAN_VERDICT)]
+    )
+    out = review(_state(review_panel_size=3), executor=fake)
+
+    assert len(fake.calls) == 3
+    assert len(out["cost_events"]) == 3
+    prompts = [c["prompt"] for c in fake.calls]
+    assert "PANEL EMPHASIS for this pass: correctness" in prompts[0]
+    assert "PANEL EMPHASIS for this pass: security" in prompts[1]
+    assert "PANEL EMPHASIS for this pass: regression" in prompts[2]
+    assert len({p for p in prompts}) == 3  # three genuinely distinct prompts
+
+
+def test_review_panel_1_of_3_blocking_is_still_clean():
+    # Only 1 of 3 reviewers flags blocking -- fewer than the ceil(3/2)=2 majority needed.
+    fake = FakePanelExecutor(
+        [_result(NEEDS_CHANGES_VERDICT), _result(CLEAN_VERDICT), _result(CLEAN_VERDICT)]
+    )
+    out = review(_state(review_panel_size=3), executor=fake)
+    assert out["review_clean"] is True
+    assert len(out["cost_events"]) == 3
+
+
+def test_review_panel_2_of_3_blocking_is_not_clean():
+    # 2 of 3 reviewers flag blocking -- a majority, so the unit is sent back for revision.
+    fake = FakePanelExecutor(
+        [
+            _result(NEEDS_CHANGES_VERDICT),
+            _result(NEEDS_CHANGES_VERDICT),
+            _result(CLEAN_VERDICT),
+        ]
+    )
+    out = review(_state(review_panel_size=3), executor=fake)
+    assert out["review_clean"] is False
+    assert len(out["cost_events"]) == 3
+
+
+def test_review_panel_size_1_matches_pre_panel_single_call_output():
+    # panel_size defaults to 1 (missing from state entirely) -- byte-for-byte the same
+    # single-call, no-emphasis behaviour as before this unit.
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    baseline = review(_state(), executor=fake)
+
+    fake_explicit = FakeExecutor(_result(CLEAN_VERDICT))
+    explicit = review(_state(review_panel_size=1), executor=fake_explicit)
+
+    assert len(fake.calls) == 1
+    assert len(fake_explicit.calls) == 1
+    assert baseline == explicit
+    assert baseline["review_clean"] is True
+    assert baseline["review_findings"] == []
+    assert len(baseline["cost_events"]) == 1
+    # No panel emphasis text leaks into the single-reviewer prompt.
+    assert "PANEL EMPHASIS" not in fake.calls[0]["prompt"]
+    assert "PANEL EMPHASIS" not in fake_explicit.calls[0]["prompt"]
