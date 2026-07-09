@@ -11,7 +11,13 @@ from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.graph import build_checkpointer, compile_graph
-from blacksmith.nodes.plan import _PLAN_READ_ONLY, _SEARCH_TOOL_NAME, plan, select_unit
+from blacksmith.nodes.plan import (
+    _PLAN_BLOCKED,
+    _PLAN_READ_ONLY,
+    _SEARCH_TOOL_NAME,
+    plan,
+    select_unit,
+)
 from blacksmith.state import Status
 
 VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
@@ -258,9 +264,11 @@ def test_plan_node_grants_search_code_tool_when_index_enabled(tmp_path):
     # the plan tier stays read-only: raw Read/Glob/Grep stay available...
     for raw_tool in _PLAN_READ_ONLY:
         assert raw_tool in call["allowed_tools"]
-    # ...and no write/shell tool is ever added alongside search_code.
-    assert call["disallowed_tools"] == ["Write", "Edit", "Bash"]
-    for forbidden in ("Write", "Edit", "Bash"):
+    # ...and no write/shell/sub-agent tool is ever added alongside search_code. Agent/Task are
+    # blocked so the planner can't delegate blind exploration that bypasses the index.
+    assert call["disallowed_tools"] == _PLAN_BLOCKED
+    for forbidden in ("Write", "Edit", "Bash", "Agent", "Task"):
+        assert forbidden in call["disallowed_tools"]
         assert forbidden not in call["allowed_tools"]
 
 
