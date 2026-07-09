@@ -30,6 +30,7 @@ One cost_event is recorded per call (node="review"), same ledger as plan/impleme
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -118,6 +119,50 @@ def _extract_json_block(text: str) -> str | None:
     if stripped.startswith("{") and stripped.endswith("}"):
         return stripped
     return None
+
+
+def aggregate_panel_verdicts(
+    findings_by_reviewer: list[list[dict]],
+) -> tuple[bool, list[dict]]:
+    """Aggregate N reviewers' findings-lists into a single ``(review_clean, findings)``.
+
+    Pure function — no executor/graph wiring. This only changes how ``review_clean`` /
+    ``review_findings`` are COMPUTED for panel_size > 1; the single-reviewer path
+    (panel_size == 1, i.e. a list of exactly one findings-list) keeps today's semantics
+    exactly since ``ceil(1/2) == 1``: any blocking finding from the sole reviewer flips
+    ``review_clean`` to False, matching the current "any blocking finding" rule.
+
+    A reviewer "votes blocking" iff its own findings-list contains at least one
+    severity=="blocking" entry. ``review_clean`` is True iff FEWER than a majority
+    (``ceil(n/2)``) of reviewers voted blocking -- so a unit is only sent back for
+    revision on majority consensus among the panel, not a single dissenting vote.
+
+    ``findings`` is the union of every reviewer's findings, de-duped by the
+    ``(file, detail)`` pair (first occurrence wins, severity preserved), preserving
+    reviewer order and within-reviewer order.
+    """
+    n = len(findings_by_reviewer)
+    if n == 0:
+        return True, []
+
+    blocking_votes = sum(
+        1
+        for findings in findings_by_reviewer
+        if any(f.get("severity") == "blocking" for f in findings)
+    )
+    review_clean = blocking_votes < math.ceil(n / 2)
+
+    seen: set[tuple[Any, Any]] = set()
+    union_findings: list[dict] = []
+    for findings in findings_by_reviewer:
+        for finding in findings:
+            key = (finding.get("file"), finding.get("detail"))
+            if key in seen:
+                continue
+            seen.add(key)
+            union_findings.append(finding)
+
+    return review_clean, union_findings
 
 
 def _review_prompt(unit: WorkUnit, implementation: dict[str, Any]) -> str:
