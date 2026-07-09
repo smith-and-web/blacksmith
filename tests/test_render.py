@@ -126,3 +126,23 @@ def test_pr_body_reviewer_notes_clean_is_a_single_line():
     section = body[idx:].splitlines()
     # section[0] is the header itself, section[1] is the single "Reviewer: clean" line
     assert section[1] == "Reviewer: clean"
+
+
+def test_pr_body_surfaces_advisory_reviewer_notes():
+    # An advisory (non-blocking) finding never enters unresolved_review_findings — but it must
+    # still reach the PR body. Before, such a run wrongly reported "Reviewer: clean" and the
+    # note was silently dropped (exactly what buried the mcp_servers finding on #65).
+    state = {
+        "selected_unit": _unit(),
+        "review_findings": [
+            {"severity": "advisory", "file": "blacksmith/nodes/plan.py", "detail": "mcp not fwd"},
+            {"severity": "advisory", "file": "blacksmith/nodes/plan.py", "detail": "mcp not fwd"},
+        ],
+    }
+    body = _pr_body(state)
+    assert "**Reviewer notes:**" in body
+    assert "Reviewer: clean" not in body
+    assert "advisory: blacksmith/nodes/plan.py" in body
+    assert "mcp not fwd" in body
+    # De-duped: the repeated finding is listed once, not twice.
+    assert body.count("mcp not fwd") == 1
