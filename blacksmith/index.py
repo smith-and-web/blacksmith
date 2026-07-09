@@ -26,6 +26,9 @@ import re
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
+
+from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server, tool
 
 _TRUNCATION_MARKER = "…(truncated)"
 
@@ -282,3 +285,76 @@ def _git(repo_path: Path, *args: str) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout
+
+
+# --- search_code tool (WU-SEARCH-TOOL) --------------------------------------------------
+#
+# Grants the implementer a controlled way to ask "where is X defined/mentioned?" over the
+# run's own worktree, instead of guessing paths or paying for blind Read/Glob/Grep turns.
+# Built with the SAME in-process ``create_sdk_mcp_server``/``tool`` pattern
+# :mod:`blacksmith.sandbox` uses for its ``run_command`` tool -- no subprocess, no IPC, no
+# new dependency. The handler routes straight into :func:`search_code` above, which stays
+# read-only and best-effort exactly as documented there; this tool adds no new execution
+# path or write capability. ADDITIVE and wired only when ``[index].enabled`` — see
+# ``blacksmith.nodes.implement`` for the enabled/disabled gating.
+
+SEARCH_CODE_TOOL_NAME = "search_code"
+
+DEFAULT_SEARCH_LIMIT = 20
+
+
+def format_search_results(results: list[dict]) -> str:
+    """Render :func:`search_code`'s ranked matches as the compact text handed to the agent.
+
+    One match per line, ``path:line: snippet`` — cheap for the agent to scan and cheap on
+    tokens. An empty result list renders as an explicit "no matches" note rather than
+    blank text, so the agent doesn't mistake silence for a tool failure.
+    """
+    if not results:
+        return "no matches"
+    return "\n".join(f"{r['file']}:{r['line']}: {r['snippet']}" for r in results)
+
+
+def make_search_code_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_code`` SDK tool bound to ``repo_path`` (the run's worktree).
+
+    The handler NEVER does anything but call :func:`search_code` against ``repo_path`` --
+    read-only, git-backed structural/lexical search over the same worktree the implementer
+    is already editing. Results are rendered with :func:`format_search_results`.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_code(repo_path, args.get("query", ""), limit=limit, exclude=exclude)
+        text = format_search_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_CODE_TOOL_NAME,
+        "Search this repository's tracked files for a symbol name or text query. Returns "
+        "ranked matches (symbol definitions first, then plain-text hits) as `file:line: "
+        "snippet` lines -- use it to find where something is defined or mentioned instead "
+        "of guessing paths or reading files blind.",
+        {"query": str},
+    )(handler)
+
+
+def create_index_mcp_server(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> McpSdkServerConfig:
+    """Build the in-process MCP server exposing ``search_code`` for a call's
+    ``ClaudeAgentOptions.mcp_servers`` -- the same in-process (no subprocess, no IPC)
+    ``create_sdk_mcp_server``/``tool`` pattern :mod:`blacksmith.sandbox` uses for
+    ``run_command``."""
+    return create_sdk_mcp_server(
+        name="blacksmith-index",
+        tools=[make_search_code_tool(repo_path, limit=limit, exclude=exclude)],
+    )

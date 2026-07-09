@@ -26,7 +26,7 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.index import build_repo_map
+from blacksmith.index import SEARCH_CODE_TOOL_NAME, build_repo_map, create_index_mcp_server
 from blacksmith.nodes.plan import cost_event, usage_breakdown
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
@@ -59,6 +59,16 @@ _SANDBOX_TOOL_NAME = f"mcp__{_SANDBOX_SERVER_NAME}__{RUN_COMMAND_TOOL_NAME}"
 # own ``blacksmith.config.SandboxConfig`` ([sandbox].exec_timeout_s, default 120). Graph
 # wiring may pass the configured value through explicitly; this is the fallback.
 _DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
+
+# search_code tool (WU-SEARCH-TOOL): ADDITIVE and off by default, mirroring the sandbox
+# tool wiring above. Only when an ``IndexConfig`` with ``enabled=True`` is passed in is the
+# implementer granted the ``search_code`` tool (WU-CODE-INDEX, ``blacksmith.index``) via its
+# own in-process MCP server, read-only over the run's worktree. With no ``index_config`` (or
+# ``enabled=False``, the default) none of this is wired in and the tool surface is
+# byte-for-byte unchanged from before this unit -- raw Read/Glob/Grep stay available either
+# way.
+_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
+_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
 
 # Conventional-Commits header so the unit's commit is never rejected by a target repo's
 # commit-msg hook (commitlint / config-conventional) AFTER its expensive implementation
@@ -233,7 +243,14 @@ def implement(
     # mirroring the same ``sandbox is not None and sandbox.config.enabled`` check used by the
     # run-level lifecycle wiring (WU-SANDBOX-LIFECYCLE) in graph.py.
     sandbox_enabled = bool(sandbox is not None and sandbox.config.enabled)
-    allowed_tools = [*_ALLOWED_TOOLS, _SANDBOX_TOOL_NAME] if sandbox_enabled else _ALLOWED_TOOLS
+    # search_code tool (WU-SEARCH-TOOL): same additive gating as the sandbox tool above --
+    # only an explicitly enabled IndexConfig grants it.
+    index_enabled = bool(index_config is not None and index_config.enabled)
+    allowed_tools = list(_ALLOWED_TOOLS)
+    if sandbox_enabled:
+        allowed_tools.append(_SANDBOX_TOOL_NAME)
+    if index_enabled:
+        allowed_tools.append(_SEARCH_TOOL_NAME)
     repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
         "system_prompt": _system_prompt(
@@ -252,12 +269,17 @@ def implement(
         "max_turns": max_turns,
         "raise_on_error": False,  # surface failures into state, don't crash the graph
     }
+    mcp_servers: dict = {}
     if sandbox_enabled:
-        call_kwargs["mcp_servers"] = {
-            _SANDBOX_SERVER_NAME: create_sandbox_mcp_server(
-                sandbox, exec_timeout_s=sandbox_exec_timeout_s
-            )
-        }
+        mcp_servers[_SANDBOX_SERVER_NAME] = create_sandbox_mcp_server(
+            sandbox, exec_timeout_s=sandbox_exec_timeout_s
+        )
+    if index_enabled:
+        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+            worktree_path, exclude=index_config.exclude
+        )
+    if mcp_servers:
+        call_kwargs["mcp_servers"] = mcp_servers
     result = run_attempt(
         _implement_prompt(
             unit,
