@@ -32,7 +32,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
-from blacksmith.config import LimitsConfig, ReviewConfig
+from blacksmith.config import IndexConfig, LimitsConfig, ReviewConfig
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
@@ -1107,6 +1107,7 @@ def build_graph(
     fix: FixFn | None = None,
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
+    index: IndexConfig | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
 
@@ -1124,11 +1125,23 @@ def build_graph(
     run's clone (reused across every unit) and ``cleanup_worktree`` stops it, best-effort, on
     every terminal path. Left unset (the default, every existing test) or disabled, neither
     node touches it and the graph behaves exactly as today -- the test gate's pass/fail
-    semantics are never affected either way."""
+    semantics are never affected either way.
+
+    ``index`` wires the additive, opt-in repo-map injection into the plan node's SHARED
+    system prompt (WU-PLAN-REPO-MAP): when provided AND ``index.enabled``, the plan node
+    builds the target repo's map once and reuses it across every unit's plan call, the
+    SAME on/off switch that gates the implementer's indexing. The target repo path is
+    read straight off ``worktree_manager`` (the same repo the run's isolation is cloned
+    from) — the index is read-only over it and never writes it. Left unset (the default,
+    every existing test) or disabled, the plan system prompt is byte-for-byte unchanged."""
     graph = StateGraph(BlacksmithState)
 
+    plan_repo_path = str(worktree_manager.repo_path) if worktree_manager is not None else None
     graph.add_node("ingest_prd", ingest_prd)
-    graph.add_node("plan", _node_with(plan, executor=executor))
+    graph.add_node(
+        "plan",
+        _node_with(plan, executor=executor, index_config=index, repo_path=plan_repo_path),
+    )
     graph.add_node("approve_plan", approve_plan)
     graph.add_node(
         "prepare_worktree",
@@ -1325,6 +1338,7 @@ def compile_graph(
     limits: LimitsConfig | None = None,
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
+    index: IndexConfig | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -1348,6 +1362,11 @@ def compile_graph(
     ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE);
     ``None`` (the default) or one with ``config.enabled=False`` leaves ``prepare_worktree``/
     ``cleanup_worktree`` byte-for-byte unchanged -- no container is ever started or stopped.
+
+    ``index`` wires the additive, opt-in repo-map injection into the plan node's shared
+    system prompt (WU-PLAN-REPO-MAP); ``None`` (the default) or one with ``enabled=False``
+    leaves the plan system prompt byte-for-byte unchanged -- the same switch that gates the
+    implementer's indexing.
     """
     return build_graph(
         pr_runner=pr_runner,
@@ -1358,6 +1377,7 @@ def compile_graph(
         fix=fix,
         review=review,
         sandbox=sandbox,
+        index=index,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),

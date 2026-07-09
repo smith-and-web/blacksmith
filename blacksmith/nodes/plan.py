@@ -11,6 +11,12 @@ that prompt is built ONCE and reused across the per-unit calls so it caches (AC-
 
 ``select_unit`` remains the DAG cycle/unsatisfiable guard (and is reused by the planner).
 
+When ``config.index.enabled`` (WU-PLAN-REPO-MAP), the SAME shared system prompt also gets
+a repo map of the target repo (``blacksmith.index.build_repo_map``, reused verbatim from
+the codebase-indexing PRD) built ONCE — not once per unit — and injected as static
+context, so it caches across the per-unit calls exactly like the constitution/lessons
+sections above. Off by default; disabled the system prompt is byte-for-byte unchanged.
+
 Without an executor wired (skeleton/tests), the node is a pass-through that only advances
 ``status`` — the real decomposition runs only when an executor is injected at graph-build
 time. This keeps the deterministic graph tests independent of any model call.
@@ -19,10 +25,13 @@ time. This keeps the deterministic graph tests independent of any model call.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
+from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
+from blacksmith.index import build_repo_map
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.state import BlacksmithState, Status
 
@@ -93,7 +102,13 @@ def select_unit(contract: PRDContract, completed: Sequence[str] = ()) -> WorkUni
     return None
 
 
-def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
+def plan(
+    state: BlacksmithState,
+    *,
+    executor: Executor | None = None,
+    index_config: IndexConfig | None = None,
+    repo_path: str | Path | None = None,
+) -> dict:
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
 
@@ -113,9 +128,11 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
     # Plan EVERY auto-gated unit, in declaration (topological) order. Human-gated units are
     # skipped — they build for manual QA behind a draft PR, no implementation plan needed.
     auto_units = [u for u in contract.work_units if contract.gate_for(u) != "human"]
-    # Built ONCE and reused across the per-unit calls so the static constitution/lessons context
-    # caches across them (AC-8) instead of being re-sent for each unit.
-    system_prompt = _system_prompt(contract, _prior_lessons(contract))
+    # Built ONCE and reused across the per-unit calls so the static constitution/lessons/repo-map
+    # context caches across them (AC-8) instead of being re-sent (or rebuilt) for each unit.
+    system_prompt = _system_prompt(
+        contract, _prior_lessons(contract), _build_repo_map(repo_path, index_config)
+    )
     plans: list[dict] = []
     cost_events: list[dict] = []
     for unit in auto_units:
@@ -192,7 +209,33 @@ def _render_lesson(lesson: dict) -> str:
     )
 
 
-def _system_prompt(contract: PRDContract, lessons: list[dict] | None = None) -> str:
+def _build_repo_map(
+    repo_path: str | Path | None, index_config: IndexConfig | None
+) -> str | None:
+    """Build the repo map from the TARGET repo if the index is enabled, else ``None``
+    (WU-PLAN-REPO-MAP).
+
+    ADDITIVE and off by default: with no ``index_config`` (or ``enabled=False``, the
+    default) this never calls into ``blacksmith.index``, so the disabled path has zero
+    behavioural change. Unlike the implement node (which maps the run's worktree), this
+    maps ``repo_path`` — the target repo itself — directly, since no worktree exists yet
+    at plan time; ``build_repo_map`` is read-only, so this never writes the target repo.
+    """
+    if index_config is None or not index_config.enabled or not repo_path:
+        return None
+    return (
+        build_repo_map(
+            repo_path, max_bytes=index_config.max_map_bytes, exclude=index_config.exclude
+        )
+        or None
+    )
+
+
+def _system_prompt(
+    contract: PRDContract,
+    lessons: list[dict] | None = None,
+    repo_map: str | None = None,
+) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
     prompt = (
         f"You are blacksmith's planner for the {contract.component} project "
@@ -206,5 +249,12 @@ def _system_prompt(contract: PRDContract, lessons: list[dict] | None = None) -> 
             "\n\nPRIOR LESSONS ON THIS REPO — gate failures from earlier runs against "
             "this repo; learn from them and avoid repeating these mistakes:\n"
             f"{rendered}"
+        )
+    if repo_map:
+        prompt += (
+            "\n\nREPO MAP — a structural outline of the target repository (tracked files "
+            "and their top-level symbols, WU-CODE-INDEX), given up front as static context "
+            "so you can orient before exploring:\n"
+            f"{repo_map}"
         )
     return prompt
