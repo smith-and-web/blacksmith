@@ -46,7 +46,7 @@ from blacksmith.memory import build_store
 from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
 from blacksmith.nodes.pr import Runner, subprocess_runner
 from blacksmith.render import Renderer
-from blacksmith.respond import RespondResult, respond_to_pr
+from blacksmith.respond import RespondError, RespondResult, respond_to_pr
 from blacksmith.sandbox import SandboxConfig as SandboxSettings
 from blacksmith.sandbox import SandboxManager
 from blacksmith.state import Status
@@ -1016,18 +1016,24 @@ def run_respond(
         out(f"respond: {exc}")
         return 1
 
-    result = respond_to_pr(
-        pr_number=pr_number,
-        branch=branch,
-        repo_path=repo_path,
-        config=config,
-        executor=executor,
-        gate=gate,
-        fix=fix,
-        clone_manager=clone_manager,
-        pr_runner=pr_runner,
-        repo=repo,
-    )
+    try:
+        result = respond_to_pr(
+            pr_number=pr_number,
+            branch=branch,
+            repo_path=repo_path,
+            config=config,
+            executor=executor,
+            gate=gate,
+            fix=fix,
+            clone_manager=clone_manager,
+            pr_runner=pr_runner,
+            repo=repo,
+        )
+    except RespondError as exc:
+        # A push failure on a PASSING revision surfaces as the same clean "respond: ..."
+        # message as the branch-lookup failure above, not a raw traceback (reviewer nit).
+        out(f"respond: {exc}")
+        return 1
     _render_respond_result(result, out=out)
     return 0 if result.reason in ("pushed", "no_comments") else 1
 

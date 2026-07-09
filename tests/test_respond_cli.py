@@ -228,3 +228,41 @@ def test_respond_requires_pr_flag(capsys):
     assert excinfo.value.code != 0
     captured = capsys.readouterr()
     assert "--pr" in captured.err
+
+
+# --- (d) a push failure on a passing revision renders cleanly, not as a traceback ---
+
+
+def test_respond_renders_clean_message_when_push_fails(tmp_path, capsys, monkeypatch):
+    # respond_to_pr raises RespondError when the git push of a PASSING revision fails. That
+    # must surface as the same clean "respond: ..." line as the branch-lookup failure — not an
+    # uncaught traceback (reviewer advisory on #69).
+    from blacksmith import cli
+    from blacksmith.respond import RespondError
+
+    branch = "blacksmith/wu-04"
+    repo, _bare = _repo_with_pr_branch(tmp_path, branch)
+    runner = _fake_respond_runner(
+        branch=branch, reviews=[{"body": "fix it", "author": {"login": "alice"}}]
+    )
+
+    def boom(**kwargs):
+        raise RespondError("git push failed: remote rejected")
+
+    monkeypatch.setattr(cli, "respond_to_pr", boom)
+
+    code = run_respond(
+        7,
+        config=_config(),
+        repo_path=repo,
+        executor=FakeExecutor(),
+        pr_runner=runner,
+        gate=FakeGate([]),
+        fix=_no_op_fix,
+        clone_manager=PRBranchCloneManager(repo, base_dir=tmp_path / "clones"),
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "respond: git push failed" in captured.out
+    assert "Traceback" not in captured.out
