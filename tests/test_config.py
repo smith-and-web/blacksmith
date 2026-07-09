@@ -19,6 +19,7 @@ from blacksmith.config import (
     IndexConfig,
     LimitsConfig,
     ModelTiers,
+    RespondConfig,
     ReviewConfig,
     SandboxConfig,
     find_config,
@@ -222,6 +223,47 @@ def test_explicit_index_config_loads(tmp_path):
     assert cfg.index.enabled is True
     assert cfg.index.max_map_bytes == 4000
     assert cfg.index.exclude == ["*.lock", "vendor/**"]
+
+
+def test_respond_section_max_attempts_defaults():
+    # WU-RESPOND-CONFIG: a new [respond] section gains `max_attempts`, an int >= 1
+    # defaulting to 1, surfaced as config.respond.max_attempts.
+    respond = RespondConfig()
+    assert respond.max_attempts == 1
+    assert isinstance(respond.max_attempts, int)
+
+
+def test_respond_max_attempts_rejects_less_than_one():
+    with pytest.raises(ValidationError):
+        RespondConfig(max_attempts=0)
+    with pytest.raises(ValidationError):
+        RespondConfig(max_attempts=-1)
+
+
+def test_respond_defaults_when_config_omits_section():
+    # A config that omits [respond] entirely still loads, with the default
+    # max_attempts — behaving exactly as today (backward compatible).
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.respond == RespondConfig()
+    assert cfg.respond.max_attempts == 1
+
+
+def test_respond_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.respond == RespondConfig()
+
+
+def test_explicit_respond_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[respond]\n"
+        "max_attempts = 3\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.respond.max_attempts == 3
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):
