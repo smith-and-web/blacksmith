@@ -11,6 +11,20 @@ that prompt is built ONCE and reused across the per-unit calls so it caches (AC-
 
 ``select_unit`` remains the DAG cycle/unsatisfiable guard (and is reused by the planner).
 
+When ``config.index.enabled`` (WU-PLAN-REPO-MAP), the SAME shared system prompt also gets
+a repo map of the target repo (``blacksmith.index.build_repo_map``, reused verbatim from
+the codebase-indexing PRD) built ONCE — not once per unit — and injected as static
+context, so it caches across the per-unit calls exactly like the constitution/lessons
+sections above. Off by default; disabled the system prompt is byte-for-byte unchanged.
+
+The SAME ``config.index.enabled`` switch (WU-PLAN-SEARCH-TOOL) also grants the plan tier
+the ``search_code`` tool (the same in-process MCP tool built over ``index.search_code``
+for the implementer) alongside its existing read-only Read/Glob/Grep, so a plan session
+can find symbols/usages in one indexed call instead of many greps. No separate toggle,
+no new write/shell tool, and the tool is only wired when a target ``repo_path`` is given
+(no worktree exists yet at plan time). Disabled, the plan tool surface is byte-for-byte
+unchanged.
+
 Without an executor wired (skeleton/tests), the node is a pass-through that only advances
 ``status`` — the real decomposition runs only when an executor is injected at graph-build
 time. This keeps the deterministic graph tests independent of any model call.
@@ -19,10 +33,13 @@ time. This keeps the deterministic graph tests independent of any model call.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
+from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
+from blacksmith.index import SEARCH_CODE_TOOL_NAME, build_repo_map, create_index_mcp_server
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.state import BlacksmithState, Status
 
@@ -83,6 +100,15 @@ _PLAN_MAX_TURNS = 20
 _PLAN_READ_ONLY = ["Read", "Glob", "Grep"]
 _PLAN_BLOCKED = ["Write", "Edit", "Bash"]  # known write/exec tool names
 
+# search_code tool (WU-PLAN-SEARCH-TOOL): ADDITIVE and off by default, gated on the SAME
+# [index].enabled switch as the implementer indexing (blacksmith.nodes.implement) -- no
+# separate toggle. Only when the index is enabled AND a repo_path is given (the target
+# repo -- no worktree exists yet at plan time) is the planner granted the search_code tool
+# alongside its existing read-only Read/Glob/Grep; no write/shell tool is ever added, and
+# with the index disabled the tool surface is byte-for-byte unchanged from before this unit.
+_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
+_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
+
 
 def select_unit(contract: PRDContract, completed: Sequence[str] = ()) -> WorkUnit | None:
     """The lowest unit (declaration/topological order) whose deps are all completed."""
@@ -93,7 +119,13 @@ def select_unit(contract: PRDContract, completed: Sequence[str] = ()) -> WorkUni
     return None
 
 
-def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
+def plan(
+    state: BlacksmithState,
+    *,
+    executor: Executor | None = None,
+    index_config: IndexConfig | None = None,
+    repo_path: str | Path | None = None,
+) -> dict:
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
 
@@ -113,20 +145,34 @@ def plan(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
     # Plan EVERY auto-gated unit, in declaration (topological) order. Human-gated units are
     # skipped — they build for manual QA behind a draft PR, no implementation plan needed.
     auto_units = [u for u in contract.work_units if contract.gate_for(u) != "human"]
-    # Built ONCE and reused across the per-unit calls so the static constitution/lessons context
-    # caches across them (AC-8) instead of being re-sent for each unit.
-    system_prompt = _system_prompt(contract, _prior_lessons(contract))
+    # Built ONCE and reused across the per-unit calls so the static constitution/lessons/repo-map
+    # context caches across them (AC-8) instead of being re-sent (or rebuilt) for each unit.
+    system_prompt = _system_prompt(
+        contract, _prior_lessons(contract), _build_repo_map(repo_path, index_config)
+    )
+    # search_code tool wiring (WU-PLAN-SEARCH-TOOL): built ONCE and reused across the
+    # per-unit calls below, exactly like system_prompt above -- not once per unit.
+    index_enabled = bool(index_config is not None and index_config.enabled and repo_path)
+    allowed_tools = list(_PLAN_READ_ONLY)
+    mcp_servers: dict = {}
+    if index_enabled:
+        allowed_tools.append(_SEARCH_TOOL_NAME)
+        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+            repo_path, exclude=index_config.exclude
+        )
     plans: list[dict] = []
     cost_events: list[dict] = []
     for unit in auto_units:
-        result = executor.run_plan(
-            _plan_prompt(unit),
-            system_prompt=system_prompt,
-            allowed_tools=_PLAN_READ_ONLY,
-            disallowed_tools=_PLAN_BLOCKED,
-            max_turns=_PLAN_MAX_TURNS,
-            raise_on_error=False,  # surface failures (e.g. max-turns) into state, don't crash
-        )
+        call_kwargs: dict = {
+            "system_prompt": system_prompt,
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": _PLAN_BLOCKED,
+            "max_turns": _PLAN_MAX_TURNS,
+            "raise_on_error": False,  # surface failures (e.g. max-turns) into state, don't crash
+        }
+        if mcp_servers:
+            call_kwargs["mcp_servers"] = mcp_servers
+        result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
         # Ledger this attempt's spend on EVERY return (including the halt below), so a plan that
         # fails partway still counts the calls it made.
         cost_events.append(cost_event("plan", unit.id, result))
@@ -192,7 +238,33 @@ def _render_lesson(lesson: dict) -> str:
     )
 
 
-def _system_prompt(contract: PRDContract, lessons: list[dict] | None = None) -> str:
+def _build_repo_map(
+    repo_path: str | Path | None, index_config: IndexConfig | None
+) -> str | None:
+    """Build the repo map from the TARGET repo if the index is enabled, else ``None``
+    (WU-PLAN-REPO-MAP).
+
+    ADDITIVE and off by default: with no ``index_config`` (or ``enabled=False``, the
+    default) this never calls into ``blacksmith.index``, so the disabled path has zero
+    behavioural change. Unlike the implement node (which maps the run's worktree), this
+    maps ``repo_path`` — the target repo itself — directly, since no worktree exists yet
+    at plan time; ``build_repo_map`` is read-only, so this never writes the target repo.
+    """
+    if index_config is None or not index_config.enabled or not repo_path:
+        return None
+    return (
+        build_repo_map(
+            repo_path, max_bytes=index_config.max_map_bytes, exclude=index_config.exclude
+        )
+        or None
+    )
+
+
+def _system_prompt(
+    contract: PRDContract,
+    lessons: list[dict] | None = None,
+    repo_map: str | None = None,
+) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
     prompt = (
         f"You are blacksmith's planner for the {contract.component} project "
@@ -206,5 +278,12 @@ def _system_prompt(contract: PRDContract, lessons: list[dict] | None = None) -> 
             "\n\nPRIOR LESSONS ON THIS REPO — gate failures from earlier runs against "
             "this repo; learn from them and avoid repeating these mistakes:\n"
             f"{rendered}"
+        )
+    if repo_map:
+        prompt += (
+            "\n\nREPO MAP — a structural outline of the target repository (tracked files "
+            "and their top-level symbols, WU-CODE-INDEX), given up front as static context "
+            "so you can orient before exploring:\n"
+            f"{repo_map}"
         )
     return prompt
