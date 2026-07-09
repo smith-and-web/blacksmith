@@ -1153,12 +1153,15 @@ def build_graph(
             sandbox=sandbox,
         ),
     )
-    # The implement node grants the sandbox run_command tool when the sandbox is enabled
-    # (WU-SANDBOX-IMPLEMENT). prepare_worktree/cleanup already receive the sandbox; implement
-    # must too, or the container starts but the tool is never offered. The manager carries its
-    # own exec timeout, so hand that to the tool. sandbox=None (tests) leaves implement wired
-    # exactly as before.
-    implement_deps: dict = {"executor": executor}
+    # The implement node needs the same opt-in feature deps its body reads. index_config drives
+    # the repo-map injection + the search_code tool (WU-REPO-MAP-INJECT / WU-SEARCH-TOOL): the
+    # plan node's add_node passes it, but implement's did not — so implement's index was DARK
+    # even with [index] enabled (the map + tool never reached it). The sandbox is wired the same
+    # way (WU-SANDBOX-IMPLEMENT): prepare_worktree/cleanup already get it, but the implement node
+    # must too or the container starts while the run_command tool is never offered; the manager
+    # carries its own exec timeout for the tool. index=None / sandbox=None (tests) leave implement
+    # wired exactly as before.
+    implement_deps: dict = {"executor": executor, "index_config": index}
     if sandbox is not None:
         implement_deps["sandbox"] = sandbox
         implement_deps["sandbox_exec_timeout_s"] = sandbox.config.exec_timeout_s
