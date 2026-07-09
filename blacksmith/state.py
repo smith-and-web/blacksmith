@@ -212,6 +212,16 @@ class BlacksmithState(TypedDict, total=False):
     # ``fix_attempts`` -- but this is a SEPARATE, independent bound from the self-heal
     # loop and never touches its counters.
     review_enabled: bool
+    # Panel size for the post-gate review (WU-REVIEW-PANEL-NODE), seeded once by
+    # ``prepare_worktree`` from ``config.review.panel_size`` alongside ``review_enabled``
+    # (same ReviewConfig, same seeding condition). Defaults to 1 — a graph compiled
+    # without a ReviewConfig leaves this unset, and the ``review`` node treats a missing
+    # value as 1, which is BYTE-FOR-BYTE today's single-reviewer behaviour (one
+    # ``run_review`` call, the current neutral prompt). Values > 1 fan the review node
+    # out into that many ``run_review`` calls, each with a distinct emphasis from a
+    # built-in rotation, whose findings are aggregated (WU-REVIEW-PANEL-AGGREGATE) into
+    # the same ``review_clean``/``review_findings`` keys the revise loop already consumes.
+    review_panel_size: int
     review_revisions: int
     # This unit's most recent review call's raw findings (WU-REVIEW-LOOP), last-write-wins
     # -- unlike ``review_findings``, which accumulates every call across the whole run --
