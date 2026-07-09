@@ -151,6 +151,7 @@ class Executor:
         permission_mode: str | None = None,
         can_use_tool: Any = None,
         betas: Sequence[str] | None = None,
+        mcp_servers: dict[str, Any] | None = None,
     ) -> ClaudeAgentOptions:
         # Dedicated key (PRD §8 / AC-8): resolve_api_key raises if it is unset, so an
         # accidental fall-back to other auth is impossible.
@@ -165,6 +166,11 @@ class Executor:
             permission_mode=permission_mode,
             can_use_tool=can_use_tool,
             betas=list(betas or []),
+            # In-process MCP tool servers (the index search_code tool, the sandbox run_command
+            # tool). The nodes pass these through run()'s **option_kwargs; build_options must
+            # accept and forward them or a live tool-enabled call raises TypeError here — the
+            # gap caught by the reviewer that FakeExecutor's **kwargs swallow hid from tests.
+            mcp_servers=dict(mcp_servers or {}),
             env=env,
         )
 
