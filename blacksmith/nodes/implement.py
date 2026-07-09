@@ -26,6 +26,7 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.nodes.plan import cost_event, usage_breakdown
+from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
 
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
@@ -41,6 +42,21 @@ _DISALLOWED_TOOLS = [
     "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
 ]
 _IMPLEMENT_MAX_TURNS = 40
+
+# Sandbox self-verify tool (WU-SANDBOX-IMPLEMENT): ADDITIVE and off by default. When a
+# started, enabled ``SandboxManager`` is passed in, the implementer is granted the
+# ``run_command`` tool (WU-SANDBOX-TOOL) via an in-process MCP server bound to it -- every
+# command it runs still executes ONLY inside the sandbox container over the mounted clone,
+# never on the host, and raw Bash stays in ``_DISALLOWED_TOOLS`` regardless. With no sandbox
+# (or ``sandbox.config.enabled`` False, the default), none of this is wired in and the call
+# is byte-for-byte identical to today.
+_SANDBOX_SERVER_NAME = "blacksmith-sandbox"  # must match blacksmith.sandbox's server name
+_SANDBOX_TOOL_NAME = f"mcp__{_SANDBOX_SERVER_NAME}__{RUN_COMMAND_TOOL_NAME}"
+# The SandboxManager this node receives carries only start/exec/stop settings (its own
+# ``blacksmith.sandbox.SandboxConfig``), not the exec timeout -- that lives on blacksmith's
+# own ``blacksmith.config.SandboxConfig`` ([sandbox].exec_timeout_s, default 120). Graph
+# wiring may pass the configured value through explicitly; this is the fallback.
+_DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
 
 # Conventional-Commits header so the unit's commit is never rejected by a target repo's
 # commit-msg hook (commitlint / config-conventional) AFTER its expensive implementation
@@ -142,7 +158,13 @@ def _within_worktree(root: Path, path: str) -> bool:
         return False
 
 
-def implement(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
+def implement(
+    state: BlacksmithState,
+    *,
+    executor: Executor | None = None,
+    sandbox: SandboxManager | None = None,
+    sandbox_exec_timeout_s: int = _DEFAULT_SANDBOX_EXEC_TIMEOUT_S,
+) -> dict:
     if executor is None:
         return {"status": Status.IMPLEMENTING}  # skeleton pass-through
 
@@ -194,19 +216,41 @@ def implement(state: BlacksmithState, *, executor: Executor | None = None) -> di
     # A continuation (resume_partial_implement) keeps the prior capped attempt's partial work in
     # the worktree and asks the agent to FINISH it, rather than re-implementing from scratch.
     resuming = bool(state.get("resume_partial_implement"))
-    result = run_attempt(
-        _implement_prompt(unit, prior_failure=state.get("last_gate_output"), resuming=resuming),
-        system_prompt=_system_prompt(prd.contract, _read_project_context(worktree_path)),
-        cwd=worktree_path,
+    # Sandbox self-verify (WU-SANDBOX-IMPLEMENT): ADDITIVE and off by default. Only when an
+    # enabled, started sandbox is injected does the tool surface or prompt change at all --
+    # mirroring the same ``sandbox is not None and sandbox.config.enabled`` check used by the
+    # run-level lifecycle wiring (WU-SANDBOX-LIFECYCLE) in graph.py.
+    sandbox_enabled = bool(sandbox is not None and sandbox.config.enabled)
+    allowed_tools = [*_ALLOWED_TOOLS, _SANDBOX_TOOL_NAME] if sandbox_enabled else _ALLOWED_TOOLS
+    call_kwargs: dict = {
+        "system_prompt": _system_prompt(prd.contract, _read_project_context(worktree_path)),
+        "cwd": worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
         # "default" permission mode they evaluate to "ask" and route through the
         # can_use_tool guard (which allows non-protected paths, blocks untouchables).
-        allowed_tools=_ALLOWED_TOOLS,
-        disallowed_tools=_DISALLOWED_TOOLS,
-        permission_mode="default",
-        can_use_tool=guard,
-        max_turns=max_turns,
-        raise_on_error=False,  # surface failures into state, don't crash the graph
+        "allowed_tools": allowed_tools,
+        # Raw Bash (and every other shell-capable/escape tool) stays disallowed
+        # UNCHANGED, sandboxed or not -- run_command is the only execution channel.
+        "disallowed_tools": _DISALLOWED_TOOLS,
+        "permission_mode": "default",
+        "can_use_tool": guard,
+        "max_turns": max_turns,
+        "raise_on_error": False,  # surface failures into state, don't crash the graph
+    }
+    if sandbox_enabled:
+        call_kwargs["mcp_servers"] = {
+            _SANDBOX_SERVER_NAME: create_sandbox_mcp_server(
+                sandbox, exec_timeout_s=sandbox_exec_timeout_s
+            )
+        }
+    result = run_attempt(
+        _implement_prompt(
+            unit,
+            prior_failure=state.get("last_gate_output"),
+            resuming=resuming,
+            sandbox_enabled=sandbox_enabled,
+        ),
+        **call_kwargs,
     )
     # Ledger event for THIS attempt (WU-COST-EVENTS), built once and emitted on EVERY return
     # below — including the failure halts — so a run that halts inside implement still counts
@@ -321,9 +365,40 @@ def _git(worktree_path: str, *args: str) -> str:
     return result.stdout
 
 
+# The default (no sandbox) execution note -- kept as its own constant, character-for-
+# character identical to the original inline text, so the disabled path is byte-for-byte
+# unchanged from before WU-SANDBOX-IMPLEMENT.
+_NO_SANDBOX_EXECUTION_NOTE = (
+    "You have NO shell and CANNOT run commands, tests, builds, or programs, and must not "
+    "spawn sub-agents or search for tools to do so. Do NOT try to run the tests, the build, "
+    "or the code to verify your work — an automated test gate runs the project's own "
+    "test/lint commands after you finish. Make the code correct by reading and reasoning, "
+    "and write any tests the unit requires, but never execute anything. Spend every turn "
+    "implementing — do not waste turns looking for a way to run commands."
+)
+
+# The sandboxed execution note (WU-SANDBOX-IMPLEMENT) REVERSES the instruction above: with a
+# real self-verify channel available, the agent is told to use it and fix failures itself
+# BEFORE finishing, rather than leaving all verification to the (still authoritative) gate.
+_SANDBOX_EXECUTION_NOTE = (
+    "You HAVE a sandbox: call the `run_command` tool to run commands INSIDE an isolated "
+    "container over this working directory — never on the host, and never via a shell of "
+    "your own (raw Bash stays disallowed; `run_command` is the only execution channel, and "
+    "it is sandboxed). Before you finish, RUN the target project's own tests and build/lint "
+    "commands in the sandbox and FIX any failures — do not finish while a test or the build "
+    "is still failing. The test gate still runs afterward as the authoritative check, but "
+    "your job is to make it pass on the first try, not to leave verification to it."
+)
+
+
 def _implement_prompt(
-    unit: WorkUnit, *, prior_failure: str | None = None, resuming: bool = False
+    unit: WorkUnit,
+    *,
+    prior_failure: str | None = None,
+    resuming: bool = False,
+    sandbox_enabled: bool = False,
 ) -> str:
+    execution_note = _SANDBOX_EXECUTION_NOTE if sandbox_enabled else _NO_SANDBOX_EXECUTION_NOTE
     prompt = (
         "Implement this work unit fully inside the current working directory by creating or "
         "editing the target modules. Make the minimal changes needed to satisfy the test "
@@ -333,12 +408,7 @@ def _implement_prompt(
         "Work ONLY within the current working directory, using paths relative to it. Never "
         "edit a file by an absolute path or outside this directory — it is an isolated "
         "clone, not the canonical repo.\n\n"
-        "You have NO shell and CANNOT run commands, tests, builds, or programs, and must not "
-        "spawn sub-agents or search for tools to do so. Do NOT try to run the tests, the build, "
-        "or the code to verify your work — an automated test gate runs the project's own "
-        "test/lint commands after you finish. Make the code correct by reading and reasoning, "
-        "and write any tests the unit requires, but never execute anything. Spend every turn "
-        "implementing — do not waste turns looking for a way to run commands.\n\n"
+        f"{execution_note}\n\n"
         f"Unit {unit.id}: {unit.title}\n"
         f"Layers: {', '.join(unit.layers)}\n"
         f"Target modules: {', '.join(unit.target_modules)}\n"
