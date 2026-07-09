@@ -17,10 +17,11 @@ import pytest
 
 from blacksmith.cli import main, run_respond
 from blacksmith.config import BlacksmithConfig, RespondConfig
+from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import ExecutorResult
 from blacksmith.gate import FixResult, GateResult
 from blacksmith.nodes.pr import CommandResult, subprocess_runner
-from blacksmith.respond import PRBranchCloneManager
+from blacksmith.respond import PRBranchCloneManager, RespondResult
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -128,6 +129,67 @@ def _no_op_fix(path, layer) -> FixResult:
 
 def _config(max_attempts: int = 1) -> BlacksmithConfig:
     return BlacksmithConfig(respond=RespondConfig(max_attempts=max_attempts))
+
+
+def _sentinel_contract() -> PRDContract:
+    """A real (non-placeholder) PRD contract distinct from ``_default_contract``, used
+    to prove ``run_respond``/``respond_to_pr`` actually thread the given contract
+    through rather than silently falling back to the placeholder."""
+    return PRDContract(
+        contract_version=1,
+        component="sentinel-component",
+        version="v1",
+        primary_target_repo="owner/name",
+        layers={"py-logic": "auto"},
+        untouchables=["do not touch the real untouchable file"],
+        work_units=[
+            WorkUnit(
+                id="WU-REAL",
+                title="real unit",
+                layers=["py-logic"],
+                target_modules=["real.py"],
+                test_contract="the gate passes",
+                depends_on=[],
+            )
+        ],
+    )
+
+
+# A minimal Contract v1 PRD file (frontmatter + required prose sections) used to prove
+# ``blacksmith respond --pr N --prd PATH`` actually parses the file and threads its
+# contract through, rather than the ``_default_contract`` placeholder.
+PRD_TEMPLATE = """\
+---
+contract_version: 1
+component: demo-respond
+version: v1
+primary_target_repo: owner/name
+layers:
+  py-logic: auto
+untouchables:
+  - "do not touch the brand files"
+work_units:
+  - id: WU-E1
+    title: "trivial unit"
+    layers: [py-logic]
+    target_modules: ["out.txt"]
+    test_contract: "the gate command passes"
+    depends_on: []
+---
+# Demo PRD
+
+## 1. Purpose
+demo.
+
+## 2. Scope fences
+demo.
+
+## 7. Untouchables
+none.
+
+## 10. Acceptance criteria
+done.
+"""
 
 
 def _branch_log(bare: Path, branch: str) -> list[str]:
@@ -266,3 +328,180 @@ def test_respond_renders_clean_message_when_push_fails(tmp_path, capsys, monkeyp
     assert code == 1
     assert "respond: git push failed" in captured.out
     assert "Traceback" not in captured.out
+
+
+# --- (e) run_respond(..., contract=<c>) forwards <c> to respond_to_pr -------------
+
+
+def test_run_respond_forwards_given_contract_to_respond_to_pr(tmp_path, monkeypatch):
+    from blacksmith import cli
+
+    branch = "blacksmith/wu-05"
+    repo, _bare = _repo_with_pr_branch(tmp_path, branch)
+    runner = _fake_respond_runner(
+        branch=branch, reviews=[{"body": "fix it", "author": {"login": "alice"}}]
+    )
+    sentinel_contract = _sentinel_contract()
+    captured_kwargs: dict = {}
+
+    def fake_respond_to_pr(**kwargs):
+        captured_kwargs.update(kwargs)
+        return RespondResult(
+            pr_number=kwargs["pr_number"],
+            branch=kwargs["branch"],
+            comment_count=1,
+            attempts=1,
+            pushed=True,
+            reason="pushed",
+        )
+
+    monkeypatch.setattr(cli, "respond_to_pr", fake_respond_to_pr)
+
+    code = run_respond(
+        44,
+        config=_config(),
+        repo_path=repo,
+        executor=FakeExecutor(),
+        pr_runner=runner,
+        gate=FakeGate([]),
+        fix=_no_op_fix,
+        clone_manager=PRBranchCloneManager(repo, base_dir=tmp_path / "clones"),
+        contract=sentinel_contract,
+    )
+
+    assert code == 0
+    assert captured_kwargs["contract"] is sentinel_contract
+
+
+# --- (f) --prd omitted forwards contract=None unchanged (backward compatible) -----
+
+
+def test_run_respond_defaults_contract_to_none(tmp_path, monkeypatch):
+    from blacksmith import cli
+
+    branch = "blacksmith/wu-06"
+    repo, _bare = _repo_with_pr_branch(tmp_path, branch)
+    runner = _fake_respond_runner(
+        branch=branch, reviews=[{"body": "fix it", "author": {"login": "alice"}}]
+    )
+    captured_kwargs: dict = {}
+
+    def fake_respond_to_pr(**kwargs):
+        captured_kwargs.update(kwargs)
+        return RespondResult(
+            pr_number=kwargs["pr_number"],
+            branch=kwargs["branch"],
+            comment_count=1,
+            attempts=1,
+            pushed=True,
+            reason="pushed",
+        )
+
+    monkeypatch.setattr(cli, "respond_to_pr", fake_respond_to_pr)
+
+    code = run_respond(
+        45,
+        config=_config(),
+        repo_path=repo,
+        executor=FakeExecutor(),
+        pr_runner=runner,
+        gate=FakeGate([]),
+        fix=_no_op_fix,
+        clone_manager=PRBranchCloneManager(repo, base_dir=tmp_path / "clones"),
+    )
+
+    assert code == 0
+    assert captured_kwargs["contract"] is None
+
+
+# --- (g) `respond --pr N --prd <valid-prd>` parses the PRD and threads its contract --
+
+
+def test_respond_prd_flag_parses_file_and_threads_contract(tmp_path, monkeypatch):
+    from blacksmith import cli
+
+    repo = tmp_path / "target"
+    repo.mkdir()
+    cfg = tmp_path / "blacksmith.config.toml"
+    cfg.write_text(f'[target]\nrepo_path = "{repo}"\n')
+    prd_path = tmp_path / "prd.md"
+    prd_path.write_text(PRD_TEMPLATE)
+
+    captured: dict = {}
+
+    def fake_run_respond(pr_number, **kwargs):
+        captured["pr_number"] = pr_number
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(cli, "run_respond", fake_run_respond)
+
+    code = main(
+        [
+            "respond",
+            "--pr", "44",
+            "--repo", "owner/name",
+            "--prd", str(prd_path),
+            "--config", str(cfg),
+        ]
+    )
+
+    assert code == 0
+    assert captured["pr_number"] == 44
+    contract = captured["contract"]
+    assert contract is not None
+    assert contract.component == "demo-respond"
+
+
+# --- (h) --prd omitted at the CLI leaves contract=None (backward compatible) -------
+
+
+def test_respond_without_prd_flag_forwards_no_contract(tmp_path, monkeypatch):
+    from blacksmith import cli
+
+    repo = tmp_path / "target"
+    repo.mkdir()
+    cfg = tmp_path / "blacksmith.config.toml"
+    cfg.write_text(f'[target]\nrepo_path = "{repo}"\n')
+
+    captured: dict = {}
+
+    def fake_run_respond(pr_number, **kwargs):
+        captured["pr_number"] = pr_number
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(cli, "run_respond", fake_run_respond)
+
+    code = main(["respond", "--pr", "44", "--repo", "owner/name", "--config", str(cfg)])
+
+    assert code == 0
+    assert captured["contract"] is None
+
+
+# --- (i) an invalid/missing --prd path exits non-zero with a clean message --------
+
+
+def test_respond_invalid_prd_path_exits_cleanly_without_traceback(tmp_path, capsys, monkeypatch):
+    from blacksmith import cli
+
+    repo = tmp_path / "target"
+    repo.mkdir()
+    cfg = tmp_path / "blacksmith.config.toml"
+    cfg.write_text(f'[target]\nrepo_path = "{repo}"\n')
+    missing_prd = tmp_path / "does-not-exist.md"
+
+    def fail_run_respond(*_args, **_kwargs):
+        raise AssertionError("run_respond must not be called when --prd fails to parse")
+
+    monkeypatch.setattr(cli, "run_respond", fail_run_respond)
+
+    code = main(
+        ["respond", "--pr", "44", "--prd", str(missing_prd), "--config", str(cfg)]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "respond:" in captured.out
+    assert "Traceback" not in captured.out
+    assert "Traceback" not in captured.err
