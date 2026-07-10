@@ -9,9 +9,10 @@ import operator
 from pathlib import Path
 from typing import Annotated, get_type_hints
 
+from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
-from blacksmith.nodes.review import review
+from blacksmith.nodes.review import _READ_SYMBOL_TOOL_NAME, _SEARCH_TOOL_NAME, review
 from blacksmith.state import BlacksmithState, ReviewFinding
 
 VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
@@ -280,3 +281,47 @@ def test_review_panel_size_1_matches_pre_panel_single_call_output():
     # No panel emphasis text leaks into the single-reviewer prompt.
     assert "PANEL EMPHASIS" not in fake.calls[0]["prompt"]
     assert "PANEL EMPHASIS" not in fake_explicit.calls[0]["prompt"]
+
+
+# --- index tools (WU-REVIEW-INDEX) ------------------------------------------------
+
+
+def test_review_index_enabled_grants_search_and_read_symbol_tools():
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=fake, index_config=IndexConfig(enabled=True))
+    call = fake.calls[0]
+    assert _SEARCH_TOOL_NAME in call["allowed_tools"]
+    assert _READ_SYMBOL_TOOL_NAME in call["allowed_tools"]
+    assert "blacksmith-index" in call["mcp_servers"]
+
+
+def test_review_index_enabled_still_forbids_write_tools():
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=fake, index_config=IndexConfig(enabled=True))
+    call = fake.calls[0]
+    for tool in ("Write", "Edit", "Bash"):
+        assert tool in call["disallowed_tools"]
+    # No write/edit/shell tool sneaks into allowed_tools alongside the index tools.
+    assert "Write" not in call["allowed_tools"]
+    assert "Edit" not in call["allowed_tools"]
+    assert "Bash" not in call["allowed_tools"]
+
+
+def test_review_index_disabled_matches_baseline_tool_surface():
+    baseline_fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=baseline_fake)
+
+    disabled_fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=disabled_fake, index_config=IndexConfig(enabled=False))
+
+    baseline_call = baseline_fake.calls[0]
+    disabled_call = disabled_fake.calls[0]
+    # No index_config at all vs. an explicitly disabled one produce the identical
+    # (byte-for-byte) tool surface -- no index tools, no mcp_servers key.
+    expected = ["Read", "Glob", "Grep"]
+    assert baseline_call["allowed_tools"] == expected
+    assert disabled_call["allowed_tools"] == expected
+    assert "mcp_servers" not in baseline_call
+    assert "mcp_servers" not in disabled_call
+    assert _SEARCH_TOOL_NAME not in baseline_call["allowed_tools"]
+    assert _READ_SYMBOL_TOOL_NAME not in baseline_call["allowed_tools"]
