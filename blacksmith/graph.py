@@ -23,6 +23,7 @@ import shutil
 import sqlite3
 import subprocess
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -71,6 +72,45 @@ FixFn = Callable[[str, str | None], FixResult]
 # graph needs — ``create(unit_id) -> obj(path, branch, repo_path)`` plus ``repo_path`` —
 # so prepare_worktree is identical for either; only cleanup_worktree differs.
 IsolationManager = WorktreeManager | CloneManager
+
+
+@dataclass(frozen=True)
+class UnitDeps:
+    """The one dependency bundle every unit-build path consumes.
+
+    A single frozen bundle handed to BOTH the sequential ``implement`` node AND the fan-out
+    ``build_unit`` worker, built once in ``build_graph``. It exists to kill a recurring class
+    of wired-but-dark bug (review findings #1/#2): the parallel path used to be a hand-copied
+    second implement path, so a feature threaded into the sequential node (index/sandbox) was
+    silently omitted from fan-out. With one bundle there is no second place to forget — a new
+    unit-build dep added here reaches both paths, and ``build_unit``'s inner ``implement`` call
+    uses ``implement_kwargs`` so it can never diverge from what the sequential node passes.
+
+    Carries only the deps the unit-build steps (implement + gate + fix) consume. The run-level
+    ``worktree_manager`` is NOT here (it is also used by prepare_worktree/cleanup and the
+    fan-out clone creation), and review enablement flows through state (seeded by
+    prepare_worktree, threaded into the fan-out Send payload), mirroring the sequential review
+    node — so "is review on" keeps a single source of truth."""
+
+    executor: Executor | None = None
+    gate: GateFn | None = None
+    fix: FixFn | None = None
+    index_config: IndexConfig | None = None
+    sandbox: SandboxManager | None = None
+    sandbox_exec_timeout_s: int | None = None
+
+    def implement_kwargs(self) -> dict:
+        """The kwargs for an ``implement(...)`` call — the SAME set for the sequential node
+        and the fan-out worker's inner call, so the two can never drift. ``executor`` and
+        ``index_config`` always ride along (both ``None`` collapses ``_node_with`` back to a
+        bare pass-through, so a dependency-free graph is byte-for-byte unchanged); the sandbox
+        and its per-command timeout ride along only when a sandbox is wired at all."""
+        kwargs: dict = {"executor": self.executor, "index_config": self.index_config}
+        if self.sandbox is not None:
+            kwargs["sandbox"] = self.sandbox
+            kwargs["sandbox_exec_timeout_s"] = self.sandbox_exec_timeout_s
+        return kwargs
+
 
 # --- placeholder nodes (real bodies arrive in WU-04..WU-10) ------------------
 # Each returns a partial state update; advancing `status` keeps the run inspectable.
@@ -575,14 +615,18 @@ def _can_review_revise(state: BlacksmithState) -> bool:
 def build_unit(
     state: BlacksmithState,
     *,
-    executor: Executor | None = None,
-    gate: GateFn | None = None,
-    fix: FixFn | None = None,
+    deps: UnitDeps | None = None,
     worktree_manager: IsolationManager | None = None,
 ) -> dict:
     """Fan-out worker: build ONE unit of a multi-unit level in its OWN clone and gate it
     there. Returns only the reducer key ``level_builds`` (never a last-write-wins field),
     so the concurrent workers in a level never race on the shared state.
+
+    Takes the SAME ``UnitDeps`` bundle the sequential ``implement`` node is bound with, and
+    its inner ``implement`` call uses ``deps.implement_kwargs()`` — the identical kwargs the
+    sequential node passes — so the two implement paths cannot drift (index/sandbox reach the
+    fan-out worker for free, review findings #2). ``deps`` unset (deterministic tests) yields
+    an empty bundle and the prior single-attempt/no-executor behaviour.
 
     The per-unit clone is taken from the run's shared clone at its combined-branch tip
     (``shared_clone_path``), so the unit sees every prior level's merged changes while
@@ -603,6 +647,7 @@ def build_unit(
     worker loops the cheap model. Both knobs ride along in the ``Send`` payload (``limits`` +
     the run's pre-level spend), so a fan-out run wired without limits keeps its prior
     behaviour: one attempt, then record/halt."""
+    deps = deps or UnitDeps()
     unit = state["selected_unit"]
     level = state.get("level_cursor", 0)
     shared = state["shared_clone_path"]
@@ -652,7 +697,9 @@ def build_unit(
         # so it runs blind); ``implement`` routes it through ``_implement_prompt``'s prior_failure
         # path and commits with ``conventional_commit_message``.
         sub["last_gate_output"] = last_gate_output
-        impl = implement(sub, executor=executor)
+        # SAME kwargs the sequential implement node is bound with (index/sandbox included),
+        # so a feature can never be live sequentially yet dark on fan-out (review finding #2).
+        impl = implement(sub, **deps.implement_kwargs())
         impl_data = impl.get("implementation") or {}
         record["files_touched"] = list(impl_data.get("files_touched") or [])
         record["diff_summary"] = impl_data.get("diff_summary", "")
@@ -686,12 +733,12 @@ def build_unit(
         # Deterministic auto-fix in this unit's own clone before gating it (WU-FIX-CMD): the same
         # fix-then-verify order as the sequential auto_fix -> test_gate, run on EVERY attempt so a
         # self-heal retry re-fixes too. Best-effort; never halts the unit.
-        if fix is not None:
+        if deps.fix is not None:
             try:
-                fix(str(clone.path), unit.layers[0] if unit.layers else None)
+                deps.fix(str(clone.path), unit.layers[0] if unit.layers else None)
             except GateError:
                 pass
-        gate_update = test_gate(sub, gate=gate)
+        gate_update = test_gate(sub, gate=deps.gate)
         results = gate_update.get("test_results") or {}
         record["test_command"] = results.get("command", "")
         if results.get("passed"):
@@ -1033,7 +1080,6 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
                 "selected_unit": unit,
                 "level_cursor": level,
                 "shared_clone_path": state.get("worktree_path"),
-                "combined_branch": state.get("branch"),
                 "limits": state.get("limits"),
                 "level_cost_base": _run_cost(state),
             },
@@ -1170,30 +1216,30 @@ def build_graph(
             default_branch=default_branch,
         ),
     )
-    # The implement node needs the same opt-in feature deps its body reads. index_config drives
-    # the repo-map injection + the search_code tool (WU-REPO-MAP-INJECT / WU-SEARCH-TOOL): the
-    # plan node's add_node passes it, but implement's did not — so implement's index was DARK
-    # even with [index] enabled (the map + tool never reached it). The sandbox is wired the same
-    # way (WU-SANDBOX-IMPLEMENT): prepare_worktree/cleanup already get it, but the implement node
-    # must too or the container starts while the run_command tool is never offered; the manager
-    # carries its own exec timeout for the tool. index=None / sandbox=None (tests) leave implement
-    # wired exactly as before.
-    implement_deps: dict = {"executor": executor, "index_config": index}
-    if sandbox is not None:
-        implement_deps["sandbox"] = sandbox
-        implement_deps["sandbox_exec_timeout_s"] = sandbox.config.exec_timeout_s
-    graph.add_node("implement", _node_with(implement, **implement_deps))
+    # ONE dependency bundle for BOTH unit-build paths (the sequential ``implement`` node and
+    # the fan-out ``build_unit`` worker). Before this, each opt-in feature was threaded into the
+    # implement node by hand and the fan-out worker was a second copy that silently omitted
+    # index/sandbox (review findings #1/#2). With a single bundle a new unit-build dep reaches
+    # both paths for free, and build_unit's inner implement call uses ``implement_kwargs`` so it
+    # can never diverge from what the sequential node passes. index_config drives the repo-map
+    # injection + the search_code tool (WU-REPO-MAP-INJECT / WU-SEARCH-TOOL); the sandbox
+    # (WU-SANDBOX-IMPLEMENT) grants the run_command tool and carries its own exec timeout. An
+    # all-None bundle (tests) collapses ``_node_with`` back to a bare pass-through for implement,
+    # so a dependency-free graph is byte-for-byte unchanged.
+    unit_deps = UnitDeps(
+        executor=executor,
+        gate=gate,
+        fix=fix,
+        index_config=index,
+        sandbox=sandbox,
+        sandbox_exec_timeout_s=sandbox.config.exec_timeout_s if sandbox is not None else None,
+    )
+    graph.add_node("implement", _node_with(implement, **unit_deps.implement_kwargs()))
     graph.add_node("auto_fix", _node_with(auto_fix, fix=fix))
     graph.add_node("test_gate", _node_with(test_gate, gate=gate))
     graph.add_node(
         "build_unit",
-        _node_with(
-            build_unit,
-            executor=executor,
-            gate=gate,
-            fix=fix,
-            worktree_manager=worktree_manager,
-        ),
+        _node_with(build_unit, deps=unit_deps, worktree_manager=worktree_manager),
     )
     graph.add_node("join_level", join_level)
     graph.add_node("next_unit", next_unit)
