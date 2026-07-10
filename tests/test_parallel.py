@@ -22,13 +22,14 @@ Covers:
     shared clone (no per-unit clone, no cherry-pick) and behave as before.
 """
 
+import json
 import re
 import subprocess
 from pathlib import Path
 
 from blacksmith import graph as bsgraph
 from blacksmith.cli import drive
-from blacksmith.config import IndexConfig
+from blacksmith.config import IndexConfig, ReviewConfig
 from blacksmith.executor import ExecutorResult
 from blacksmith.gate import GateResult, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -123,6 +124,7 @@ class FakeExecutor:
     def __init__(self):
         self.cwds: dict[str, str] = {}
         self.seen: dict[str, list[str]] = {}
+        self.reviewed: list[str] = []  # unit ids the reviewer was run on
 
     def run_plan(self, prompt, **kwargs):
         return _result("1. do the thing")
@@ -135,6 +137,21 @@ class FakeExecutor:
         self.seen[unit_id] = sorted(p.name for p in cwd.glob("*.txt"))
         (cwd / target).write_text(f"content from {unit_id}\n")
         return _result("done")
+
+    def run_review(self, prompt, **kwargs):
+        # Record which unit's diff was reviewed and return a BLOCKING finding tagged with it,
+        # so a test can assert the reviewer actually ran on the fan-out unit and its finding
+        # reaches the PR body.
+        unit_id = re.search(r"^Unit (\S+):", prompt, re.M).group(1)
+        self.reviewed.append(unit_id)
+        verdict = {
+            "verdict": "needs_changes",
+            "findings": [
+                {"severity": "blocking", "file": f"{unit_id}.txt",
+                 "detail": f"review flagged {unit_id}"}
+            ],
+        }
+        return _result("```json\n" + json.dumps(verdict) + "\n```")
 
 
 class FailUnitGate:
@@ -445,5 +462,45 @@ def test_fanout_build_unit_implement_receives_index_and_sandbox(tmp_path, monkey
         assert kwargs["index_config"].enabled is True
         assert kwargs.get("sandbox") is sandbox_mgr
         assert "sandbox_exec_timeout_s" in kwargs
+    assert final.values["status"] == Status.DONE
+    saver.conn.close()
+
+
+def test_fanout_units_are_reviewed_and_findings_reach_pr(tmp_path):
+    """Review on the fan-out path (review finding #1, Workstream A2).
+
+    The default-ON post-gate reviewer only ran on the sequential path, so a unit that landed
+    in a parallel level was NEVER reviewed — a regression the unit tests missed shipped
+    unreviewed, depending only on the PRD's dependency shape. This pins that BOTH units of a
+    parallel level are reviewed on their own build clones and their blocking findings reach the
+    ONE combined PR body. (Would fail before A2: the worker never called run_review.)"""
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+
+    saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+    graph = compile_graph(
+        saver,
+        executor=executor,
+        worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+        gate=run_gate,
+        pr_runner=gh,
+        review=ReviewConfig(enabled=True),
+    )
+
+    final = drive(
+        graph,
+        _write_prd(tmp_path, _TWO_INDEPENDENT),
+        approver=_recording_approver(),
+        thread_id="rev",
+    )
+
+    # Both fan-out units were reviewed, each on its own build clone.
+    assert set(executor.reviewed) == {"WU-X", "WU-Y"}
+    # Both units' blocking findings reach the single combined PR body (surfaced, not dropped).
+    body = _pr_body(gh)
+    assert "review flagged WU-X" in body
+    assert "review flagged WU-Y" in body
+    assert len(_pr_creates(gh)) == 1
     assert final.values["status"] == Status.DONE
     saver.conn.close()
