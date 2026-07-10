@@ -612,14 +612,48 @@ def _can_review_revise(state: BlacksmithState) -> bool:
 # property the existing suite pins down.
 
 
+def _fanout_review(
+    state: BlacksmithState, sub: dict, deps: UnitDeps, cost_events: list[dict]
+) -> dict:
+    """Run the post-gate reviewer on a fan-out unit's passing build clone (review finding #1).
+
+    The MVP is review-only surfacing (plan decision A-ii): a stronger model reviews the unit's
+    already-committed diff on its OWN build clone (the same ``blacksmith.nodes.review.review``
+    the sequential path uses), and its findings are RETURNED — no in-worker revision yet. The
+    reviewer's cost events are appended to ``cost_events`` IN PLACE so the caller's ledger
+    stays whole.
+
+    Returns ONLY reducer keys (``review_findings`` / ``unresolved_review_findings``), never the
+    last-write-wins ``review_clean`` — concurrent workers in a level must never race on a
+    non-reducer field. ``review_findings`` mirrors the reviewer's full list (advisory findings
+    surface in the PR body too); ``unresolved_review_findings`` is its blocking subset, which is
+    every blocking finding here since the MVP does not revise. Off (``review_enabled`` unset /
+    False, threaded via the Send payload) this is a no-op returning ``{}``."""
+    if not state.get("review_enabled"):
+        return {}
+    # Same read-only reviewer over the already-committed clone as the sequential node; panel
+    # size rides in from the Send payload (seeded from config.review.panel_size).
+    sub["review_panel_size"] = state.get("review_panel_size")
+    review_out = _run_review(sub, executor=deps.executor)
+    cost_events.extend(review_out.get("cost_events") or [])
+    findings = review_out.get("review_findings") or []
+    return {
+        "review_findings": findings,
+        "unresolved_review_findings": [
+            f for f in findings if f.get("severity") == "blocking"
+        ],
+    }
+
+
 def build_unit(
     state: BlacksmithState,
     *,
     deps: UnitDeps | None = None,
     worktree_manager: IsolationManager | None = None,
 ) -> dict:
-    """Fan-out worker: build ONE unit of a multi-unit level in its OWN clone and gate it
-    there. Returns only the reducer key ``level_builds`` (never a last-write-wins field),
+    """Fan-out worker: build ONE unit of a multi-unit level in its OWN clone, gate it, and
+    (when review is enabled) review its passing diff there. Returns only reducer keys
+    (``level_builds`` + the review findings + ``cost_events``), never a last-write-wins field,
     so the concurrent workers in a level never race on the shared state.
 
     Takes the SAME ``UnitDeps`` bundle the sequential ``implement`` node is bound with, and
@@ -743,7 +777,12 @@ def build_unit(
         record["test_command"] = results.get("command", "")
         if results.get("passed"):
             record["ok"] = True
-            return {"level_builds": [record], "cost_events": cost_events}
+            # Review THIS unit's passing diff on its own build clone (review finding #1). The
+            # fan-out path used to skip review entirely, so a regression the unit tests missed
+            # shipped unreviewed. ``_fanout_review`` appends its review cost events to
+            # ``cost_events`` in place, so finalize that key AFTER it runs.
+            review_keys = _fanout_review(state, sub, deps, cost_events)
+            return {"level_builds": [record], "cost_events": cost_events, **review_keys}
 
         # Gate failed: retry on the cheap model while retries remain AND the run is within its
         # cost cap (the same gate as the sequential ``_can_fix_retry``, minus escalation). Reset
@@ -1070,7 +1109,10 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
     The self-heal limits and the run's spend-so-far ride along too (``level_cost_base`` is
     a payload-only field), so each worker's bounded same-model fix retry honours
     ``max_fix_attempts`` and the ``max_run_cost_usd`` cap. A run wired without limits sends
-    ``limits=None`` and the worker takes a single attempt, exactly as before."""
+    ``limits=None`` and the worker takes a single attempt, exactly as before. The review
+    switch + panel size ride along the same way so the worker runs the post-gate reviewer on
+    its build clone (review finding #1); a run wired without review sends ``None`` and the
+    worker skips review, exactly as before."""
     levels = state.get("execution_levels") or []
     return [
         Send(
@@ -1082,6 +1124,11 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
                 "shared_clone_path": state.get("worktree_path"),
                 "limits": state.get("limits"),
                 "level_cost_base": _run_cost(state),
+                # Thread the review switch + panel size through so the worker runs the post-gate
+                # reviewer on its build clone (review finding #1); absent -> the worker skips
+                # review, exactly as before this fix.
+                "review_enabled": state.get("review_enabled"),
+                "review_panel_size": state.get("review_panel_size"),
             },
         )
         for unit in levels[level]
