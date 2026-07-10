@@ -504,3 +504,67 @@ def test_fanout_units_are_reviewed_and_findings_reach_pr(tmp_path):
     assert len(_pr_creates(gh)) == 1
     assert final.values["status"] == Status.DONE
     saver.conn.close()
+
+
+def test_fanout_node_seam_every_feature_reaches_the_worker(tmp_path, monkeypatch):
+    """Node-seam exhaustiveness guard (review finding #4, Workstream A3).
+
+    The forwarding guard (test_reviewer_wiring.py, seam 1) stops at ``compile_graph``'s kwargs —
+    it never checks a feature reaches the NODE that reads it, and never touches ``build_unit``,
+    which is exactly how the reviewer (#1) and index/sandbox (#2) went dark on parallel units
+    while it stayed green. This drives the REAL graph with a ``CloneManager`` + a 2-unit fan-out
+    level + index/sandbox/review ALL wired on, and asserts NODE BEHAVIOUR on the parallel path:
+    each worker's inner implement call receives the index + sandbox deps AND the reviewer runs on
+    both units. Green now; red on the pre-fix main (the worker passed only ``executor`` and never
+    reviewed)."""
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+
+    index_cfg = IndexConfig(enabled=True)
+    # Wired-but-disabled sandbox: threaded into the graph (so we can assert it reaches the
+    # worker's implement) without requiring docker in the test.
+    sandbox_mgr = SandboxManager(config=SandboxConfig(enabled=False))
+
+    saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+    graph = compile_graph(
+        saver,
+        executor=executor,
+        worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+        gate=run_gate,
+        pr_runner=gh,
+        index=index_cfg,
+        sandbox=sandbox_mgr,
+        review=ReviewConfig(enabled=True),
+    )
+
+    # Spy on the implement the fan-out worker calls (looked up as a module global at call time).
+    real_implement = bsgraph.implement
+    captured: list[dict] = []
+
+    def spy_implement(state, **kwargs):
+        captured.append(kwargs)
+        return real_implement(state, **kwargs)
+
+    monkeypatch.setattr(bsgraph, "implement", spy_implement)
+
+    final = drive(
+        graph,
+        _write_prd(tmp_path, _TWO_INDEPENDENT),
+        approver=_recording_approver(),
+        thread_id="seam",
+    )
+
+    # Both units built via fan-out (own -build clones) -> every implement call came from build_unit.
+    assert set(executor.cwds) == {"WU-X", "WU-Y"}
+    assert all(cwd.endswith("-build") for cwd in executor.cwds.values())
+    # (a) index + sandbox reached each worker's implement call.
+    assert len(captured) == 2
+    for kwargs in captured:
+        assert kwargs.get("index_config") is index_cfg
+        assert kwargs.get("sandbox") is sandbox_mgr
+        assert "sandbox_exec_timeout_s" in kwargs
+    # (b) the reviewer ran on BOTH fan-out units.
+    assert set(executor.reviewed) == {"WU-X", "WU-Y"}
+    assert final.values["status"] == Status.DONE
+    saver.conn.close()
