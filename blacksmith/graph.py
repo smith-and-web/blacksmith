@@ -534,7 +534,12 @@ def prepare_implement_continuation(state: BlacksmithState) -> dict:
 # next_unit/approve_pr -- carrying its unresolved findings forward -- rather than halting.
 
 
-def review_node(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
+def review_node(
+    state: BlacksmithState,
+    *,
+    executor: Executor | None = None,
+    index_config: IndexConfig | None = None,
+) -> dict:
     """Thin wrapper around ``blacksmith.nodes.review.review`` for the graph.
 
     Surfaces THIS call's findings under a plain, last-write-wins key
@@ -542,8 +547,12 @@ def review_node(state: BlacksmithState, *, executor: Executor | None = None) -> 
     (a reducer that keeps accumulating the full cross-unit/cross-revision history
     unchanged). The revision/retention routing below reads ``review_current_findings``
     so it never has to reconstruct "this call's verdict" out of that growing history.
+
+    ``index_config`` wires the SAME in-process blacksmith-index MCP server (search_code +
+    read_symbol) into the reviewer's tool surface as ``implement`` gets (WU-REVIEW-INDEX):
+    additive and off unless ``index_config.enabled``.
     """
-    result = _run_review(state, executor=executor)
+    result = _run_review(state, executor=executor, index_config=index_config)
     if "review_findings" in result:
         result = {**result, "review_current_findings": result["review_findings"]}
     return result
@@ -628,7 +637,7 @@ def _fanout_review(state: BlacksmithState, sub: dict, deps: UnitDeps) -> dict:
         return {}
     # Panel size rides in from the Send payload (seeded from config.review.panel_size).
     sub["review_panel_size"] = state.get("review_panel_size")
-    return _run_review(sub, executor=deps.executor)
+    return _run_review(sub, executor=deps.executor, index_config=deps.index_config)
 
 
 def build_unit(
@@ -1354,7 +1363,7 @@ def build_graph(
     graph.add_node("escalate", prepare_escalation)
     graph.add_node("fix_retry", prepare_fix_retry)
     graph.add_node("continue_implement", prepare_implement_continuation)
-    graph.add_node("review", _node_with(review_node, executor=executor))
+    graph.add_node("review", _node_with(review_node, executor=executor, index_config=index))
     graph.add_node("prepare_review_revision", prepare_review_revision)
     graph.add_node("finalize_review", finalize_review)
     graph.add_node("approve_pr", approve_pr)

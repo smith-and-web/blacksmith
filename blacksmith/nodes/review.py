@@ -36,6 +36,13 @@ cost_event. The N calls' parsed findings-lists are fed through
 ``aggregate_panel_verdicts`` (WU-REVIEW-PANEL-AGGREGATE) to produce the same
 ``review_clean``/``review_findings`` keys the revise loop already consumes -- the loop
 itself, its routing, and the gate are all unchanged.
+
+WU-REVIEW-INDEX: when an ``IndexConfig`` with ``enabled=True`` is passed in, the reviewer
+is ALSO granted the ``search_code``/``read_symbol`` tools (WU-CODE-INDEX) via the same
+in-process ``blacksmith-index`` MCP server the implementer uses (WU-SEARCH-TOOL), bound
+read-only to the run's worktree -- additive only, never a write/edit/shell tool. With no
+``index_config`` (or ``enabled=False``, the default) the tool surface and prompt are
+byte-for-byte unchanged from before this unit.
 """
 
 from __future__ import annotations
@@ -45,8 +52,10 @@ import math
 import re
 from typing import Any
 
+from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
+from blacksmith.index import READ_SYMBOL_TOOL_NAME, SEARCH_CODE_TOOL_NAME, create_index_mcp_server
 from blacksmith.nodes.plan import cost_event
 from blacksmith.state import BlacksmithState
 
@@ -65,12 +74,28 @@ _REVIEW_MAX_TURNS = 20
 # A single fenced ```json ... ``` (or bare ```` ``` ````) block containing the verdict object.
 _FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
+# Index tools (WU-REVIEW-INDEX): ADDITIVE and off by default, mirroring the implement
+# node's search_code/read_symbol wiring (WU-SEARCH-TOOL). Only when an ``IndexConfig``
+# with ``enabled=True`` is passed in is the reviewer granted the SAME in-process
+# ``blacksmith-index`` MCP server, bound read-only to the run's worktree. With no
+# ``index_config`` (or ``enabled=False``, the default) none of this is wired in and the
+# tool surface/prompt are byte-for-byte unchanged from before this unit -- the reviewer
+# stays read-only either way (no write/edit/shell tools are ever added).
+_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
+_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
+_READ_SYMBOL_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{READ_SYMBOL_TOOL_NAME}"
+
 # Built-in emphasis rotation for a panel of reviewers (WU-REVIEW-PANEL-NODE). Cycled by
 # call index so a panel_size > len(_PANEL_EMPHASES) just repeats the rotation.
 _PANEL_EMPHASES = ("correctness", "security", "regression", "edge-cases")
 
 
-def review(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
+def review(
+    state: BlacksmithState,
+    *,
+    executor: Executor | None = None,
+    index_config: IndexConfig | None = None,
+) -> dict:
     if executor is None:
         return {}  # skeleton pass-through: no executor wired, nothing to review yet
 
@@ -83,19 +108,38 @@ def review(state: BlacksmithState, *, executor: Executor | None = None) -> dict:
     system_prompt = _system_prompt(prd.contract)
     panel_size = state.get("review_panel_size") or 1
     emphases = _panel_emphases(panel_size)
+    worktree_path = state.get("worktree_path")
+
+    # search_code/read_symbol tools (WU-REVIEW-INDEX): same additive gating as the
+    # implementer's index tool wiring -- only an explicitly enabled IndexConfig grants it,
+    # and it never adds a write/edit/shell tool to the reviewer's surface.
+    index_enabled = bool(index_config is not None and index_config.enabled)
+    allowed_tools = list(_REVIEW_READ_ONLY)
+    mcp_servers: dict = {}
+    if index_enabled:
+        allowed_tools.append(_SEARCH_TOOL_NAME)
+        allowed_tools.append(_READ_SYMBOL_TOOL_NAME)
+        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+            worktree_path, exclude=index_config.exclude
+        )
 
     cost_events = []
     findings_by_reviewer: list[list[dict]] = []
     for emphasis in emphases:
+        call_kwargs: dict = {
+            "system_prompt": system_prompt,
+            "cwd": worktree_path,
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": _REVIEW_BLOCKED,
+            "permission_mode": "default",
+            "max_turns": _REVIEW_MAX_TURNS,
+            "raise_on_error": False,  # fail-open: a model error must never wedge a green unit
+        }
+        if mcp_servers:
+            call_kwargs["mcp_servers"] = mcp_servers
         result = executor.run_review(
             _review_prompt(unit, implementation, emphasis=emphasis),
-            system_prompt=system_prompt,
-            cwd=state.get("worktree_path"),
-            allowed_tools=_REVIEW_READ_ONLY,
-            disallowed_tools=_REVIEW_BLOCKED,
-            permission_mode="default",
-            max_turns=_REVIEW_MAX_TURNS,
-            raise_on_error=False,  # fail-open: a model error must never wedge a green unit
+            **call_kwargs,
         )
         # Ledgered on every call (including a fail-open empty/unparseable verdict), same
         # discipline as plan/implement, so no reviewer's spend is ever lost.

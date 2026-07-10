@@ -633,6 +633,96 @@ def test_implement_injects_repo_map_when_index_enabled(tmp_path):
     assert "CONSTITUTION" in system_prompt
 
 
+def test_implement_index_prompt_names_both_tools_and_worktree_path(tmp_path):
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+    )
+
+    system_prompt = fake.calls[0]["system_prompt"]
+    # both tools are named, not just search_code
+    assert "search_code" in system_prompt
+    assert "read_symbol" in system_prompt
+    # search_code's query semantics are spelled out
+    assert "space-separated" in system_prompt
+    assert "OR" in system_prompt
+    assert "case-insensitive" in system_prompt
+    assert "literal" in system_prompt.lower()
+    # Read is scoped to files being edited or questions the index can't answer
+    assert "about to edit" in system_prompt
+    # the ABSOLUTE worktree path is stated, and Read/Edit are told to use absolute paths
+    worktree_abs = str(Path(wt.path).resolve())
+    assert worktree_abs in system_prompt
+    assert "absolute path" in system_prompt.lower()
+
+
+def test_implement_prompt_and_system_prompt_agree_on_path_style_when_index_enabled(tmp_path):
+    # Regression: the always-sent user prompt (_implement_prompt) must never contradict the
+    # system prompt's absolute-path directive when the index is enabled — an agent told
+    # "never absolute" in one prompt and "always absolute" in the other gets conflicting
+    # instructions, defeating the fix for failed relative-path Read turns.
+    from blacksmith.nodes.implement import _implement_prompt
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    worktree_abs = str(Path(wt.path).resolve())
+
+    prompt = _implement_prompt(
+        parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01"),
+        index_enabled=True,
+        worktree_path=wt.path,
+    )
+
+    assert worktree_abs in prompt
+    assert "absolute path" in prompt.lower()
+    # it must not tell the agent to use relative paths / never absolute, which would
+    # contradict the system prompt's absolute-path requirement
+    assert "using paths relative to it" not in prompt
+    assert "never edit a file by an absolute path" not in prompt.lower()
+
+
+def test_implement_prompt_unchanged_when_index_disabled_even_with_worktree_path(tmp_path):
+    # index_enabled=False (the default) must produce byte-for-byte the original prompt,
+    # regardless of whether a worktree_path happens to be passed through.
+    from blacksmith.nodes.implement import _implement_prompt
+
+    wt = _scratch_worktree(tmp_path)
+    unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+
+    assert _implement_prompt(unit, worktree_path=wt.path) == _implement_prompt(unit)
+
+
+def test_implement_calls_prompt_with_index_enabled_and_worktree_path(tmp_path):
+    # The node itself must thread index_enabled/worktree_path into the user prompt it sends,
+    # not just the system prompt — otherwise the contradiction reappears at the call site.
+    from blacksmith.config import IndexConfig
+    from blacksmith.nodes.implement import _implement_prompt
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+    )
+
+    expected = _implement_prompt(unit, index_enabled=True, worktree_path=str(wt.path))
+    assert fake.calls[0]["prompt"] == expected
+
+
 def test_implement_system_prompt_unchanged_when_index_disabled(tmp_path):
     from blacksmith.config import IndexConfig
 
@@ -721,4 +811,10 @@ def test_build_repo_map_enabled_bounded_by_max_map_bytes(tmp_path):
     _commit_helper_module(wt)
     result = _build_repo_map(str(wt.path), IndexConfig(enabled=True, max_map_bytes=5))
     assert result is not None
-    assert len(result.encode("utf-8")) <= 5 + len("…(truncated)".encode())
+    # Even with a budget too small for symbol outlines, every tracked file's path is
+    # still listed (paths are never dropped or cut) and the omitted-symbols marker
+    # explains why the symbol outline itself is missing.
+    assert "README.md" in result
+    assert "helper.py" in result
+    assert "known_symbol" not in result
+    assert "symbols omitted" in result

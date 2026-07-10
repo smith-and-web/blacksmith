@@ -254,7 +254,7 @@ def implement(
     repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
         "system_prompt": _system_prompt(
-            prd.contract, _read_project_context(worktree_path), repo_map
+            prd.contract, _read_project_context(worktree_path), repo_map, worktree_path
         ),
         "cwd": worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
@@ -286,6 +286,8 @@ def implement(
             prior_failure=state.get("last_gate_output"),
             resuming=resuming,
             sandbox_enabled=sandbox_enabled,
+            index_enabled=index_enabled,
+            worktree_path=worktree_path,
         ),
         **call_kwargs,
     )
@@ -434,17 +436,37 @@ def _implement_prompt(
     prior_failure: str | None = None,
     resuming: bool = False,
     sandbox_enabled: bool = False,
+    index_enabled: bool = False,
+    worktree_path: str | Path | None = None,
 ) -> str:
     execution_note = _SANDBOX_EXECUTION_NOTE if sandbox_enabled else _NO_SANDBOX_EXECUTION_NOTE
+    # When the index is enabled, the system prompt tells the agent this worktree's absolute
+    # path and requires every Read/Edit to use an absolute path under it (killing observed
+    # failed relative-path Read turns). This scope note MUST agree with that — an agent told
+    # "never absolute" here and "always absolute" there gets contradictory instructions and
+    # the absolute-path fix is defeated. With the index disabled, this stays the original
+    # relative-path instruction, byte-for-byte.
+    if index_enabled and worktree_path:
+        worktree_abs = str(Path(worktree_path).resolve())
+        scope_note = (
+            f"Work ONLY within this worktree: {worktree_abs}\n"
+            "Every Read and Edit (and Write/MultiEdit/NotebookEdit) tool call MUST use an "
+            "absolute path under that worktree path — never a relative path. Never edit a "
+            "file outside this worktree — it is an isolated clone, not the canonical repo."
+        )
+    else:
+        scope_note = (
+            "Work ONLY within the current working directory, using paths relative to it. Never "
+            "edit a file by an absolute path or outside this directory — it is an isolated "
+            "clone, not the canonical repo."
+        )
     prompt = (
         "Implement this work unit fully inside the current working directory by creating or "
         "editing the target modules. Make the minimal changes needed to satisfy the test "
         "contract; do not add anything beyond what the unit asks for. Do NOT assume a target "
         "module already exists — verify with Read and create it if missing. You are done only "
         "once the target modules exist on disk with the required content.\n\n"
-        "Work ONLY within the current working directory, using paths relative to it. Never "
-        "edit a file by an absolute path or outside this directory — it is an isolated "
-        "clone, not the canonical repo.\n\n"
+        f"{scope_note}\n\n"
         f"{execution_note}\n\n"
         f"Unit {unit.id}: {unit.title}\n"
         f"Layers: {', '.join(unit.layers)}\n"
@@ -515,6 +537,7 @@ def _system_prompt(
     contract: PRDContract,
     project_context: str | None = None,
     repo_map: str | None = None,
+    worktree_path: str | Path | None = None,
 ) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
     prompt = (
@@ -536,9 +559,20 @@ def _system_prompt(
             "top-level symbols, WU-CODE-INDEX), given up front as static context so you can "
             "orient before exploring, rather than spending turns on blind Read/Glob/Grep:\n"
             f"{repo_map}\n\n"
-            "USE THE INDEX FIRST. You have a `search_code` tool that returns ranked symbol "
-            "definitions and usages from this repo in ONE call. To locate code, prefer the map "
-            "above and `search_code` over Read/Glob/Grep — reach for Grep/Glob only when the "
-            "index doesn't answer the question."
+            "USE THE INDEX FIRST. You have two tools: `search_code` to find where something "
+            "is defined or mentioned in this repo in ONE call (query is space-separated terms "
+            "matched with OR semantics, case-insensitive, and matched literally — not as a "
+            "regex), and `read_symbol` to fetch the source of one named top-level "
+            "function/class once you know which file it's in. Prefer the map above and these "
+            "two tools over Read/Glob/Grep — reach for Read only for a file you are actually "
+            "about to edit, or when the index cannot answer your question."
         )
+        if worktree_path:
+            worktree_abs = str(Path(worktree_path).resolve())
+            prompt += (
+                f"\n\nThis worktree's absolute path is: {worktree_abs}\n"
+                "Every Read and Edit (and Write/MultiEdit/NotebookEdit) tool call MUST use an "
+                "absolute path under that worktree path — never a relative path. A relative "
+                "Read has been observed to fail against the wrong working directory."
+            )
     return prompt

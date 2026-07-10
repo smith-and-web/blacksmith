@@ -203,7 +203,7 @@ def test_index_section_defaults():
     # fields so enabling it later requires no other config changes.
     index = IndexConfig()
     assert index.enabled is False
-    assert index.max_map_bytes == 12000
+    assert index.max_map_bytes == 65536
     assert isinstance(index.max_map_bytes, int)
     assert index.exclude == []
 
