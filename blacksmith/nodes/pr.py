@@ -247,9 +247,13 @@ def _synthesize_summary(
     ``cost_event`` reflects the call's real spend whenever one was actually made (even a
     failed/unparseable call still cost money) and is ``None`` only if the executor itself
     raised before returning a result."""
-    prompt = _summary_prompt(state, units)
     unit_id = units[-1].id if units else ""
     try:
+        # _summary_prompt is INSIDE the fail-open try too: any error building the prompt
+        # (e.g. a malformed PRD/state field) must fall back exactly like a model/parse
+        # error, never propagate out of the PR node — the summary is additive and can
+        # never block or crash opening the PR.
+        prompt = _summary_prompt(state, units)
         result = executor.run_summary(prompt, raise_on_error=False)
     except Exception:
         return None, None, None
@@ -316,31 +320,59 @@ def _units_table_lines(units: Sequence[WorkUnit], state: BlacksmithState) -> lis
 
 
 def _verification_line(units: Sequence[WorkUnit], state: BlacksmithState) -> str | None:
-    """A single line summarizing the test gate outcome across every built unit, replacing
-    the old repeated per-unit ``Test gate: passed (<cmd>)`` lines."""
+    """A single line summarizing the test gate outcome across the built units, replacing
+    the old repeated per-unit ``Test gate: passed (<cmd>)`` lines.
+
+    A human-gated unit is verified by a HUMAN on the draft PR, not the automated gate, so it
+    is reported as 'awaiting QA' rather than counted against the gate's pass total. Counting it
+    made a draft under-report — a QA-only draft rendered '0/1 units passed' and a mixed draft
+    'N-1/N units passed', reading as if a gate had failed when the unit was simply never gated.
+    Auto-gated units (every non-draft PR) are unaffected — the pass total is byte-for-byte as
+    before. Best-effort: without a PRD in state (node-level tests) every unit is treated as
+    auto-gated, preserving the prior behaviour."""
     if not units:
         return None
-    if len(units) == 1:
+    prd = state.get("prd")
+
+    def _pending_qa(unit: WorkUnit) -> bool:
+        if prd is None:
+            return False
+        try:
+            return prd.contract.gate_for(unit) == "human"
+        except Exception:
+            return False
+
+    gated = [u for u in units if not _pending_qa(u)]
+    pending = [u for u in units if _pending_qa(u)]
+    command = ""
+    if len(units) == 1 and not pending:
+        # Single auto unit: the last-write-wins test_results describe it (unchanged path).
         results = state.get("test_results") or {}
-        total = 1
-        passed = 1 if results.get("passed") else 0
+        total, passed = 1, (1 if results.get("passed") else 0)
         command = results.get("command", "")
     else:
         by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
-        total = len(units)
-        passed = sum(1 for u in units if u.id in by_id)
+        total = len(gated)
+        passed = sum(1 for u in gated if u.id in by_id)
         command = next(
             (
                 by_id[u.id].get("test_command", "")
-                for u in units
+                for u in gated
                 if by_id.get(u.id, {}).get("test_command")
             ),
             "",
         )
-    summary = f"{passed}/{total} units passed"
-    if command:
-        summary += f" `{command}`"
-    return f"**Verification:** {summary}"
+    parts: list[str] = []
+    if total:
+        summary = f"{passed}/{total} units passed"
+        if command:
+            summary += f" `{command}`"
+        parts.append(summary)
+    if pending:
+        parts.append(f"{len(pending)} awaiting QA")
+    if not parts:
+        return None
+    return "**Verification:** " + " · ".join(parts)
 
 
 def _dedup_findings(findings) -> list[dict]:
