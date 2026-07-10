@@ -30,8 +30,6 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server, tool
 
-_TRUNCATION_MARKER = "…(truncated)"
-
 # Which "family" of symbol patterns applies to a given file extension.
 _EXT_FAMILY = {
     ".py": "python",
@@ -100,11 +98,21 @@ _FAMILY_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
 def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[str] = ()) -> str:
     """Build a compact outline of the repo: tracked files + their top-level symbols.
 
-    Enumerates files with ``git ls-files`` and, for recognized extensions, lists each
-    file's top-level ``def``/``class``/``fn``/``struct``/etc. signatures underneath it.
-    The result is truncated to ``max_bytes`` (UTF-8 encoded) with an explicit
-    ``"…(truncated)"`` marker appended when a cut was made. Read-only and best-effort:
-    any git failure yields ``""`` rather than raising.
+    Spends the ``max_bytes`` budget in priority order:
+
+    1. Every tracked file's path is ALWAYS listed, one per line -- paths alone are
+       cheap, so the map never silently omits a file, regardless of budget.
+    2. Remaining budget goes to symbol outlines (each file's top-level
+       ``def``/``class``/``fn``/``struct``/etc. signatures, listed under its path).
+       When the full outline doesn't fit, whole per-file symbol blocks are dropped --
+       never a mid-file byte cut -- lowest priority first: files outside ``tests/``
+       and ``docs/`` with a recognized extension are kept longest, then files under
+       ``tests/``, then everything else (docs/config and unrecognized extensions).
+
+    If any file's symbols were dropped, the map ends with an explicit marker naming
+    how many files that happened to. A map that fits under budget untouched is
+    returned unchanged, with no marker. Read-only and best-effort: any git failure
+    yields ``""`` rather than raising.
     """
     repo_path = Path(repo_path)
     exclude = tuple(exclude)
@@ -112,29 +120,83 @@ def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[s
     if not files:
         return ""
 
-    sections: list[str] = []
+    entries: list[dict[str, Any]] = []
     for rel_path in files:
         ext = Path(rel_path).suffix
         family = _EXT_FAMILY.get(ext)
-        symbols = []
+        symbol_lines: list[str] = []
         if family:
             content = _read_file(repo_path, rel_path)
             if content is not None:
-                symbols = _extract_symbols(content, family)
-        lines = [rel_path]
-        lines.extend(f"  {symbol['signature']}" for symbol in symbols)
-        sections.append("\n".join(lines))
+                symbol_lines = [
+                    f"  {symbol['signature']}" for symbol in _extract_symbols(content, family)
+                ]
+        entries.append(
+            {
+                "path": rel_path,
+                "symbol_lines": symbol_lines,
+                "priority": _map_priority(rel_path, recognized=family is not None),
+            }
+        )
 
-    full = "\n".join(sections)
-    encoded = full.encode("utf-8")
-    if len(encoded) <= max_bytes:
+    def render(omitted: set[int]) -> str:
+        sections = []
+        for i, entry in enumerate(entries):
+            lines = [entry["path"]]
+            if i not in omitted:
+                lines.extend(entry["symbol_lines"])
+            sections.append("\n".join(lines))
+        return "\n".join(sections)
+
+    full = render(set())
+    if len(full.encode("utf-8")) <= max_bytes:
         return full
 
-    marker_bytes = _TRUNCATION_MARKER.encode("utf-8")
-    budget = max(max_bytes - len(marker_bytes), 0)
-    # Decode with errors="ignore" so a hard byte-budget cut can't land mid-codepoint.
-    truncated = encoded[:budget].decode("utf-8", errors="ignore")
-    return truncated + _TRUNCATION_MARKER
+    # Over budget: drop whole per-file symbol blocks, lowest priority first. Paths
+    # are never dropped or cut mid-file -- see the priority order in the docstring.
+    droppable = sorted(
+        (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
+        key=lambda i: (-entries[i]["priority"], i),
+    )
+    if not droppable:
+        return full  # nothing droppable; paths alone already exceed max_bytes
+
+    # Reserve worst-case marker space up front so the final (content + marker) fits
+    # max_bytes whenever the content alone can be brought under budget.
+    marker_reserve = len(_omitted_symbols_marker(len(droppable)).encode("utf-8"))
+    content_budget = max(max_bytes - marker_reserve, 0)
+
+    omitted: set[int] = set()
+    current = full
+    for i in droppable:
+        if len(current.encode("utf-8")) <= content_budget:
+            break
+        omitted.add(i)
+        current = render(omitted)
+
+    return current + _omitted_symbols_marker(len(omitted))
+
+
+def _map_priority(rel_path: str, *, recognized: bool) -> int:
+    """Symbol-drop priority for :func:`build_repo_map` -- higher drops first.
+
+    1 (kept longest) = recognized-code extensions outside ``tests/`` and ``docs/``.
+    2 = files under a ``tests/`` directory.
+    3 (dropped first) = everything else -- docs/config and unrecognized extensions.
+    """
+    if not recognized:
+        return 3
+    dirs = Path(rel_path).parts[:-1]
+    if "tests" in dirs:
+        return 2
+    if "docs" in dirs:
+        return 3
+    return 1
+
+
+def _omitted_symbols_marker(count: int) -> str:
+    noun = "file's" if count == 1 else "files'"
+    return f"\n…({count} {noun} symbols omitted)…"
 
 
 def search_code(

@@ -721,4 +721,10 @@ def test_build_repo_map_enabled_bounded_by_max_map_bytes(tmp_path):
     _commit_helper_module(wt)
     result = _build_repo_map(str(wt.path), IndexConfig(enabled=True, max_map_bytes=5))
     assert result is not None
-    assert len(result.encode("utf-8")) <= 5 + len("…(truncated)".encode())
+    # Even with a budget too small for symbol outlines, every tracked file's path is
+    # still listed (paths are never dropped or cut) and the omitted-symbols marker
+    # explains why the symbol outline itself is missing.
+    assert "README.md" in result
+    assert "helper.py" in result
+    assert "known_symbol" not in result
+    assert "symbols omitted" in result

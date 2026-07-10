@@ -263,13 +263,15 @@ class IndexConfig(_Strict):
 
     * ``enabled`` — plain on/off toggle, default ``False``.
     * ``max_map_bytes`` — the size ceiling for the injected repo map, an int > 0,
-      default 12000, so the map can never balloon the implementer's prompt.
+      default 65536, so the map can never balloon the implementer's prompt. Symbol
+      outlines are dropped (lowest priority first, paths always kept) before this
+      ceiling is exceeded; see ``blacksmith.index.build_repo_map``.
     * ``exclude`` — extra path globs to omit from the map/search, on top of whatever
       ``git ls-files`` already excludes. Empty by default.
     """
 
     enabled: bool = False
-    max_map_bytes: int = Field(default=12000, gt=0)
+    max_map_bytes: int = Field(default=65536, gt=0)
     exclude: list[str] = Field(default_factory=list)
 
 
