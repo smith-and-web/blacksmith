@@ -29,7 +29,7 @@ from pathlib import Path
 
 from blacksmith import graph as bsgraph
 from blacksmith.cli import drive
-from blacksmith.config import IndexConfig, ReviewConfig
+from blacksmith.config import IndexConfig, LimitsConfig, ReviewConfig
 from blacksmith.executor import ExecutorResult
 from blacksmith.gate import GateResult, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -566,5 +566,118 @@ def test_fanout_node_seam_every_feature_reaches_the_worker(tmp_path, monkeypatch
         assert "sandbox_exec_timeout_s" in kwargs
     # (b) the reviewer ran on BOTH fan-out units.
     assert set(executor.reviewed) == {"WU-X", "WU-Y"}
+    assert final.values["status"] == Status.DONE
+    saver.conn.close()
+
+
+class ReviseExecutor(FakeExecutor):
+    """Fan-out executor for the in-worker review-revise loop (A-i).
+
+    ``run_review`` flags a BLOCKING finding for a unit's first ``clears_at`` reviews, then
+    reports clean — so with ``clears_at=1`` the loop revises once and converges, and with a
+    large ``clears_at`` the reviewer never clears (the bound stops it and the finding surfaces).
+    ``run_implement`` stamps version-numbered content so each revision produces a REAL diff to
+    commit (the base FakeExecutor writes constant content, which a revision couldn't re-commit)."""
+
+    def __init__(self, clears_at: int = 1):
+        super().__init__()
+        self.clears_at = clears_at
+        self.impl_calls: dict[str, int] = {}
+        self.review_calls: dict[str, int] = {}
+
+    def run_implement(self, prompt, **kwargs):
+        cwd = Path(kwargs["cwd"])
+        unit_id = re.search(r"^Unit (\S+):", prompt, re.M).group(1)
+        target = re.search(r"^Target modules: (.+)$", prompt, re.M).group(1).split(",")[0].strip()
+        n = self.impl_calls.get(unit_id, 0)
+        self.impl_calls[unit_id] = n + 1
+        self.cwds[unit_id] = str(cwd)
+        (cwd / target).write_text(f"content from {unit_id} v{n}\n")
+        return _result("done")
+
+    def run_review(self, prompt, **kwargs):
+        unit_id = re.search(r"^Unit (\S+):", prompt, re.M).group(1)
+        n = self.review_calls.get(unit_id, 0)
+        self.review_calls[unit_id] = n + 1
+        if n >= self.clears_at:
+            verdict = {"verdict": "clean", "findings": []}
+        else:
+            verdict = {
+                "verdict": "needs_changes",
+                "findings": [{"severity": "blocking", "file": f"{unit_id}.txt",
+                              "detail": f"fix {unit_id}"}],
+            }
+        return _result("```json\n" + json.dumps(verdict) + "\n```")
+
+
+def _wire_review_revise(tmp_path, repo, *, executor, gh):
+    saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+    graph = compile_graph(
+        saver,
+        executor=executor,
+        worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+        gate=run_gate,
+        pr_runner=gh,
+        review=ReviewConfig(enabled=True),
+        limits=LimitsConfig(),  # max_review_revisions defaults to 1
+    )
+    return graph, saver
+
+
+def test_fanout_blocking_review_revises_in_worker_then_lands_clean(tmp_path):
+    """In-worker review revision on the fan-out path (A-i, follow-up to finding #1).
+
+    A blocking review finding on a parallel unit now RE-IMPLEMENTS the unit in place on its own
+    build clone (findings fed back), re-gates, and re-reviews — instead of merely surfacing the
+    finding. With a reviewer that flags once then clears, both units of a parallel level revise
+    once and land CLEAN: no unresolved note in the PR, and the revise commits squashed so each
+    unit is still one cherry-pick onto the combined branch."""
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = ReviseExecutor(clears_at=1)  # blocking first review, clean after the revision
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    graph, saver = _wire_review_revise(tmp_path, repo, executor=executor, gh=gh)
+
+    final = drive(
+        graph,
+        _write_prd(tmp_path, _TWO_INDEPENDENT),
+        approver=_recording_approver(),
+        thread_id="revise",
+    )
+
+    # Each unit implemented TWICE (original + one revision) and reviewed TWICE (blocking, clean).
+    assert executor.impl_calls == {"WU-X": 2, "WU-Y": 2}
+    assert executor.review_calls == {"WU-X": 2, "WU-Y": 2}
+    # The revision RESOLVED the findings, so the PR carries no unresolved-blocking note.
+    body = _pr_body(gh)
+    assert "unresolved (blocking)" not in body
+    # Still exactly one combined PR, both units landed, and the run completed.
+    assert len(_pr_creates(gh)) == 1
+    assert final.values["status"] == Status.DONE
+    saver.conn.close()
+
+
+def test_fanout_blocking_review_exhausts_revisions_then_surfaces(tmp_path):
+    """The revise loop is BOUNDED (A-i): a reviewer that never clears revises up to
+    ``max_review_revisions`` (default 1) then SURFACES the outstanding blocking finding on the
+    PR and proceeds — it never halts the run on it, mirroring the sequential finalize_review."""
+    repo = _target_repo(tmp_path, gate_cmd="true")
+    executor = ReviseExecutor(clears_at=99)  # reviewer never clears
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    graph, saver = _wire_review_revise(tmp_path, repo, executor=executor, gh=gh)
+
+    final = drive(
+        graph,
+        _write_prd(tmp_path, _TWO_INDEPENDENT),
+        approver=_recording_approver(),
+        thread_id="exhaust",
+    )
+
+    # Bounded to one revision: original + one revision implement, reviewed after each.
+    assert executor.impl_calls == {"WU-X": 2, "WU-Y": 2}
+    assert executor.review_calls == {"WU-X": 2, "WU-Y": 2}
+    # The still-blocking findings SURFACE on the PR (not resolved), and the run still completes.
+    body = _pr_body(gh)
+    assert "unresolved (blocking): WU-X.txt" in body
+    assert "unresolved (blocking): WU-Y.txt" in body
     assert final.values["status"] == Status.DONE
     saver.conn.close()
