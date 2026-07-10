@@ -253,6 +253,41 @@ def test_respond_with_seeded_comments_drives_flow_and_reports_pushed_update(tmp_
     assert len(after) == len(baseline) + 1
 
 
+# --- (a2) a gate-failing run's rendered failure includes a snippet of gate output --
+
+
+def test_respond_renders_gate_output_snippet_on_gate_failure(tmp_path, capsys):
+    branch = "blacksmith/wu-01b"
+    repo, bare = _repo_with_pr_branch(tmp_path, branch)
+    baseline = _branch_log(bare, branch)
+    runner = _fake_respond_runner(
+        branch=branch,
+        reviews=[{"body": "please fix the bug", "author": {"login": "alice"}}],
+    )
+    manager = PRBranchCloneManager(repo, base_dir=tmp_path / "clones")
+    executor = FakeExecutor()
+    gate = FakeGate(
+        [GateResult(passed=False, output="FAILED tests/test_thing.py::test_x", command="pytest")]
+    )
+
+    code = run_respond(
+        43,
+        config=_config(),
+        repo_path=repo,
+        executor=executor,
+        pr_runner=runner,
+        gate=gate,
+        fix=_no_op_fix,
+        clone_manager=manager,
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "nothing pushed" in captured.out.lower()
+    assert "FAILED tests/test_thing.py::test_x" in captured.out
+    assert _branch_log(bare, branch) == baseline  # nothing pushed
+
+
 # --- (b) no review comments exits cleanly, reporting nothing to do ----------------
 
 

@@ -246,10 +246,10 @@ def test_explicit_index_config_loads(tmp_path):
 
 
 def test_respond_section_max_attempts_defaults():
-    # WU-RESPOND-CONFIG: a new [respond] section gains `max_attempts`, an int >= 1
-    # defaulting to 1, surfaced as config.respond.max_attempts.
+    # WU-RESPOND-SELFHEAL-DEFAULT: a new [respond] section gains `max_attempts`, an int >= 1
+    # defaulting to 2 (one self-heal retry), surfaced as config.respond.max_attempts.
     respond = RespondConfig()
-    assert respond.max_attempts == 1
+    assert respond.max_attempts == 2
     assert isinstance(respond.max_attempts, int)
 
 
@@ -265,7 +265,7 @@ def test_respond_defaults_when_config_omits_section():
     # max_attempts — behaving exactly as today (backward compatible).
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
     assert cfg.respond == RespondConfig()
-    assert cfg.respond.max_attempts == 1
+    assert cfg.respond.max_attempts == 2
 
 
 def test_respond_defaults_when_optional_sections_omitted():

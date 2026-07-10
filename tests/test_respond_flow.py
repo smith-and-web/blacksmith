@@ -154,6 +154,7 @@ def test_passing_revision_is_pushed_and_no_new_pr_is_created(tmp_path):
     assert result.attempts == 1
     assert result.reason == "pushed"
     assert result.comment_count == 1
+    assert result.gate_output is None
     assert len(executor.calls) == 1  # exactly one revise attempt
     assert gate.calls == 1
     # No new PR was ever opened for this update.
@@ -193,6 +194,7 @@ def test_failing_gate_retries_up_to_max_attempts_then_stops_without_pushing(tmp_
     assert result.pushed is False
     assert result.attempts == 3
     assert result.reason == "gate_failed"
+    assert result.gate_output == "tests failed"
     assert gate.calls == 3
     assert len(executor.calls) == 3
     assert not any(call[:2] == ["git", "push"] for call in runner.calls)
