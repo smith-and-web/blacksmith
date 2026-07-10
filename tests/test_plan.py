@@ -192,6 +192,30 @@ def test_plan_node_injects_repo_map_when_index_enabled(tmp_path):
     assert "CONSTITUTION" in system_prompt  # existing section unaffected
 
 
+def test_plan_node_index_prompt_names_both_tools_and_query_semantics(tmp_path):
+    repo = _init_target_repo(tmp_path)
+    fake = FakeExecutor()
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+        repo_path=str(repo),
+    )
+
+    system_prompt = fake.calls[0]["system_prompt"]
+    # both tools are named, not just search_code
+    assert "search_code" in system_prompt
+    assert "read_symbol" in system_prompt
+    # search_code's query semantics are spelled out
+    assert "space-separated" in system_prompt
+    assert "OR" in system_prompt
+    assert "case-insensitive" in system_prompt
+    assert "literal" in system_prompt.lower()
+    # Read is scoped to files being edited or questions the index can't answer
+    assert "about to edit" in system_prompt
+
+
 def test_plan_node_system_prompt_unchanged_when_index_disabled(tmp_path):
     repo = _init_target_repo(tmp_path)
 
