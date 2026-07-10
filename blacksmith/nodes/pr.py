@@ -167,23 +167,55 @@ def _pr_title(units: Sequence[WorkUnit]) -> str:
     return f"{len(units)} work units ({units[0].id}..{units[-1].id})"
 
 
-def _change_lines(
-    files: Sequence[str] | None,
-    diff_summary: str | None,
-    results: dict | None,
-    *,
-    indent: str = "",
-) -> list[str]:
-    """Render the files/summary/test-gate lines for one unit's changes."""
-    lines: list[str] = []
-    if files:
-        lines.append(f"{indent}**Files touched:** " + ", ".join(files))
-    if diff_summary:
-        lines.append(f"{indent}**Summary:** {diff_summary}")
-    if results:
-        verdict = "passed" if results.get("passed") else "failed"
-        lines.append(f"{indent}**Test gate:** {verdict} (`{results.get('command', '')}`)")
+def _units_table_lines(units: Sequence[WorkUnit], state: BlacksmithState) -> list[str]:
+    """A compact Markdown table of the units built this run (WU-PR-BODY-REDESIGN).
+
+    Columns: unit id, title, files touched — one row per unit, in declaration order, so
+    each unit's file attribution stays scannable without the raw ``git diff --stat``
+    (GitHub already renders that on the PR itself)."""
+    if not units:
+        return []
+    if len(units) == 1:
+        impl = state.get("implementation") or {}
+        files_by_id = {units[0].id: list(impl.get("files_touched") or [])}
+    else:
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
+        files_by_id = {
+            u.id: list((by_id.get(u.id) or {}).get("files_touched") or []) for u in units
+        }
+    lines = ["", "| Unit | What | Files touched |", "| --- | --- | --- |"]
+    for u in units:
+        files = ", ".join(files_by_id.get(u.id) or []) or "—"
+        lines.append(f"| {u.id} | {u.title} | {files} |")
     return lines
+
+
+def _verification_line(units: Sequence[WorkUnit], state: BlacksmithState) -> str | None:
+    """A single line summarizing the test gate outcome across every built unit, replacing
+    the old repeated per-unit ``Test gate: passed (<cmd>)`` lines."""
+    if not units:
+        return None
+    if len(units) == 1:
+        results = state.get("test_results") or {}
+        total = 1
+        passed = 1 if results.get("passed") else 0
+        command = results.get("command", "")
+    else:
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
+        total = len(units)
+        passed = sum(1 for u in units if u.id in by_id)
+        command = next(
+            (
+                by_id[u.id].get("test_command", "")
+                for u in units
+                if by_id.get(u.id, {}).get("test_command")
+            ),
+            "",
+        )
+    summary = f"{passed}/{total} units passed"
+    if command:
+        summary += f" `{command}`"
+    return f"**Verification:** {summary}"
 
 
 def _dedup_findings(findings) -> list[dict]:
@@ -219,6 +251,8 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     # the last-write-wins ``review_revisions``); fall back to the per-unit field for states
     # without it (a sequential-only run predating the total, or an old checkpoint).
     revisions = state.get("review_revisions_total") or state.get("review_revisions", 0)
+    # A one-line severity-count header so a reviewer can triage before reading every finding.
+    lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revisions} revisions")
     if revisions:
         lines.append(f"- resolved via revision: {revisions}")
     for finding in unresolved:
@@ -233,36 +267,45 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     return lines
 
 
+def _build_metadata_lines(state: BlacksmithState) -> list[str]:
+    """A collapsed "Build metadata" ``<details>`` block: total run cost and the model used
+    per node, sourced from ``state["cost_events"]``. Additive and best-effort — an
+    empty/absent/malformed ledger just omits the block, never crashes the PR node."""
+    try:
+        events = state.get("cost_events") or []
+        if not events:
+            return []
+        total_cost = sum(e.get("cost_usd") or 0 for e in events)
+        models_by_node: dict[str, str] = {}
+        for event in events:
+            node, model = event.get("node"), event.get("model")
+            if node and model and node not in models_by_node:
+                models_by_node[node] = model
+        body_lines = [f"- Total cost: ${total_cost:.4f}"]
+        body_lines.extend(f"- {node}={model}" for node, model in models_by_node.items())
+        return [
+            "",
+            "<details>",
+            "<summary>Build metadata</summary>",
+            "",
+            *body_lines,
+            "",
+            "</details>",
+        ]
+    except Exception:
+        return []
+
+
 def _pr_body(state: BlacksmithState, units: Sequence[WorkUnit] | None = None) -> str:
     units = list(_built_units(state) if units is None else units)
     lines: list[str] = []
-    if len(units) == 1:
-        # Single-unit body is unchanged: the last-write-wins implementation/test_results
-        # describe the lone unit.
-        impl = state.get("implementation") or {}
-        results = state.get("test_results") or {}
-        lines.append(f"**Unit:** {units[0].id} — {units[0].title}")
-        lines.extend(_change_lines(impl.get("files_touched"), impl.get("diff_summary"), results))
-    elif units:
-        # Summarize each built unit from its OWN retained result (unit_results), so a unit's
-        # files/summary are attributed to that unit rather than lumped under the last unit's
-        # implementation. A mid-DAG draft PR's human-gated unit has no retained result yet
-        # (it skipped the auto gate), so it appears as a bare bullet — which is correct.
-        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
-        lines.append(f"**Units built ({len(units)}):**")
-        for u in units:
-            lines.append(f"- {u.id} — {u.title}")
-            result = by_id.get(u.id)
-            if result is not None:
-                lines.extend(
-                    _change_lines(
-                        result.get("files_touched"),
-                        result.get("diff_summary"),
-                        {"passed": True, "command": result.get("test_command", "")},
-                        indent="  ",
-                    )
-                )
+    lines.extend(_units_table_lines(units, state))
+    verification = _verification_line(units, state)
+    if verification:
+        lines.append("")
+        lines.append(verification)
     lines.extend(_reviewer_notes_lines(state))
+    lines.extend(_build_metadata_lines(state))
     # If this run originated from a GitHub issue, link it so merging the PR closes it.
     # blacksmith only *links* the issue here — it never auto-merges or auto-closes (§5).
     issue_number = state.get("issue_number")

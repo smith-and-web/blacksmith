@@ -1,11 +1,15 @@
 """Reviewer summary at the approve_pr gate render and in the opened PR body
-(WU-REVIEW-RENDER).
+(WU-REVIEW-RENDER, WU-PR-BODY-REDESIGN).
 
 Test contract: the approve_pr CLI render includes a reviewer summary -- a concise
 "review: clean" line when there are no unresolved findings, or the list of unresolved
 blocking findings (file + detail) when present, plus the count of findings resolved via
-revision. The opened PR body gains a "Reviewer notes" section carrying the same summary;
-a clean review renders a single "Reviewer: clean" line.
+revision. The opened PR body renders the built units as a compact Markdown table (unit id,
+title, files touched) instead of a wall of diffstats, a single verification line summarizing
+the test gate outcome across every built unit, a "Reviewer notes" section carrying the same
+summary behind a one-line severity-count header (a clean review still renders a single
+"Reviewer: clean" line), and a best-effort collapsed "Build metadata" section sourced from
+``cost_events``.
 """
 
 from __future__ import annotations
@@ -48,6 +52,36 @@ def _unit() -> WorkUnit:
         test_contract="pytest",
         depends_on=[],
     )
+
+
+def _units(n: int) -> list[WorkUnit]:
+    return [
+        WorkUnit(
+            id=f"WU-{i:02d}",
+            title=f"unit {i}",
+            layers=["py-logic"],
+            target_modules=[f"wu-{i:02d}.txt"],
+            test_contract="pytest",
+            depends_on=[],
+        )
+        for i in range(1, n + 1)
+    ]
+
+
+def _multi_unit_state(n: int, *, test_command: str = "pytest") -> tuple[list[WorkUnit], dict]:
+    units = _units(n)
+    unit_results = [
+        {
+            "unit_id": u.id,
+            "title": u.title,
+            "files_touched": [f"{u.id.lower()}.txt"],
+            "diff_summary": f" {u.id.lower()}.txt | 1 +",
+            "test_command": test_command,
+        }
+        for u in units
+    ]
+    state = {"work_units": units, "unit_results": unit_results}
+    return units, state
 
 
 # --- (a) render shows unresolved blocking findings when present --------------------
@@ -98,7 +132,56 @@ def test_gate_render_rendered_mode_shows_unresolved_findings():
     assert "resolved via revision: 2" in text
 
 
-# --- (c) the PR body includes the Reviewer notes section ----------------------------
+# --- (c) the PR body renders a units table, in declaration order --------------------
+
+
+def test_pr_body_renders_units_table_for_single_unit():
+    state = {"selected_unit": _unit(), "implementation": {"files_touched": ["a.py", "b.py"]}}
+    body = _pr_body(state)
+    assert "| Unit | What | Files touched |" in body
+    assert "| WU-01 | scaffold | a.py, b.py |" in body
+    # The raw diffstat is dropped -- GitHub already renders it on the PR itself.
+    assert "**Summary:**" not in body
+    assert "diff --stat" not in body
+
+
+def test_pr_body_renders_units_table_in_declaration_order_for_multi_unit():
+    _, state = _multi_unit_state(2)
+    body = _pr_body(state)
+    idx1 = body.index("| WU-01")
+    idx2 = body.index("| WU-02")
+    assert idx1 < idx2
+    # Each unit's own file is attributed to ITS row, not the other unit's.
+    assert "wu-01.txt" in body[idx1:idx2]
+    assert "wu-02.txt" not in body[idx1:idx2]
+    assert "wu-02.txt" in body[idx2:]
+    # The raw per-unit diffstat is dropped.
+    assert "**Summary:**" not in body
+    assert "1 +" not in body
+
+
+# --- (d) the PR body renders a single verification line -----------------------------
+
+
+def test_pr_body_single_verification_line_for_single_unit():
+    state = {
+        "selected_unit": _unit(),
+        "test_results": {"passed": True, "output": "1 passed", "command": "pytest"},
+    }
+    body = _pr_body(state)
+    assert "**Verification:** 1/1 units passed `pytest`" in body
+    assert "Test gate: passed" not in body
+
+
+def test_pr_body_single_verification_line_for_multi_unit():
+    _, state = _multi_unit_state(2, test_command="pytest")
+    body = _pr_body(state)
+    assert body.count("units passed") == 1
+    assert "**Verification:** 2/2 units passed `pytest`" in body
+    assert "Test gate: passed" not in body
+
+
+# --- (e) the PR body includes the Reviewer notes section, with a severity header ----
 
 
 def test_pr_body_includes_reviewer_notes_section_with_unresolved_findings():
@@ -111,6 +194,7 @@ def test_pr_body_includes_reviewer_notes_section_with_unresolved_findings():
     }
     body = _pr_body(state)
     assert "**Reviewer notes:**" in body
+    assert "0 advisory · 1 blocking · 1 revisions" in body
     assert "resolved via revision: 1" in body
     assert "wu-s.txt" in body
     assert "off-by-one in the loop bound" in body
@@ -130,6 +214,7 @@ def test_pr_body_prefers_run_wide_revision_total_over_per_unit():
     }
     body = _pr_body(state)
     assert "resolved via revision: 3" in body
+    assert "0 advisory · 1 blocking · 3 revisions" in body
 
 
 def test_pr_body_reviewer_notes_clean_is_a_single_line():
@@ -158,7 +243,65 @@ def test_pr_body_surfaces_advisory_reviewer_notes():
     body = _pr_body(state)
     assert "**Reviewer notes:**" in body
     assert "Reviewer: clean" not in body
+    assert "1 advisory · 0 blocking · 0 revisions" in body
     assert "advisory: blacksmith/nodes/plan.py" in body
     assert "mcp not fwd" in body
     # De-duped: the repeated finding is listed once, not twice.
     assert body.count("mcp not fwd") == 1
+
+
+# --- (f) the PR body includes a best-effort, collapsed Build metadata section -------
+
+
+def test_pr_body_includes_build_metadata_when_cost_events_present():
+    state = {
+        "selected_unit": _unit(),
+        "cost_events": [
+            {
+                "node": "implement",
+                "unit_id": "WU-01",
+                "model": "claude-sonnet-4-6",
+                "cost_usd": 0.20,
+            },
+            {
+                "node": "review",
+                "unit_id": "WU-01",
+                "model": "claude-opus-4-6",
+                "cost_usd": 0.05,
+            },
+        ],
+    }
+    body = _pr_body(state)
+    assert "<details>" in body
+    assert "<summary>Build metadata</summary>" in body
+    assert "</details>" in body
+    assert "Total cost: $0.2500" in body
+    assert "implement=claude-sonnet-4-6" in body
+    assert "review=claude-opus-4-6" in body
+
+
+def test_pr_body_omits_build_metadata_when_cost_events_absent():
+    state = {"selected_unit": _unit()}
+    body = _pr_body(state)
+    assert "<details>" not in body
+    assert "Build metadata" not in body
+
+
+def test_pr_body_build_metadata_is_best_effort_on_malformed_events():
+    # A malformed/incomplete cost event (missing cost_usd/model) must never crash the PR node --
+    # the summary is additive and fail-open.
+    state = {"selected_unit": _unit(), "cost_events": [{"node": "implement"}]}
+    body = _pr_body(state)
+    assert isinstance(body, str)
+    assert "Opened by blacksmith for review — not auto-merged." in body
+
+
+# --- (g) the trailing invariants: Closes #n and the not-auto-merged line ------------
+
+
+def test_pr_body_ends_with_closes_issue_then_not_auto_merged():
+    state = {"selected_unit": _unit(), "issue_number": 42}
+    body = _pr_body(state)
+    assert "Closes #42" in body
+    assert body.rstrip().endswith("Opened by blacksmith for review — not auto-merged.")
+    assert body.index("Closes #42") < body.index("Opened by blacksmith for review")
