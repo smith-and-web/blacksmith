@@ -13,9 +13,8 @@ default_branch = "main"
 
 [models]
 # Per-node model tiering (PRD §8). Current model IDs only — no date suffixes.
-plan = "claude-sonnet-4-6"     # cheaper/faster: planning + triage
+plan = "claude-sonnet-4-6"     # cheaper/faster: planning
 implement = "claude-sonnet-5"  # implementation
-triage = "claude-haiku-4-5"
 
 [limits]
 # Gate self-heal loop (WU-GATE-SELF-HEAL). When a unit's test gate fails, blacksmith
@@ -53,7 +52,6 @@ db_path = ".blacksmith/checkpoints.sqlite"
 # blacksmith reads its dedicated Anthropic API key from this env var
 # (PRD §8 / §12 decision 3). The key itself lives in .env, never here.
 key_env_var = "BLACKSMITH_ANTHROPIC_API_KEY"
-prompt_caching = true
 
 [index]
 # Repo-map + search_code index (WU-INDEX-* / WU-PLAN-*). When enabled, the plan and implement

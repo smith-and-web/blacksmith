@@ -98,6 +98,7 @@ def prepare_worktree(
     limits: LimitsConfig | None = None,
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
+    default_branch: str | None = None,
 ) -> dict:
     """Create the run's ONE shared clone/branch and seed the level execution plan.
 
@@ -171,6 +172,13 @@ def prepare_worktree(
         update["review_enabled"] = review.enabled
         update["review_panel_size"] = review.panel_size
         update["review_revisions"] = 0
+    # Seed the target repo's default branch into state ONCE (same config->state pattern as
+    # ``limits``/``review`` above), so the PR node can open the combined PR against it
+    # (``gh pr create --base``). Only when the graph is wired with it (production via
+    # build_graph_for); a graph compiled without it leaves ``default_branch`` unset, so the
+    # PR node passes no ``--base`` and gh falls back to the repo default exactly as before.
+    if default_branch is not None:
+        update["default_branch"] = default_branch
     # Start the run's ONE sandbox container over this clone (WU-SANDBOX-LIFECYCLE), reused
     # across every unit built on it. Additive and opt-in: a graph compiled without a sandbox
     # (``sandbox=None``, every existing test) or one wired with ``enabled=False`` is a
@@ -1110,6 +1118,7 @@ def build_graph(
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
     index: IndexConfig | None = None,
+    default_branch: str | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
 
@@ -1135,7 +1144,12 @@ def build_graph(
     SAME on/off switch that gates the implementer's indexing. The target repo path is
     read straight off ``worktree_manager`` (the same repo the run's isolation is cloned
     from) — the index is read-only over it and never writes it. Left unset (the default,
-    every existing test) or disabled, the plan system prompt is byte-for-byte unchanged."""
+    every existing test) or disabled, the plan system prompt is byte-for-byte unchanged.
+
+    ``default_branch`` is the target repo's default branch (``[target].default_branch``):
+    when provided, ``prepare_worktree`` seeds it into state so the PR node opens the combined
+    PR against it (``gh pr create --base``). Left unset (the default, every existing test)
+    the PR node passes no ``--base`` and gh falls back to the repo's own default."""
     graph = StateGraph(BlacksmithState)
 
     plan_repo_path = str(worktree_manager.repo_path) if worktree_manager is not None else None
@@ -1153,6 +1167,7 @@ def build_graph(
             limits=limits,
             review=review,
             sandbox=sandbox,
+            default_branch=default_branch,
         ),
     )
     # The implement node needs the same opt-in feature deps its body reads. index_config drives
@@ -1353,6 +1368,7 @@ def compile_graph(
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
     index: IndexConfig | None = None,
+    default_branch: str | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -1381,6 +1397,10 @@ def compile_graph(
     system prompt (WU-PLAN-REPO-MAP); ``None`` (the default) or one with ``enabled=False``
     leaves the plan system prompt byte-for-byte unchanged -- the same switch that gates the
     implementer's indexing.
+
+    ``default_branch`` (``[target].default_branch``) is seeded into state by
+    ``prepare_worktree`` so the PR node opens the combined PR against it; ``None`` (the
+    default) leaves the PR base unset and gh falls back to the repo's own default.
     """
     return build_graph(
         pr_runner=pr_runner,
@@ -1392,6 +1412,7 @@ def compile_graph(
         review=review,
         sandbox=sandbox,
         index=index,
+        default_branch=default_branch,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),

@@ -88,6 +88,43 @@ def test_default_omits_draft_flag(tmp_path):
     assert "--draft" not in runner.calls[1]
 
 
+def test_base_adds_flag(tmp_path):
+    # An explicit base branch is passed through as ``gh pr create --base <branch>`` so the PR
+    # targets the target repo's configured default rather than whatever gh guesses.
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/10")
+    open_pull_request(
+        worktree_path=tmp_path, branch="b", title="T", body="B", base="develop", runner=runner
+    )
+    create = runner.calls[1]
+    assert "--base" in create and create[create.index("--base") + 1] == "develop"
+
+
+def test_default_omits_base_flag(tmp_path):
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/11")
+    open_pull_request(worktree_path=tmp_path, branch="b", title="T", body="B", runner=runner)
+    assert "--base" not in runner.calls[1]
+
+
+def test_node_passes_default_branch_as_base():
+    # The open_pr node reads the target repo's default branch from state (seeded by
+    # prepare_worktree from [target].default_branch) and opens the PR against it.
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/12")
+    open_pr(
+        {"selected_unit": _unit(), "worktree_path": "/tmp/wt", "default_branch": "master"},
+        runner=runner,
+    )
+    create = runner.calls[1]
+    assert "--base" in create and create[create.index("--base") + 1] == "master"
+
+
+def test_node_without_default_branch_omits_base():
+    # A graph compiled without default_branch (e.g. tests) leaves it unset — no --base, so
+    # gh falls back to the repo default exactly as before.
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/13")
+    open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+    assert "--base" not in runner.calls[1]
+
+
 def test_push_failure_raises(tmp_path):
     runner = _recording_runner(push_rc=1)
     with pytest.raises(PRError, match="push"):

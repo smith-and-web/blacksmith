@@ -6,11 +6,9 @@ default_branch = "main"
 [models]
 plan = "claude-sonnet-4-6"
 implement = "claude-opus-4-8"
-triage = "claude-haiku-4-5"
 
 [checkpointer]
 db_path = ".blacksmith/checkpoints.sqlite"
 
 [api]
 key_env_var = "BLACKSMITH_ANTHROPIC_API_KEY"
-prompt_caching = true

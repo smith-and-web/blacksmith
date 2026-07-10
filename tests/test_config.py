@@ -42,10 +42,8 @@ def test_valid_config_parses():
     assert cfg.models.implement == "claude-opus-4-8"
     assert cfg.models.implement_escalate == "claude-opus-4-8"  # default escalation model
     assert cfg.models.plan == "claude-sonnet-4-6"
-    assert cfg.models.triage == "claude-haiku-4-5"
     assert cfg.checkpointer.db_path == Path(".blacksmith/checkpoints.sqlite")
     assert cfg.api.key_env_var == "BLACKSMITH_ANTHROPIC_API_KEY"
-    assert cfg.api.prompt_caching is True
 
 
 def test_implement_first_attempt_defaults_to_sonnet_with_opus_escalation():

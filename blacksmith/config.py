@@ -26,7 +26,6 @@ DEFAULT_PLAN_MODEL = "claude-sonnet-4-6"
 # model only on a gate failure (PRD §8). ``implement`` is the first-attempt model.
 DEFAULT_IMPLEMENT_MODEL = "claude-sonnet-4-6"
 DEFAULT_IMPLEMENT_ESCALATE_MODEL = "claude-opus-4-8"
-DEFAULT_TRIAGE_MODEL = "claude-haiku-4-5"
 # Review tier (WU-REVIEW-CONFIG): a single dedicated model used for the additive
 # post-gate review loop. Reuses the same dedicated key as every other tier (PRD §8).
 DEFAULT_REVIEW_MODEL = "claude-opus-4-8"
@@ -81,19 +80,18 @@ class _Strict(BaseModel):
 
 
 class ModelTiers(_Strict):
-    """Per-node model tiering (PRD §8): cheaper model on plan/triage and on the first
+    """Per-node model tiering (PRD §8): cheaper model on plan and on the first
     implement attempt, escalating to a stronger model only on a gate failure.
 
     ``implement`` is the FIRST-attempt implement model (defaults to Sonnet);
     ``implement_escalate`` is the stronger model used for the single escalation retry.
     ``review`` is the dedicated model for the additive post-gate review loop
-    (WU-REVIEW-CONFIG); it is a separate tier and does not affect plan/implement/triage.
+    (WU-REVIEW-CONFIG); it is a separate tier and does not affect plan/implement.
     """
 
     plan: str = DEFAULT_PLAN_MODEL
     implement: str = DEFAULT_IMPLEMENT_MODEL
     implement_escalate: str = DEFAULT_IMPLEMENT_ESCALATE_MODEL
-    triage: str = DEFAULT_TRIAGE_MODEL
     review: str = DEFAULT_REVIEW_MODEL
 
 
@@ -291,17 +289,19 @@ class RespondConfig(_Strict):
 
 
 class ApiConfig(_Strict):
-    """Anthropic auth + caching policy (PRD §8 / §12 decision 3).
+    """Anthropic auth (PRD §8 / §12 decision 3).
 
     ``admin_key_env_var`` names a SEPARATE credential used only by the read-only
     ``blacksmith costs`` reporter (org-scoped Admin API). It is distinct from the
     dedicated run key (``key_env_var``) — never reuse one for the other, and the admin
     key is never persisted.
+
+    Prompt caching is not configured here: it is handled entirely by the Agent SDK / CLI,
+    so blacksmith exposes no toggle that would misleadingly imply otherwise.
     """
 
     key_env_var: str = "BLACKSMITH_ANTHROPIC_API_KEY"
     admin_key_env_var: str = "BLACKSMITH_ANTHROPIC_ADMIN_KEY"
-    prompt_caching: bool = True
 
 
 class BlacksmithConfig(_Strict):
