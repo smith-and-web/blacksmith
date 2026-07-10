@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import warnings
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import Any
 
 from claude_agent_sdk import (
     AssistantMessage,
+    CanUseToolShadowedWarning,
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ResultMessage,
@@ -35,6 +37,15 @@ from langgraph.config import get_stream_writer
 
 from blacksmith import transcript
 from blacksmith.config import BlacksmithConfig
+
+# The SDK (>=0.2.115) warns that listing a tool in ``allowed_tools`` auto-approves it before
+# the ``can_use_tool`` guard is consulted. That is intentional here: the implementer's guard
+# (blacksmith.nodes.implement) only ever gates the WRITE tools (Write/Edit/MultiEdit/
+# NotebookEdit), and those are deliberately NOT in ``allowed_tools`` — so they still fall
+# through to the guard. The tools the warning names (Read/Glob/Grep/search_code) are read-only
+# and the guard allows them unconditionally anyway, so auto-approving them changes nothing.
+# The advisory would otherwise print once per implement/build call and drown real warnings.
+warnings.filterwarnings("ignore", category=CanUseToolShadowedWarning)
 
 QueryFn = Callable[..., AsyncIterator[Any]]
 
