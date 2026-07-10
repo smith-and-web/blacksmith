@@ -39,7 +39,7 @@ from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
 from blacksmith.memory import current_store, record_lesson
 from blacksmith.nodes.hitl import approve_plan, approve_pr
-from blacksmith.nodes.implement import implement
+from blacksmith.nodes.implement import conventional_commit_message, implement
 from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
@@ -612,37 +612,20 @@ def _can_review_revise(state: BlacksmithState) -> bool:
 # property the existing suite pins down.
 
 
-def _fanout_review(
-    state: BlacksmithState, sub: dict, deps: UnitDeps, cost_events: list[dict]
-) -> dict:
+def _fanout_review(state: BlacksmithState, sub: dict, deps: UnitDeps) -> dict:
     """Run the post-gate reviewer on a fan-out unit's passing build clone (review finding #1).
 
-    The MVP is review-only surfacing (plan decision A-ii): a stronger model reviews the unit's
-    already-committed diff on its OWN build clone (the same ``blacksmith.nodes.review.review``
-    the sequential path uses), and its findings are RETURNED — no in-worker revision yet. The
-    reviewer's cost events are appended to ``cost_events`` IN PLACE so the caller's ledger
-    stays whole.
-
-    Returns ONLY reducer keys (``review_findings`` / ``unresolved_review_findings``), never the
-    last-write-wins ``review_clean`` — concurrent workers in a level must never race on a
-    non-reducer field. ``review_findings`` mirrors the reviewer's full list (advisory findings
-    surface in the PR body too); ``unresolved_review_findings`` is its blocking subset, which is
-    every blocking finding here since the MVP does not revise. Off (``review_enabled`` unset /
-    False, threaded via the Send payload) this is a no-op returning ``{}``."""
+    Runs the SAME read-only reviewer the sequential path uses (``blacksmith.nodes.review.review``)
+    over the unit's already-committed diff on its OWN build clone, and returns its raw output
+    (``review_clean`` / ``review_findings`` / ``cost_events``). The caller (``build_unit``) owns
+    what to do with it: surface the findings, and — when revisions remain — feed the blocking
+    ones back and re-implement in place (A-i). Off (``review_enabled`` unset / False, threaded
+    via the Send payload) this is a no-op returning ``{}``."""
     if not state.get("review_enabled"):
         return {}
-    # Same read-only reviewer over the already-committed clone as the sequential node; panel
-    # size rides in from the Send payload (seeded from config.review.panel_size).
+    # Panel size rides in from the Send payload (seeded from config.review.panel_size).
     sub["review_panel_size"] = state.get("review_panel_size")
-    review_out = _run_review(sub, executor=deps.executor)
-    cost_events.extend(review_out.get("cost_events") or [])
-    findings = review_out.get("review_findings") or []
-    return {
-        "review_findings": findings,
-        "unresolved_review_findings": [
-            f for f in findings if f.get("severity") == "blocking"
-        ],
-    }
+    return _run_review(sub, executor=deps.executor)
 
 
 def build_unit(
@@ -680,7 +663,17 @@ def build_unit(
     sequential-only (the sequential path owns the single stronger-model retry); the fan-out
     worker loops the cheap model. Both knobs ride along in the ``Send`` payload (``limits`` +
     the run's pre-level spend), so a fan-out run wired without limits keeps its prior
-    behaviour: one attempt, then record/halt."""
+    behaviour: one attempt, then record/halt.
+
+    After a gate pass, the post-gate reviewer runs on the build clone (review finding #1). A
+    blocking finding with revisions left (``limits.max_review_revisions`` + the cost cap)
+    re-implements the unit IN PLACE with the findings fed back, then re-gates and re-reviews —
+    mirroring the sequential ``prepare_review_revision`` on this isolated clone. Once revisions
+    are exhausted or the review is clean the unit is finalized (its outstanding blocking
+    findings carried forward, never halting on them). Because the join cherry-picks a single
+    commit, any commits the revise loop stacked are squashed into one before returning. A run
+    wired without review (or ``max_review_revisions=0``) reviews at most once / not at all,
+    exactly as before."""
     deps = deps or UnitDeps()
     unit = state["selected_unit"]
     level = state.get("level_cursor", 0)
@@ -723,9 +716,20 @@ def build_unit(
         "limits": limits,
     }
     max_cont = int(limits.get("max_implement_continuations", 0) or 0)
+    max_review_revisions = int(limits.get("max_review_revisions", 0) or 0)
+    review_enabled = bool(state.get("review_enabled"))
     fix_attempts = 0
+    review_revisions = 0
     continuations = 0
     last_gate_output = ""
+    # A gate-fail retry resets HARD to here. It starts at the clone's base tip and advances to
+    # each passing commit, so a gate failure DURING a review revision rewinds to the last
+    # PASSING commit (not the whole unit), mirroring the sequential pre_implement_ref update.
+    reset_ref = base_ref
+    # Accumulated across every review pass (reducer semantics, like the sequential review_findings
+    # reducer); ``unresolved`` holds the LATEST pass's blocking findings (what still needs eyes).
+    review_findings: list[dict] = []
+    unresolved: list[dict] = []
     while True:
         # Feed the prior attempt's gate output back into the prompt (empty on the first attempt,
         # so it runs blind); ``implement`` routes it through ``_implement_prompt``'s prior_failure
@@ -776,23 +780,45 @@ def build_unit(
         results = gate_update.get("test_results") or {}
         record["test_command"] = results.get("command", "")
         if results.get("passed"):
-            record["ok"] = True
-            # Review THIS unit's passing diff on its own build clone (review finding #1). The
-            # fan-out path used to skip review entirely, so a regression the unit tests missed
-            # shipped unreviewed. ``_fanout_review`` appends its review cost events to
-            # ``cost_events`` in place, so finalize that key AFTER it runs.
-            review_keys = _fanout_review(state, sub, deps, cost_events)
-            return {"level_builds": [record], "cost_events": cost_events, **review_keys}
+            # This attempt passed the gate: it is the reset target for any later gate-fail
+            # retry, so a subsequent review revision that breaks the tests rewinds to HERE
+            # (the passing commit) rather than discarding the whole unit.
+            reset_ref = _git_run(clone.path, "rev-parse", "HEAD").stdout.strip()
+            # Post-gate review on the build clone (review finding #1). Accumulate every pass's
+            # findings; ``unresolved`` tracks the LATEST pass's blocking set.
+            review_out = _fanout_review(state, sub, deps)
+            events = review_out.get("cost_events") or []
+            cost_events.extend(events)
+            run_cost += _events_cost(events)
+            findings = review_out.get("review_findings") or []
+            review_findings.extend(findings)
+            unresolved = [f for f in findings if f.get("severity") == "blocking"]
+            within_budget = cap is None or run_cost < cap
+            # A-i in-worker revision: a blocking finding with revisions left re-implements the
+            # unit IN PLACE (no reset — the unit passed the gate, so its commit is kept and the
+            # fix is committed on top), feeding the findings back exactly as the sequential
+            # ``prepare_review_revision`` does, then re-gates and re-reviews. Bounded by
+            # ``max_review_revisions`` and the shared cost cap; a run wired without either
+            # (limits/review off) never enters here, so it stays surface-only/no-review.
+            if unresolved and review_revisions < max_review_revisions and within_budget:
+                review_revisions += 1
+                last_gate_output = _format_review_feedback(findings)
+                sub["resume_partial_implement"] = False
+                continue
+            # Clean, revisions exhausted, or over budget: this unit is done — leave the loop and
+            # finalize below (retaining ``unresolved`` for the PR, never halting on it).
+            break
 
         # Gate failed: retry on the cheap model while retries remain AND the run is within its
         # cost cap (the same gate as the sequential ``_can_fix_retry``, minus escalation). Reset
-        # to the base tip so only the failed attempt's commit is discarded, then re-implement
-        # with the gate output fed back.
+        # to ``reset_ref`` — the base tip until a gate pass, then the last passing commit — so
+        # only the failed attempt is discarded (first-pass behaviour is byte-identical to before),
+        # then re-implement with the gate output fed back.
         last_gate_output = results.get("output", "")
         within_budget = cap is None or run_cost < cap
         if fix_attempts < max_fix and within_budget:
             fix_attempts += 1
-            _git_run(clone.path, "reset", "--hard", base_ref)
+            _git_run(clone.path, "reset", "--hard", reset_ref)
             _git_run(clone.path, "clean", "-fd")
             # The clone was reset — the next attempt is a fresh re-implement, not a
             # continuation of partial work, so clear the resume nudge.
@@ -806,6 +832,25 @@ def build_unit(
             )
         record.update(ok=False, error=error)
         return {"level_builds": [record], "cost_events": cost_events}
+
+    # Unit done (gate passed; review clean, revisions exhausted, or over budget).
+    record["ok"] = True
+    # The join cherry-picks a SINGLE FETCH_HEAD, so if the revise loop left more than one commit
+    # on top of the clone's base (an in-place revision commit atop the first passing commit),
+    # collapse them into ONE carrying the unit's full cumulative diff, and re-derive the file
+    # list/summary from it so the PR body and join conflict-attribution reflect the whole unit.
+    count = _git_run(clone.path, "rev-list", "--count", f"{base_ref}..HEAD").stdout.strip()
+    if count.isdigit() and int(count) > 1:
+        _git_run(clone.path, "reset", "--soft", base_ref)
+        _git_run(clone.path, "commit", "-m", conventional_commit_message(unit))
+        names = _git_run(clone.path, "diff", "--name-only", f"{base_ref}..HEAD").stdout
+        record["files_touched"] = [ln for ln in names.splitlines() if ln]
+        record["diff_summary"] = _git_run(clone.path, "diff", "--stat", f"{base_ref}..HEAD").stdout
+    result_update: dict = {"level_builds": [record], "cost_events": cost_events}
+    if review_enabled:
+        result_update["review_findings"] = review_findings
+        result_update["unresolved_review_findings"] = unresolved
+    return result_update
 
 
 def _git_run(cwd: str, *args: str) -> subprocess.CompletedProcess:
