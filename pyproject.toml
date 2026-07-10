@@ -5,7 +5,7 @@ description = "Agentic development orchestrator — LangGraph state machine + Cl
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "langgraph>=1.2.7",
+    "langgraph>=1.2.9",
     "langgraph-checkpoint-sqlite>=3.1",
     "claude-agent-sdk>=0.2.115",
     "pydantic>=2.11",
@@ -19,7 +19,7 @@ blacksmith = "blacksmith.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
-    "ruff>=0.15.20",
+    "ruff>=0.15.21",
 ]
 
 [build-system]
