@@ -114,6 +114,15 @@ def test_run_plan_and_implement_use_tiered_models(monkeypatch):
     assert fake.calls[-1]["options"].model == config.models.implement  # claude-opus-4-8
 
 
+def test_run_summary_uses_plan_model(monkeypatch):
+    config = _config(monkeypatch)
+    fake = FakeQuery([_result()])
+    ex = Executor(config, query_fn=fake)
+
+    ex.run_summary("p")
+    assert fake.calls[-1]["options"].model == config.models.plan  # claude-sonnet-4-6
+
+
 def test_run_raises_on_error_result(monkeypatch):
     fake = FakeQuery([_result(result="boom", is_error=True)])
     ex = Executor(_config(monkeypatch), query_fn=fake)
