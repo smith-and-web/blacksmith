@@ -197,7 +197,7 @@ class Executor:
         return result
 
     def run_plan(self, prompt: str, **kwargs: Any) -> ExecutorResult:
-        """Run with the cheaper plan/triage model tier (PRD §8)."""
+        """Run with the cheaper plan model tier (PRD §8)."""
         return self.run(prompt, model=self._config.models.plan, **kwargs)
 
     def run_implement(self, prompt: str, **kwargs: Any) -> ExecutorResult:
@@ -216,7 +216,7 @@ class Executor:
     def run_review(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the dedicated post-gate review model tier (WU-REVIEW-CONFIG/NODE).
 
-        Uses ``config.models.review`` — a separate tier from plan/implement/triage, still
+        Uses ``config.models.review`` — a separate tier from plan/implement, still
         routed through the same dedicated key (PRD §8). ``emit_findings=True`` so each
         parsed finding is streamed as a "finding" activity event (WU-LIVE-INTRA-NODE).
         """

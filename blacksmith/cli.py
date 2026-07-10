@@ -104,6 +104,11 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
                 exec_timeout_s=config.sandbox.exec_timeout_s,
             )
         ),
+        # Open the combined PR against the target repo's configured default branch
+        # (``[target].default_branch``) via ``gh pr create --base``, instead of relying on
+        # gh to guess the repo default. Without this the field was declared and documented
+        # but read nowhere, so a repo whose default isn't ``main`` worked only by luck.
+        default_branch=config.target.default_branch,
     )
 
 

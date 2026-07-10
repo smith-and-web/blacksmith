@@ -125,6 +125,11 @@ def _open_pr(
             branch=state.get("branch") or branch_for(unit.id),
             title=_pr_title(units),
             body=_pr_body(state, units),
+            # The target repo's default branch (``[target].default_branch``), seeded into
+            # state by prepare_worktree. When present, the PR is opened against it
+            # explicitly; when absent (a graph compiled without it, e.g. tests) ``base`` is
+            # None and gh falls back to the repo's own default, exactly as before.
+            base=state.get("default_branch"),
             draft=draft,
             runner=runner,
         )

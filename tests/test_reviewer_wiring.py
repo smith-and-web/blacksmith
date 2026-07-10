@@ -38,6 +38,9 @@ def test_build_graph_for_forwards_every_opt_in_feature(monkeypatch):
     # The self-heal limits and the repo-map / search_code index are forwarded straight from config.
     assert captured["limits"] is config.limits
     assert captured["index"] is config.index
+    # The target repo's default branch is forwarded so the PR is opened against it
+    # (gh pr create --base) rather than whatever gh guesses.
+    assert captured["default_branch"] == config.target.default_branch
     # The sandbox is the exception: build_graph_for is the only place a live SandboxManager is
     # constructed, so assert it forwards one whose config is bridged from the run's [sandbox]
     # settings (the mapping that was missing — the feature was dark). The manager is inert until

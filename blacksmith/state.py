@@ -133,6 +133,12 @@ class BlacksmithState(TypedDict, total=False):
     # The single shared branch every unit's commits land on, so one combined PR can be
     # opened against it. Set once when the run's lone worktree is created.
     branch: str
+    # The target repo's default branch (``[target].default_branch``), seeded once by
+    # ``prepare_worktree`` when the graph is wired with it (production via build_graph_for).
+    # The combined PR is opened against it (``gh pr create --base``); absent on a graph
+    # compiled without it, in which case the PR node passes no ``--base`` and gh falls back
+    # to the repo's own default, exactly as before.
+    default_branch: str
     implementation: dict[str, Any]
     # Escalation (WU-ESCALATE-ON-FAIL): a gate failure discards the failed attempt and
     # re-implements the SAME unit once with the stronger model. ``pre_implement_ref`` is the
