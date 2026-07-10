@@ -679,5 +679,9 @@ def test_fanout_blocking_review_exhausts_revisions_then_surfaces(tmp_path):
     body = _pr_body(gh)
     assert "unresolved (blocking): WU-X.txt" in body
     assert "unresolved (blocking): WU-Y.txt" in body
+    # The PR reports the fan-out revision count: two units each revised once (reducer total),
+    # which the last-write-wins review_revisions could never carry off concurrent workers.
+    assert "resolved via revision: 2" in body
+    assert final.values["review_revisions_total"] == 2
     assert final.values["status"] == Status.DONE
     saver.conn.close()
