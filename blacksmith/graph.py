@@ -1229,13 +1229,22 @@ def route_after_join(state: BlacksmithState) -> str | list[Send]:
 # --- assembly ----------------------------------------------------------------
 
 
-def _open_pr_node(fn, pr_runner: Runner | None):
-    """Bind a PR node's command runner at build time (default subprocess; fake in tests)."""
-    if pr_runner is None:
+def _open_pr_node(fn, pr_runner: Runner | None, executor: Executor | None = None):
+    """Bind a PR node's command runner (default subprocess; fake in tests) AND the run's
+    executor at build time. ``executor`` (WU-PR-SUMMARY-WIRE) is the SAME instance already
+    constructed by ``build_graph_for`` — no separate wiring — and drives the additive,
+    fail-open title/summary synthesis inside ``_open_pr``. ``None`` (the default, every
+    existing test) leaves both PR nodes byte-for-byte unchanged."""
+    if pr_runner is None and executor is None:
         return fn
 
     def node(state: BlacksmithState) -> dict:
-        return fn(state, runner=pr_runner)
+        kwargs = {}
+        if pr_runner is not None:
+            kwargs["runner"] = pr_runner
+        if executor is not None:
+            kwargs["executor"] = executor
+        return fn(state, **kwargs)
 
     return node
 
@@ -1349,8 +1358,8 @@ def build_graph(
     graph.add_node("prepare_review_revision", prepare_review_revision)
     graph.add_node("finalize_review", finalize_review)
     graph.add_node("approve_pr", approve_pr)
-    graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner))
-    graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner))
+    graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner, executor))
+    graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner, executor))
     graph.add_node("human_halt", human_halt)
     graph.add_node(
         "cleanup_worktree",

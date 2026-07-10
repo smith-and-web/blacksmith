@@ -11,17 +11,24 @@ LangGraph config (``configurable.pr_runner``), defaulting to a real subprocess r
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from blacksmith.contract import WorkUnit
+from blacksmith.nodes.plan import cost_event
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
 _PR_URL_RE = re.compile(r"https://\S+/pull/\d+")
+# A single fenced ```json ... ``` (or bare) block containing the synthesized
+# {"title": ..., "summary": ...} object (WU-PR-SUMMARY-WIRE). Mirrors the review node's
+# own fenced-JSON convention.
+_SUMMARY_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
 class PRError(Exception):
@@ -88,12 +95,18 @@ def open_pull_request(
     return PullRequest(url=match.group(0), branch=branch)
 
 
-def open_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> dict:
+def open_pr(
+    state: BlacksmithState, *, runner: Runner = subprocess_runner, executor: Any = None
+) -> dict:
     """Graph node: open a PR for the selected unit. Failures halt rather than crash."""
-    return _open_pr(state, runner=runner, draft=False, done=Status.DONE, node="open_pr")
+    return _open_pr(
+        state, runner=runner, draft=False, done=Status.DONE, node="open_pr", executor=executor
+    )
 
 
-def open_draft_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> dict:
+def open_draft_pr(
+    state: BlacksmithState, *, runner: Runner = subprocess_runner, executor: Any = None
+) -> dict:
     """Graph node: open a DRAFT PR for a human-gated unit that implemented successfully.
 
     Mirrors ``open_pr`` but passes ``--draft`` and ends the run at ``AWAITING_QA`` (its
@@ -101,12 +114,23 @@ def open_draft_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner)
     cleanup preserves the branch — the draft PR needs it. The QA itself happens on the
     draft PR; this node opens no automated gate (PRD §4 human-gated routing)."""
     return _open_pr(
-        state, runner=runner, draft=True, done=Status.AWAITING_QA, node="open_draft_pr"
+        state,
+        runner=runner,
+        draft=True,
+        done=Status.AWAITING_QA,
+        node="open_draft_pr",
+        executor=executor,
     )
 
 
 def _open_pr(
-    state: BlacksmithState, *, runner: Runner, draft: bool, done: Status, node: str
+    state: BlacksmithState,
+    *,
+    runner: Runner,
+    draft: bool,
+    done: Status,
+    node: str,
+    executor: Any = None,
 ) -> dict:
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
@@ -116,6 +140,21 @@ def _open_pr(
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
     units = _built_units(state)
+    title = _pr_title(units)
+    summary: str | None = None
+    cost_events: list[dict] = []
+    # Additive, FAIL-OPEN synthesis (WU-PR-SUMMARY-WIRE): only attempted when an executor is
+    # injected (production, via build_graph_for); every existing test (no executor) and any
+    # model error/empty response falls back to the title/body exactly as before -- a summary
+    # failure can never block or crash opening the PR.
+    if executor is not None:
+        synth_title, synth_summary, event = _synthesize_summary(executor, state, units)
+        if event is not None:
+            cost_events.append(event)
+        if synth_title:
+            title = synth_title
+        if synth_summary:
+            summary = synth_summary
     try:
         pr = open_pull_request(
             # One combined PR against the run's single shared branch, covering every unit
@@ -123,8 +162,8 @@ def _open_pr(
             # field is absent (e.g. a single-unit node-level call in tests).
             worktree_path=worktree_path,
             branch=state.get("branch") or branch_for(unit.id),
-            title=_pr_title(units),
-            body=_pr_body(state, units),
+            title=title,
+            body=_pr_body(state, units, summary=summary),
             # The target repo's default branch (``[target].default_branch``), seeded into
             # state by prepare_worktree. When present, the PR is opened against it
             # explicitly; when absent (a graph compiled without it, e.g. tests) ``base`` is
@@ -134,8 +173,98 @@ def _open_pr(
             runner=runner,
         )
     except PRError as exc:
-        return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
-    return {"pr_url": pr.url, "status": done}
+        out: dict = {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
+        if cost_events:
+            out["cost_events"] = cost_events
+        return out
+    out = {"pr_url": pr.url, "status": done}
+    if cost_events:
+        out["cost_events"] = cost_events
+    return out
+
+
+def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
+    """Context for the PR title/summary synthesis call: the PRD's purpose (its prose body)
+    plus each built unit's title, files touched, and diff summary."""
+    prd = state.get("prd")
+    purpose = (getattr(prd, "body", "") or "").strip() or "(no PRD body available)"
+    if len(units) == 1:
+        impl = state.get("implementation") or {}
+        by_id = {units[0].id: impl}
+    else:
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
+    unit_lines = [
+        "- {id}: {title} | files: {files} | diff: {diff}".format(
+            id=u.id,
+            title=u.title,
+            files=", ".join((by_id.get(u.id) or {}).get("files_touched") or []) or "(none)",
+            diff=(by_id.get(u.id) or {}).get("diff_summary") or "(none)",
+        )
+        for u in units
+    ]
+    units_block = "\n".join(unit_lines) or "(no units)"
+    return (
+        "Write a concise pull request title and summary for the following completed work.\n\n"
+        f"PRD purpose:\n{purpose}\n\n"
+        f"Units built this run:\n{units_block}\n\n"
+        "Respond with EXACTLY ONE fenced JSON code block and nothing else:\n"
+        "```json\n"
+        '{"title": "<concise PR title, no unit ids required>", '
+        '"summary": "<2-4 sentence markdown summary, no heading>"}\n'
+        "```\n"
+    )
+
+
+def _parse_summary_response(text: str) -> tuple[str, str] | None:
+    """Parse the synthesis call's fenced-JSON reply into (title, summary).
+
+    Returns ``None`` on any empty/unparseable/incomplete response -- the caller treats
+    that identically to a model error and falls back to the existing title/body."""
+    if not text or not text.strip():
+        return None
+    match = _SUMMARY_FENCE_RE.search(text)
+    block = match.group(1) if match else text.strip()
+    try:
+        parsed = json.loads(block)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    title = str(parsed.get("title") or "").strip()
+    summary = str(parsed.get("summary") or "").strip()
+    if not title or not summary:
+        return None
+    return title, summary
+
+
+def _synthesize_summary(
+    executor: Any, state: BlacksmithState, units: Sequence[WorkUnit]
+) -> tuple[str | None, str | None, dict | None]:
+    """One cheap, fail-open ``executor.run_summary`` call to produce a PR title + summary
+    (WU-PR-SUMMARY-WIRE). Returns ``(title, summary, cost_event)`` -- either or both of
+    ``title``/``summary`` are ``None`` when the call errors or its response is
+    empty/unparseable, so the caller falls back to the pre-existing title/body. The
+    ``cost_event`` reflects the call's real spend whenever one was actually made (even a
+    failed/unparseable call still cost money) and is ``None`` only if the executor itself
+    raised before returning a result."""
+    unit_id = units[-1].id if units else ""
+    try:
+        # _summary_prompt is INSIDE the fail-open try too: any error building the prompt
+        # (e.g. a malformed PRD/state field) must fall back exactly like a model/parse
+        # error, never propagate out of the PR node — the summary is additive and can
+        # never block or crash opening the PR.
+        prompt = _summary_prompt(state, units)
+        result = executor.run_summary(prompt, raise_on_error=False)
+    except Exception:
+        return None, None, None
+    event = cost_event("summary", unit_id, result)
+    if result.is_error:
+        return None, None, event
+    parsed = _parse_summary_response(result.text)
+    if parsed is None:
+        return None, None, event
+    title, summary = parsed
+    return title, summary, event
 
 
 def _built_units(state: BlacksmithState) -> list[WorkUnit]:
@@ -167,23 +296,83 @@ def _pr_title(units: Sequence[WorkUnit]) -> str:
     return f"{len(units)} work units ({units[0].id}..{units[-1].id})"
 
 
-def _change_lines(
-    files: Sequence[str] | None,
-    diff_summary: str | None,
-    results: dict | None,
-    *,
-    indent: str = "",
-) -> list[str]:
-    """Render the files/summary/test-gate lines for one unit's changes."""
-    lines: list[str] = []
-    if files:
-        lines.append(f"{indent}**Files touched:** " + ", ".join(files))
-    if diff_summary:
-        lines.append(f"{indent}**Summary:** {diff_summary}")
-    if results:
-        verdict = "passed" if results.get("passed") else "failed"
-        lines.append(f"{indent}**Test gate:** {verdict} (`{results.get('command', '')}`)")
+def _units_table_lines(units: Sequence[WorkUnit], state: BlacksmithState) -> list[str]:
+    """A compact Markdown table of the units built this run (WU-PR-BODY-REDESIGN).
+
+    Columns: unit id, title, files touched — one row per unit, in declaration order, so
+    each unit's file attribution stays scannable without the raw ``git diff --stat``
+    (GitHub already renders that on the PR itself)."""
+    if not units:
+        return []
+    if len(units) == 1:
+        impl = state.get("implementation") or {}
+        files_by_id = {units[0].id: list(impl.get("files_touched") or [])}
+    else:
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
+        files_by_id = {
+            u.id: list((by_id.get(u.id) or {}).get("files_touched") or []) for u in units
+        }
+    lines = ["", "| Unit | What | Files touched |", "| --- | --- | --- |"]
+    for u in units:
+        files = ", ".join(files_by_id.get(u.id) or []) or "—"
+        lines.append(f"| {u.id} | {u.title} | {files} |")
     return lines
+
+
+def _verification_line(units: Sequence[WorkUnit], state: BlacksmithState) -> str | None:
+    """A single line summarizing the test gate outcome across the built units, replacing
+    the old repeated per-unit ``Test gate: passed (<cmd>)`` lines.
+
+    A human-gated unit is verified by a HUMAN on the draft PR, not the automated gate, so it
+    is reported as 'awaiting QA' rather than counted against the gate's pass total. Counting it
+    made a draft under-report — a QA-only draft rendered '0/1 units passed' and a mixed draft
+    'N-1/N units passed', reading as if a gate had failed when the unit was simply never gated.
+    Auto-gated units (every non-draft PR) are unaffected — the pass total is byte-for-byte as
+    before. Best-effort: without a PRD in state (node-level tests) every unit is treated as
+    auto-gated, preserving the prior behaviour."""
+    if not units:
+        return None
+    prd = state.get("prd")
+
+    def _pending_qa(unit: WorkUnit) -> bool:
+        if prd is None:
+            return False
+        try:
+            return prd.contract.gate_for(unit) == "human"
+        except Exception:
+            return False
+
+    gated = [u for u in units if not _pending_qa(u)]
+    pending = [u for u in units if _pending_qa(u)]
+    command = ""
+    if len(units) == 1 and not pending:
+        # Single auto unit: the last-write-wins test_results describe it (unchanged path).
+        results = state.get("test_results") or {}
+        total, passed = 1, (1 if results.get("passed") else 0)
+        command = results.get("command", "")
+    else:
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
+        total = len(gated)
+        passed = sum(1 for u in gated if u.id in by_id)
+        command = next(
+            (
+                by_id[u.id].get("test_command", "")
+                for u in gated
+                if by_id.get(u.id, {}).get("test_command")
+            ),
+            "",
+        )
+    parts: list[str] = []
+    if total:
+        summary = f"{passed}/{total} units passed"
+        if command:
+            summary += f" `{command}`"
+        parts.append(summary)
+    if pending:
+        parts.append(f"{len(pending)} awaiting QA")
+    if not parts:
+        return None
+    return "**Verification:** " + " · ".join(parts)
 
 
 def _dedup_findings(findings) -> list[dict]:
@@ -219,6 +408,8 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     # the last-write-wins ``review_revisions``); fall back to the per-unit field for states
     # without it (a sequential-only run predating the total, or an old checkpoint).
     revisions = state.get("review_revisions_total") or state.get("review_revisions", 0)
+    # A one-line severity-count header so a reviewer can triage before reading every finding.
+    lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revisions} revisions")
     if revisions:
         lines.append(f"- resolved via revision: {revisions}")
     for finding in unresolved:
@@ -233,36 +424,58 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     return lines
 
 
-def _pr_body(state: BlacksmithState, units: Sequence[WorkUnit] | None = None) -> str:
+def _build_metadata_lines(state: BlacksmithState) -> list[str]:
+    """A collapsed "Build metadata" ``<details>`` block: total run cost and the model used
+    per node, sourced from ``state["cost_events"]``. Additive and best-effort — an
+    empty/absent/malformed ledger just omits the block, never crashes the PR node."""
+    try:
+        events = state.get("cost_events") or []
+        if not events:
+            return []
+        total_cost = sum(e.get("cost_usd") or 0 for e in events)
+        models_by_node: dict[str, str] = {}
+        for event in events:
+            node, model = event.get("node"), event.get("model")
+            if node and model and node not in models_by_node:
+                models_by_node[node] = model
+        body_lines = [f"- Total cost: ${total_cost:.4f}"]
+        body_lines.extend(f"- {node}={model}" for node, model in models_by_node.items())
+        return [
+            "",
+            "<details>",
+            "<summary>Build metadata</summary>",
+            "",
+            *body_lines,
+            "",
+            "</details>",
+        ]
+    except Exception:
+        return []
+
+
+def _pr_body(
+    state: BlacksmithState,
+    units: Sequence[WorkUnit] | None = None,
+    *,
+    summary: str | None = None,
+) -> str:
     units = list(_built_units(state) if units is None else units)
     lines: list[str] = []
-    if len(units) == 1:
-        # Single-unit body is unchanged: the last-write-wins implementation/test_results
-        # describe the lone unit.
-        impl = state.get("implementation") or {}
-        results = state.get("test_results") or {}
-        lines.append(f"**Unit:** {units[0].id} — {units[0].title}")
-        lines.extend(_change_lines(impl.get("files_touched"), impl.get("diff_summary"), results))
-    elif units:
-        # Summarize each built unit from its OWN retained result (unit_results), so a unit's
-        # files/summary are attributed to that unit rather than lumped under the last unit's
-        # implementation. A mid-DAG draft PR's human-gated unit has no retained result yet
-        # (it skipped the auto gate), so it appears as a bare bullet — which is correct.
-        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
-        lines.append(f"**Units built ({len(units)}):**")
-        for u in units:
-            lines.append(f"- {u.id} — {u.title}")
-            result = by_id.get(u.id)
-            if result is not None:
-                lines.extend(
-                    _change_lines(
-                        result.get("files_touched"),
-                        result.get("diff_summary"),
-                        {"passed": True, "command": result.get("test_command", "")},
-                        indent="  ",
-                    )
-                )
+    # The synthesized "## Summary" section (WU-PR-SUMMARY-WIRE) goes at the TOP of the
+    # body, above the units table -- additive only: omitted entirely (byte-for-byte the
+    # prior body) whenever no executor was injected or the synthesis call didn't produce
+    # a usable summary.
+    if summary:
+        lines.append("## Summary")
+        lines.append("")
+        lines.append(summary)
+    lines.extend(_units_table_lines(units, state))
+    verification = _verification_line(units, state)
+    if verification:
+        lines.append("")
+        lines.append(verification)
     lines.extend(_reviewer_notes_lines(state))
+    lines.extend(_build_metadata_lines(state))
     # If this run originated from a GitHub issue, link it so merging the PR closes it.
     # blacksmith only *links* the issue here — it never auto-merges or auto-closes (§5).
     issue_number = state.get("issue_number")

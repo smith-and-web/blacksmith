@@ -200,6 +200,14 @@ class Executor:
         """Run with the cheaper plan model tier (PRD §8)."""
         return self.run(prompt, model=self._config.models.plan, **kwargs)
 
+    def run_summary(self, prompt: str, **kwargs: Any) -> ExecutorResult:
+        """Run with the cheap plan model tier, for PR title/body narration (WU-PR-SUMMARY-TIER).
+
+        Reuses ``config.models.plan`` rather than a dedicated tier -- this is a cheap,
+        fail-open call at PR time, not a new cost center.
+        """
+        return self.run(prompt, model=self._config.models.plan, **kwargs)
+
     def run_implement(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the first-attempt (cheaper) implement model tier (PRD §8)."""
         return self.run(prompt, model=self._config.models.implement, **kwargs)

@@ -326,6 +326,10 @@ def test_mid_dag_draft_pr_describes_only_units_built(tmp_path):
     # ...and never the never-built WU-C.
     assert "WU-C" not in title
     assert "WU-C" not in body
+    # The human-gated WU-B is verified by a human, not the gate, so the verification line
+    # reports it as awaiting QA rather than counting it as a failed gate (no under-count).
+    assert "awaiting QA" in body
+    assert "1/2 units passed" not in body
     saver.conn.close()
 
 
@@ -369,6 +373,9 @@ def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
     assert len(creates) == 1 and "--draft" in creates[0]
     body = _create_arg(creates[0], "--body")
     assert "WU-A" in body and "WU-B" in body  # auto code + the QA unit being verified
+    # WU-A passed its gate; the human-gated WU-B is reported awaiting QA, not as a gate
+    # failure — the verification line must not under-count (the fix for the review on #86).
+    assert "awaiting QA" in body
     # The human-gated unit never reached the executor: no implement prompt for a qa layer.
     assert executor.implement_prompts  # the auto unit WAS implemented
     assert not any("Layers: qa" in p for p in executor.implement_prompts)
