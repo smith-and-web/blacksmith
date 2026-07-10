@@ -218,6 +218,11 @@ def search_code(
     matching more terms rank above results matching fewer. Results are deduped by
     ``(file, line)`` and capped at ``limit``. Read-only and best-effort: an empty/blank
     query, an absent repo, or any git failure yields ``[]`` rather than raising.
+
+    Each result dict also carries ``context``: up to 2 lines immediately following the
+    matched line, read straight from the file on disk (best-effort -- a missing or
+    unreadable file yields ``context: []``, leaving the hit's ``snippet`` as the only
+    content).
     """
     query = (query or "").strip()
     if not query:
@@ -261,6 +266,7 @@ def search_code(
                         "line": symbol["line"],
                         "kind": symbol["kind"],
                         "snippet": symbol["signature"],
+                        "context": _context_after(content, symbol["line"]),
                     },
                 )
             )
@@ -280,6 +286,7 @@ def search_code(
     grep_output = _git(repo_path, *grep_args)
     if grep_output:
         text_hits: list[tuple[int, dict]] = []
+        content_cache: dict[str, str | None] = {}
         for line in grep_output.splitlines():
             parsed = _parse_grep_line(line)
             if parsed is None:
@@ -293,6 +300,8 @@ def search_code(
             seen.add(key)
             snippet_lower = snippet.lower()
             match_count = sum(1 for term in terms_lower if term in snippet_lower)
+            if rel_path not in content_cache:
+                content_cache[rel_path] = _read_file(repo_path, rel_path)
             text_hits.append(
                 (
                     match_count,
@@ -301,6 +310,7 @@ def search_code(
                         "line": line_no,
                         "kind": "text",
                         "snippet": snippet.strip(),
+                        "context": _context_after(content_cache[rel_path], line_no),
                     },
                 )
             )
@@ -343,6 +353,18 @@ def _read_file(repo_path: Path, rel_path: str) -> str | None:
         return (repo_path / rel_path).read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return None
+
+
+def _context_after(content: str | None, line_no: int, *, count: int = 2) -> list[str]:
+    """Up to ``count`` lines immediately following 1-indexed ``line_no`` in ``content``.
+
+    Best-effort: ``content is None`` (file missing/unreadable) yields ``[]`` so callers
+    fall back to the snippet alone, matching every other read path in this module.
+    """
+    if content is None:
+        return []
+    lines = content.splitlines()
+    return lines[line_no : line_no + count]
 
 
 def _parse_grep_line(line: str) -> tuple[str, int, str] | None:
@@ -398,17 +420,46 @@ SEARCH_CODE_TOOL_NAME = "search_code"
 
 DEFAULT_SEARCH_LIMIT = 20
 
+# Shared "how do I query this thing" phrasing -- kept in one place so the no-match
+# message (format_search_results) and the tool description (make_search_code_tool)
+# never drift apart.
+QUERY_SYNTAX_HELP = (
+    "space-separated terms match with OR semantics, matching is case-insensitive, "
+    "and terms are matched literally (not as a regex)"
+)
 
-def format_search_results(results: list[dict]) -> str:
+NO_MATCHES_MESSAGE = f"no matches -- query syntax: {QUERY_SYNTAX_HELP}"
+
+LIMIT_REACHED_LINE = "limit reached — more matches exist, refine the query"
+
+
+def format_search_results(results: list[dict], *, limit: int | None = None) -> str:
     """Render :func:`search_code`'s ranked matches as the compact text handed to the agent.
 
-    One match per line, ``path:line: snippet`` — cheap for the agent to scan and cheap on
-    tokens. An empty result list renders as an explicit "no matches" note rather than
-    blank text, so the agent doesn't mistake silence for a tool failure.
+    One compact block per hit: ``path:line: snippet``, followed by up to 2 indented
+    context lines (when the hit carries a ``context`` entry) -- cheap for the agent to
+    scan and cheap on tokens.
+
+    An empty result list renders as an explicit "no matches" note -- naming the
+    accepted query shapes (space-separated terms, OR semantics, case-insensitive,
+    literal not regex) -- rather than blank text, so the agent's next query succeeds
+    instead of it mistaking silence for a tool failure and giving up.
+
+    When ``limit`` is given and the result count reached it, the output ends with an
+    explicit "limit reached" line so the agent knows to refine the query rather than
+    silently trusting it saw everything.
     """
     if not results:
-        return "no matches"
-    return "\n".join(f"{r['file']}:{r['line']}: {r['snippet']}" for r in results)
+        return NO_MATCHES_MESSAGE
+    blocks = []
+    for r in results:
+        block_lines = [f"{r['file']}:{r['line']}: {r['snippet']}"]
+        block_lines.extend(f"    {ctx}" for ctx in r.get("context") or [])
+        blocks.append("\n".join(block_lines))
+    text = "\n".join(blocks)
+    if limit is not None and len(results) >= limit:
+        text += "\n" + LIMIT_REACHED_LINE
+    return text
 
 
 def make_search_code_tool(
@@ -427,15 +478,16 @@ def make_search_code_tool(
 
     async def handler(args: dict[str, Any]) -> dict[str, Any]:
         results = search_code(repo_path, args.get("query", ""), limit=limit, exclude=exclude)
-        text = format_search_results(results)
+        text = format_search_results(results, limit=limit)
         return {"content": [{"type": "text", "text": text}]}
 
     return tool(
         SEARCH_CODE_TOOL_NAME,
         "Search this repository's tracked files for a symbol name or text query. Returns "
         "ranked matches (symbol definitions first, then plain-text hits) as `file:line: "
-        "snippet` lines -- use it to find where something is defined or mentioned instead "
-        "of guessing paths or reading files blind.",
+        "snippet` lines, each with up to 2 lines of surrounding context -- use it to find "
+        "where something is defined or mentioned instead of guessing paths or reading files "
+        f"blind. Query syntax: {QUERY_SYNTAX_HELP}.",
         {"query": str},
     )(handler)
 

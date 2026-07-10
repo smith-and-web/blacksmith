@@ -21,6 +21,7 @@ from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.index import (
+    NO_MATCHES_MESSAGE,
     SEARCH_CODE_TOOL_NAME,
     create_index_mcp_server,
     format_search_results,
@@ -84,7 +85,7 @@ def test_search_code_tool_reports_no_matches_for_absent_query(tmp_path):
 
     result = _invoke(tool_def, "totally_absent_symbol_xyz")
 
-    assert result["content"][0]["text"] == "no matches"
+    assert result["content"][0]["text"] == NO_MATCHES_MESSAGE
 
 
 def test_search_code_tool_respects_configured_limit(tmp_path):
@@ -96,8 +97,9 @@ def test_search_code_tool_respects_configured_limit(tmp_path):
 
     result = _invoke(tool_def, "func")
 
-    lines = result["content"][0]["text"].splitlines()
-    assert len(lines) == 3
+    text = result["content"][0]["text"]
+    hit_lines = [line for line in text.splitlines() if line.startswith("many.py:")]
+    assert len(hit_lines) == 3
 
 
 def test_search_code_tool_respects_exclude(tmp_path):
@@ -106,11 +108,11 @@ def test_search_code_tool_respects_exclude(tmp_path):
 
     result = _invoke(tool_def, "hello")
 
-    assert result["content"][0]["text"] == "no matches"
+    assert result["content"][0]["text"] == NO_MATCHES_MESSAGE
 
 
 def test_format_search_results_no_matches():
-    assert format_search_results([]) == "no matches"
+    assert format_search_results([]) == NO_MATCHES_MESSAGE
 
 
 def test_format_search_results_renders_file_line_snippet():

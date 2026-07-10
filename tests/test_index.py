@@ -7,7 +7,7 @@ Test contract: integration tests against a small, real git repo created in tmp_p
 import subprocess
 from pathlib import Path
 
-from blacksmith.index import build_repo_map, search_code
+from blacksmith.index import build_repo_map, format_search_results, search_code
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -269,3 +269,107 @@ def test_search_code_single_term_dedupes_and_caps_at_limit(tmp_path):
     results = search_code(repo, "func", limit=5)
     assert len(results) == 5
     assert len({(r["file"], r["line"]) for r in results}) == 5
+
+
+# --- context lines / limit signal / no-match help (WU-SEARCH-FEEDBACK) -----------
+
+
+def test_search_code_results_include_bounded_context_after_match(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "mod.py").write_text(
+        "def alpha():\n"
+        "    line_a\n"
+        "    line_b\n"
+        "    line_c\n"
+    )
+    _commit_all(repo)
+
+    results = search_code(repo, "alpha")
+    assert results
+    hit = results[0]
+    assert hit["context"] == ["    line_a", "    line_b"]
+    # bounded at 2 lines even though a third line follows the match
+    assert "line_c" not in "\n".join(hit["context"])
+
+
+def test_search_code_text_hit_includes_context_after_match(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "notes.md").write_text("alpha here\nfollow-up one\nfollow-up two\nfollow-up three\n")
+    _commit_all(repo)
+
+    results = search_code(repo, "alpha")
+    hit = next(r for r in results if r["kind"] == "text")
+    assert hit["context"] == ["follow-up one", "follow-up two"]
+
+
+def test_search_code_missing_file_context_falls_back_to_snippet_only(tmp_path, monkeypatch):
+    import blacksmith.index as index_mod
+
+    repo = _sample_repo(tmp_path)
+    monkeypatch.setattr(index_mod, "_read_file", lambda repo_path, rel_path: None)
+
+    results = search_code(repo, "hello")
+    assert results, "expected at least one match even with reads failing"
+    for hit in results:
+        assert hit["context"] == []
+        assert hit["snippet"]  # snippet alone still present
+
+
+def test_format_search_results_at_limit_appends_refine_line():
+    results = [
+        {"file": "a.py", "line": i, "kind": "text", "snippet": f"hit {i}"} for i in range(3)
+    ]
+    rendered = format_search_results(results, limit=3)
+    assert rendered.splitlines()[-1] == "limit reached — more matches exist, refine the query"
+
+
+def test_format_search_results_under_limit_omits_refine_line():
+    results = [{"file": "a.py", "line": 1, "kind": "text", "snippet": "hit"}]
+    rendered = format_search_results(results, limit=5)
+    assert "limit reached" not in rendered
+
+
+def test_format_search_results_no_limit_arg_omits_refine_line():
+    results = [{"file": "a.py", "line": 1, "kind": "text", "snippet": "hit"}]
+    rendered = format_search_results(results)
+    assert "limit reached" not in rendered
+
+
+def test_search_code_at_limit_render_has_refine_line(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    source = "\n".join(f"def func_{i}():\n    pass\n" for i in range(30))
+    (repo / "many.py").write_text(source)
+    _commit_all(repo)
+
+    results = search_code(repo, "func", limit=5)
+    rendered = format_search_results(results, limit=5)
+    assert rendered.endswith("\nlimit reached — more matches exist, refine the query")
+
+
+def test_format_search_results_renders_context_in_compact_block():
+    results = [
+        {
+            "file": "a.py",
+            "line": 3,
+            "kind": "function",
+            "snippet": "def foo():",
+            "context": ["    pass", ""],
+        }
+    ]
+    rendered = format_search_results(results)
+    assert rendered == "a.py:3: def foo():\n        pass\n    "
+
+
+def test_format_search_results_no_matches_names_query_shapes():
+    rendered = format_search_results([])
+    assert rendered.startswith("no matches")
+    for shape in ("space-separated", "OR", "case-insensitive", "literal", "not as a regex"):
+        assert shape in rendered
+
+
+def test_search_code_tool_description_states_query_shapes():
+    from blacksmith.index import make_search_code_tool
+
+    tool_def = make_search_code_tool(Path("."))
+    for shape in ("space-separated", "OR", "case-insensitive", "literal"):
+        assert shape in tool_def.description
