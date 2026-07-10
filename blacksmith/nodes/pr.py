@@ -11,17 +11,24 @@ LangGraph config (``configurable.pr_runner``), defaulting to a real subprocess r
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from blacksmith.contract import WorkUnit
+from blacksmith.nodes.plan import cost_event
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
 _PR_URL_RE = re.compile(r"https://\S+/pull/\d+")
+# A single fenced ```json ... ``` (or bare) block containing the synthesized
+# {"title": ..., "summary": ...} object (WU-PR-SUMMARY-WIRE). Mirrors the review node's
+# own fenced-JSON convention.
+_SUMMARY_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
 class PRError(Exception):
@@ -88,12 +95,18 @@ def open_pull_request(
     return PullRequest(url=match.group(0), branch=branch)
 
 
-def open_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> dict:
+def open_pr(
+    state: BlacksmithState, *, runner: Runner = subprocess_runner, executor: Any = None
+) -> dict:
     """Graph node: open a PR for the selected unit. Failures halt rather than crash."""
-    return _open_pr(state, runner=runner, draft=False, done=Status.DONE, node="open_pr")
+    return _open_pr(
+        state, runner=runner, draft=False, done=Status.DONE, node="open_pr", executor=executor
+    )
 
 
-def open_draft_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner) -> dict:
+def open_draft_pr(
+    state: BlacksmithState, *, runner: Runner = subprocess_runner, executor: Any = None
+) -> dict:
     """Graph node: open a DRAFT PR for a human-gated unit that implemented successfully.
 
     Mirrors ``open_pr`` but passes ``--draft`` and ends the run at ``AWAITING_QA`` (its
@@ -101,12 +114,23 @@ def open_draft_pr(state: BlacksmithState, *, runner: Runner = subprocess_runner)
     cleanup preserves the branch — the draft PR needs it. The QA itself happens on the
     draft PR; this node opens no automated gate (PRD §4 human-gated routing)."""
     return _open_pr(
-        state, runner=runner, draft=True, done=Status.AWAITING_QA, node="open_draft_pr"
+        state,
+        runner=runner,
+        draft=True,
+        done=Status.AWAITING_QA,
+        node="open_draft_pr",
+        executor=executor,
     )
 
 
 def _open_pr(
-    state: BlacksmithState, *, runner: Runner, draft: bool, done: Status, node: str
+    state: BlacksmithState,
+    *,
+    runner: Runner,
+    draft: bool,
+    done: Status,
+    node: str,
+    executor: Any = None,
 ) -> dict:
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
@@ -116,6 +140,21 @@ def _open_pr(
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
     units = _built_units(state)
+    title = _pr_title(units)
+    summary: str | None = None
+    cost_events: list[dict] = []
+    # Additive, FAIL-OPEN synthesis (WU-PR-SUMMARY-WIRE): only attempted when an executor is
+    # injected (production, via build_graph_for); every existing test (no executor) and any
+    # model error/empty response falls back to the title/body exactly as before -- a summary
+    # failure can never block or crash opening the PR.
+    if executor is not None:
+        synth_title, synth_summary, event = _synthesize_summary(executor, state, units)
+        if event is not None:
+            cost_events.append(event)
+        if synth_title:
+            title = synth_title
+        if synth_summary:
+            summary = synth_summary
     try:
         pr = open_pull_request(
             # One combined PR against the run's single shared branch, covering every unit
@@ -123,8 +162,8 @@ def _open_pr(
             # field is absent (e.g. a single-unit node-level call in tests).
             worktree_path=worktree_path,
             branch=state.get("branch") or branch_for(unit.id),
-            title=_pr_title(units),
-            body=_pr_body(state, units),
+            title=title,
+            body=_pr_body(state, units, summary=summary),
             # The target repo's default branch (``[target].default_branch``), seeded into
             # state by prepare_worktree. When present, the PR is opened against it
             # explicitly; when absent (a graph compiled without it, e.g. tests) ``base`` is
@@ -134,8 +173,94 @@ def _open_pr(
             runner=runner,
         )
     except PRError as exc:
-        return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
-    return {"pr_url": pr.url, "status": done}
+        out: dict = {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
+        if cost_events:
+            out["cost_events"] = cost_events
+        return out
+    out = {"pr_url": pr.url, "status": done}
+    if cost_events:
+        out["cost_events"] = cost_events
+    return out
+
+
+def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
+    """Context for the PR title/summary synthesis call: the PRD's purpose (its prose body)
+    plus each built unit's title, files touched, and diff summary."""
+    prd = state.get("prd")
+    purpose = (getattr(prd, "body", "") or "").strip() or "(no PRD body available)"
+    if len(units) == 1:
+        impl = state.get("implementation") or {}
+        by_id = {units[0].id: impl}
+    else:
+        by_id = {r.get("unit_id"): r for r in state.get("unit_results") or []}
+    unit_lines = [
+        "- {id}: {title} | files: {files} | diff: {diff}".format(
+            id=u.id,
+            title=u.title,
+            files=", ".join((by_id.get(u.id) or {}).get("files_touched") or []) or "(none)",
+            diff=(by_id.get(u.id) or {}).get("diff_summary") or "(none)",
+        )
+        for u in units
+    ]
+    units_block = "\n".join(unit_lines) or "(no units)"
+    return (
+        "Write a concise pull request title and summary for the following completed work.\n\n"
+        f"PRD purpose:\n{purpose}\n\n"
+        f"Units built this run:\n{units_block}\n\n"
+        "Respond with EXACTLY ONE fenced JSON code block and nothing else:\n"
+        "```json\n"
+        '{"title": "<concise PR title, no unit ids required>", '
+        '"summary": "<2-4 sentence markdown summary, no heading>"}\n'
+        "```\n"
+    )
+
+
+def _parse_summary_response(text: str) -> tuple[str, str] | None:
+    """Parse the synthesis call's fenced-JSON reply into (title, summary).
+
+    Returns ``None`` on any empty/unparseable/incomplete response -- the caller treats
+    that identically to a model error and falls back to the existing title/body."""
+    if not text or not text.strip():
+        return None
+    match = _SUMMARY_FENCE_RE.search(text)
+    block = match.group(1) if match else text.strip()
+    try:
+        parsed = json.loads(block)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    title = str(parsed.get("title") or "").strip()
+    summary = str(parsed.get("summary") or "").strip()
+    if not title or not summary:
+        return None
+    return title, summary
+
+
+def _synthesize_summary(
+    executor: Any, state: BlacksmithState, units: Sequence[WorkUnit]
+) -> tuple[str | None, str | None, dict | None]:
+    """One cheap, fail-open ``executor.run_summary`` call to produce a PR title + summary
+    (WU-PR-SUMMARY-WIRE). Returns ``(title, summary, cost_event)`` -- either or both of
+    ``title``/``summary`` are ``None`` when the call errors or its response is
+    empty/unparseable, so the caller falls back to the pre-existing title/body. The
+    ``cost_event`` reflects the call's real spend whenever one was actually made (even a
+    failed/unparseable call still cost money) and is ``None`` only if the executor itself
+    raised before returning a result."""
+    prompt = _summary_prompt(state, units)
+    unit_id = units[-1].id if units else ""
+    try:
+        result = executor.run_summary(prompt, raise_on_error=False)
+    except Exception:
+        return None, None, None
+    event = cost_event("summary", unit_id, result)
+    if result.is_error:
+        return None, None, event
+    parsed = _parse_summary_response(result.text)
+    if parsed is None:
+        return None, None, event
+    title, summary = parsed
+    return title, summary, event
 
 
 def _built_units(state: BlacksmithState) -> list[WorkUnit]:
@@ -296,9 +421,22 @@ def _build_metadata_lines(state: BlacksmithState) -> list[str]:
         return []
 
 
-def _pr_body(state: BlacksmithState, units: Sequence[WorkUnit] | None = None) -> str:
+def _pr_body(
+    state: BlacksmithState,
+    units: Sequence[WorkUnit] | None = None,
+    *,
+    summary: str | None = None,
+) -> str:
     units = list(_built_units(state) if units is None else units)
     lines: list[str] = []
+    # The synthesized "## Summary" section (WU-PR-SUMMARY-WIRE) goes at the TOP of the
+    # body, above the units table -- additive only: omitted entirely (byte-for-byte the
+    # prior body) whenever no executor was injected or the synthesis call didn't produce
+    # a usable summary.
+    if summary:
+        lines.append("## Summary")
+        lines.append("")
+        lines.append(summary)
     lines.extend(_units_table_lines(units, state))
     verification = _verification_line(units, state)
     if verification:

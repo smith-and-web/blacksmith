@@ -11,9 +11,12 @@ from pathlib import Path
 import pytest
 
 from blacksmith.contract import WorkUnit
+from blacksmith.executor import ExecutorResult
 from blacksmith.nodes.pr import (
     CommandResult,
     PRError,
+    _pr_body,
+    _pr_title,
     open_pr,
     open_pull_request,
     subprocess_runner,
@@ -47,6 +50,36 @@ def _unit() -> WorkUnit:
         test_contract="pytest",
         depends_on=[],
     )
+
+
+class _FakeSummaryExecutor:
+    """Fake ``executor.run_summary`` for WU-PR-SUMMARY-WIRE tests (no live model call)."""
+
+    def __init__(self, *, title="Synth title", summary="Synth summary.", is_error=False):
+        self.calls: list[str] = []
+        self._title = title
+        self._summary = summary
+        self._is_error = is_error
+
+    def run_summary(self, prompt, **kwargs):
+        self.calls.append(prompt)
+        if self._is_error:
+            text = ""
+        else:
+            text = (
+                "```json\n"
+                f'{{"title": "{self._title}", "summary": "{self._summary}"}}\n'
+                "```"
+            )
+        return ExecutorResult(
+            text=text,
+            model="claude-fake-summary",
+            is_error=self._is_error,
+            num_turns=1,
+            cost_usd=0.001,
+            usage=None,
+            session_id="sess-summary-1",
+        )
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -164,6 +197,80 @@ def test_node_pr_error_halts():
     out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
     assert out["status"] == Status.HALTED
     assert "gh pr create" in out["errors"][0]["message"]
+
+
+# --- open_pr node: executor-driven title/summary synthesis (WU-PR-SUMMARY-WIRE) ----
+
+
+def test_node_with_executor_synthesizes_title_and_summary():
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/20")
+    executor = _FakeSummaryExecutor(title="Add scaffold", summary="Adds the initial scaffold.")
+    out = open_pr(
+        {"selected_unit": _unit(), "worktree_path": "/tmp/wt"},
+        runner=runner,
+        executor=executor,
+    )
+    assert out["status"] == Status.DONE
+    create = runner.calls[1]
+    title = create[create.index("--title") + 1]
+    body = create[create.index("--body") + 1]
+    assert title == "Add scaffold"
+    assert "## Summary" in body
+    assert "Adds the initial scaffold." in body
+    assert executor.calls  # the synthesis call was actually made
+    assert out["cost_events"] == [
+        {
+            "node": "summary",
+            "unit_id": "WU-01",
+            "model": "claude-fake-summary",
+            "cost_usd": 0.001,
+            "num_turns": 1,
+            "usage": None,
+            "session_id": "sess-summary-1",
+        }
+    ]
+
+
+def test_node_without_executor_falls_back_byte_for_byte():
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/21")
+    unit = _unit()
+    state = {"selected_unit": unit, "worktree_path": "/tmp/wt"}
+    out = open_pr(state, runner=runner)
+    create = runner.calls[1]
+    title = create[create.index("--title") + 1]
+    body = create[create.index("--body") + 1]
+    assert title == _pr_title([unit])
+    assert "## Summary" not in body
+    assert body == _pr_body(state, [unit])
+    assert "cost_events" not in out
+
+
+def test_node_executor_error_falls_back_without_summary():
+    # A model error on the synthesis call is FAIL-OPEN: opening the PR still succeeds with
+    # the pre-existing title/body, but the cost of the attempted call is still ledgered.
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/22")
+    unit = _unit()
+    state = {"selected_unit": unit, "worktree_path": "/tmp/wt"}
+    executor = _FakeSummaryExecutor(is_error=True)
+    out = open_pr(state, runner=runner, executor=executor)
+    assert out["status"] == Status.DONE
+    create = runner.calls[1]
+    title = create[create.index("--title") + 1]
+    body = create[create.index("--body") + 1]
+    assert title == _pr_title([unit])
+    assert "## Summary" not in body
+    assert body == _pr_body(state, [unit])
+    assert out["cost_events"] == [
+        {
+            "node": "summary",
+            "unit_id": "WU-01",
+            "model": "claude-fake-summary",
+            "cost_usd": 0.001,
+            "num_turns": 1,
+            "usage": None,
+            "session_id": "sess-summary-1",
+        }
+    ]
 
 
 # --- integration: real push to a bare scratch remote, mocked gh --------------
