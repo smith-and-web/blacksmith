@@ -26,11 +26,14 @@ import re
 import subprocess
 from pathlib import Path
 
+from blacksmith import graph as bsgraph
 from blacksmith.cli import drive
+from blacksmith.config import IndexConfig
 from blacksmith.executor import ExecutorResult
 from blacksmith.gate import GateResult, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.nodes.pr import CommandResult
+from blacksmith.sandbox import SandboxConfig, SandboxManager
 from blacksmith.state import Status
 from blacksmith.worktree import CloneManager
 
@@ -380,4 +383,67 @@ def test_all_size_one_level_chain_stays_on_shared_clone(tmp_path):
     assert len(_pr_creates(gh)) == 1
     assert final.values["status"] == Status.DONE
     assert approver.gates == ["plan", "pr"]
+    saver.conn.close()
+
+
+def test_fanout_build_unit_implement_receives_index_and_sandbox(tmp_path, monkeypatch):
+    """Fan-out feature parity (review finding #2 / #5, Workstream A1).
+
+    A unit that lands in a multi-unit level is built by the ``build_unit`` worker, not the
+    sequential ``implement`` node. Before the ``UnitDeps`` bundle, the worker called
+    ``implement(sub, executor=executor)`` and silently dropped index/sandbox — so an operator
+    with ``[index]``/``[sandbox]`` enabled got them on single-chain PRDs but NOT on parallel
+    ones. This pins that the worker's inner implement call now receives the SAME index/sandbox
+    deps the sequential node is bound with. (Would fail on ``main``: pre-A1 the worker passed
+    only ``executor``.)"""
+    repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+    executor = FakeExecutor()
+    gh = _recording_gh("https://github.com/owner/demo/pull/7")
+
+    index_cfg = IndexConfig(enabled=True)
+    # A wired-but-disabled sandbox is fully inert (no docker started) yet still proves the
+    # OBJECT is threaded into the worker's implement call — which is exactly what was missing.
+    sandbox_mgr = SandboxManager(config=SandboxConfig(enabled=False))
+
+    saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+    graph = compile_graph(
+        saver,
+        executor=executor,
+        worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+        gate=run_gate,
+        pr_runner=gh,
+        index=index_cfg,
+        sandbox=sandbox_mgr,
+    )
+
+    # Spy on the ``implement`` the fan-out worker calls (build_unit looks it up as a module
+    # global at call time), recording the kwargs each call receives, then delegating so the
+    # real implement still commits and the level joins normally.
+    real_implement = bsgraph.implement
+    captured: list[dict] = []
+
+    def spy_implement(state, **kwargs):
+        captured.append(kwargs)
+        return real_implement(state, **kwargs)
+
+    monkeypatch.setattr(bsgraph, "implement", spy_implement)
+
+    final = drive(
+        graph,
+        _write_prd(tmp_path, _TWO_INDEPENDENT),
+        approver=_recording_approver(),
+        thread_id="deps",
+    )
+
+    # Both units built via fan-out (their own -build clones), so every implement call captured
+    # here came from build_unit — none from the sequential node.
+    assert set(executor.cwds) == {"WU-X", "WU-Y"}
+    assert all(cwd.endswith("-build") for cwd in executor.cwds.values())
+    assert len(captured) == 2  # one per fan-out unit
+    for kwargs in captured:
+        assert kwargs.get("index_config") is index_cfg
+        assert kwargs["index_config"].enabled is True
+        assert kwargs.get("sandbox") is sandbox_mgr
+        assert "sandbox_exec_timeout_s" in kwargs
+    assert final.values["status"] == Status.DONE
     saver.conn.close()
