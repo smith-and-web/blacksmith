@@ -69,6 +69,7 @@ class RespondResult:
     attempts: int
     pushed: bool
     reason: str  # "no_comments" | "pushed" | "gate_failed"
+    gate_output: str | None = None
 
 
 class PRBranchCloneManager(CloneManager):
@@ -226,6 +227,7 @@ def respond_to_pr(
         feedback = format_review_feedback(comments)
         max_attempts = max(1, config.respond.max_attempts)
         pre_attempt_ref = _git(clone.path, "rev-parse", "HEAD").strip()
+        last_gate_output: str | None = None
         for attempt in range(1, max_attempts + 1):
             state = {
                 "prd": PRD(path=Path("<respond>"), contract=contract, body=""),
@@ -255,6 +257,7 @@ def respond_to_pr(
                 )
             _reset_hard(clone.path, pre_attempt_ref)
             feedback = gate_result.output
+            last_gate_output = gate_result.output
         return RespondResult(
             pr_number=pr_number,
             branch=branch,
@@ -262,6 +265,7 @@ def respond_to_pr(
             attempts=max_attempts,
             pushed=False,
             reason="gate_failed",
+            gate_output=last_gate_output,
         )
     finally:
         manager.remove(clone)

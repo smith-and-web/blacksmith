@@ -973,6 +973,9 @@ def _plural(count: int) -> str:
     return "" if count == 1 else "s"
 
 
+_RESPOND_GATE_OUTPUT_TAIL_CHARS = 2000
+
+
 def _render_respond_result(result: RespondResult, *, out=print) -> None:
     """Render a concise, one-line outcome for ``blacksmith respond`` (WU-RESPOND-CLI)."""
     if result.reason == "no_comments":
@@ -990,6 +993,9 @@ def _render_respond_result(result: RespondResult, *, out=print) -> None:
         f"PR #{result.pr_number}: {comments} addressed, but the revision still failed "
         f"the test gate after {attempts} — nothing pushed"
     )
+    if result.gate_output:
+        tail = result.gate_output[-_RESPOND_GATE_OUTPUT_TAIL_CHARS:]
+        out(tail)
 
 
 def run_respond(
