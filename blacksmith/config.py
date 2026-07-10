@@ -283,11 +283,13 @@ class RespondConfig(_Strict):
     gate→PR run. This section only bounds how many revise→gate attempts a single
     ``respond`` invocation makes before it stops.
 
-    * ``max_attempts`` — an int >= 1, default 1, capping the revise→gate cycles a single
-      ``respond`` invocation may run.
+    * ``max_attempts`` — an int >= 1, default 2, capping the revise→gate cycles a single
+      ``respond`` invocation may run. A default of 2 mirrors the build loop's self-heal
+      (``max_fix_attempts`` default 1 = two implement attempts): on a failed revision,
+      ``respond`` re-implements once with the gate's own output fed back before giving up.
     """
 
-    max_attempts: int = Field(default=1, ge=1)
+    max_attempts: int = Field(default=2, ge=1)
 
 
 class ApiConfig(_Strict):
