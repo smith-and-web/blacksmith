@@ -229,6 +229,15 @@ class BlacksmithState(TypedDict, total=False):
     # the same ``review_clean``/``review_findings`` keys the revise loop already consumes.
     review_panel_size: int
     review_revisions: int
+    # Report-only RUN-WIDE count of review-driven revisions (WU-REVIEW-RENDER), for the PR
+    # body / gate view's "resolved via revision" line. A reducer (operator.add), UNLIKE the
+    # per-unit ``review_revisions`` above: the sequential ``prepare_review_revision`` adds 1
+    # per revision, and each fan-out ``build_unit`` worker adds its own revision count -- so
+    # concurrent workers never race on it (they can't write the last-write-wins
+    # ``review_revisions``) and the total spans every unit of the run. Never read by routing
+    # or any loop bound; purely for display. Renderers fall back to ``review_revisions`` when
+    # it is absent (old checkpoints / states with no fan-out revision).
+    review_revisions_total: Annotated[int, operator.add]
     # This unit's most recent review call's raw findings (WU-REVIEW-LOOP), last-write-wins
     # -- unlike ``review_findings``, which accumulates every call across the whole run --
     # so the revision-feedback and unresolved-findings-retention logic can read exactly the

@@ -215,7 +215,10 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     if not unresolved and not advisory:
         lines.append("Reviewer: clean")
         return lines
-    revisions = state.get("review_revisions", 0)
+    # Prefer the run-wide reducer total (counts fan-out workers' revisions, which can't write
+    # the last-write-wins ``review_revisions``); fall back to the per-unit field for states
+    # without it (a sequential-only run predating the total, or an old checkpoint).
+    revisions = state.get("review_revisions_total") or state.get("review_revisions", 0)
     if revisions:
         lines.append(f"- resolved via revision: {revisions}")
     for finding in unresolved:

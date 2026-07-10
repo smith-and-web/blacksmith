@@ -116,6 +116,22 @@ def test_pr_body_includes_reviewer_notes_section_with_unresolved_findings():
     assert "off-by-one in the loop bound" in body
 
 
+def test_pr_body_prefers_run_wide_revision_total_over_per_unit():
+    # A fan-out run reports revisions via the run-wide reducer ``review_revisions_total`` (its
+    # concurrent workers can't write the last-write-wins per-unit ``review_revisions``). The PR
+    # body prefers the total; the per-unit field here is 0 (never updated on a fan-out-only run).
+    state = {
+        "selected_unit": _unit(),
+        "unresolved_review_findings": [
+            {"severity": "blocking", "file": "a.txt", "detail": "still off by one"},
+        ],
+        "review_revisions": 0,
+        "review_revisions_total": 3,
+    }
+    body = _pr_body(state)
+    assert "resolved via revision: 3" in body
+
+
 def test_pr_body_reviewer_notes_clean_is_a_single_line():
     state = {"selected_unit": _unit()}  # no unresolved_review_findings at all
     body = _pr_body(state)

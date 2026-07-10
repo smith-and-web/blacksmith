@@ -574,6 +574,9 @@ def prepare_review_revision(state: BlacksmithState) -> dict:
     findings = state.get("review_current_findings") or []
     return {
         "review_revisions": state.get("review_revisions", 0) + 1,
+        # Run-wide report-only tally for the "resolved via revision" line (reducer; the
+        # per-unit review_revisions above is reset each unit, so it can't total the run).
+        "review_revisions_total": 1,
         "review_clean": False,
         "last_gate_output": _format_review_feedback(findings),
         # A review revision feeds back via last_gate_output, not the partial-continuation
@@ -850,6 +853,10 @@ def build_unit(
     if review_enabled:
         result_update["review_findings"] = review_findings
         result_update["unresolved_review_findings"] = unresolved
+        # Report-only run-wide tally (reducer) for the PR's "resolved via revision" line: this
+        # worker's own revision count, summed across the level's concurrent workers. Can't use
+        # the last-write-wins ``review_revisions`` (workers would race); this reducer can't.
+        result_update["review_revisions_total"] = review_revisions
     return result_update
 
 

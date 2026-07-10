@@ -219,7 +219,9 @@ class Renderer:
         / ``review_revisions`` keys (mirroring the state fields of the same name); absent
         on a payload with no review data, which renders as a clean review."""
         unresolved = payload.get("unresolved_review_findings") or []
-        resolved = payload.get("review_revisions") or 0
+        # Prefer the run-wide reducer total (fan-out workers' revisions land here, not in the
+        # last-write-wins ``review_revisions``); fall back to the per-unit field when absent.
+        resolved = payload.get("review_revisions_total") or payload.get("review_revisions") or 0
         return unresolved, resolved
 
     def _plain_gate(self, payload: dict) -> None:
