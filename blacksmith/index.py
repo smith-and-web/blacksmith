@@ -204,15 +204,28 @@ def search_code(
 ) -> list[dict]:
     """Rank search results for ``query`` across the repo's tracked files.
 
+    ``query`` is split on whitespace into terms and matched with OR semantics: a
+    symbol whose name contains ANY term (case-insensitive) is a symbol hit, and the
+    text pass runs ``git grep`` with one ``-e <term>`` per term joined by ``--or``
+    (``-F`` for literal, fixed-string terms; ``-i`` for case-insensitivity) instead of
+    treating the raw query as a single pattern -- so terms with regex metacharacters
+    (``(``, ``.``, ``*``, ...) are matched literally rather than as a broken/surprising
+    regex. A single-term query behaves as before, modulo case-insensitivity.
+
     Symbol *definitions* (extracted the same way as :func:`build_repo_map`) are ranked
-    first, followed by plain-text ``git grep -n`` hits — so a function's definition
-    outranks an incidental mention of its name elsewhere. Results are deduped by
+    first, followed by plain-text hits -- so a function's definition outranks an
+    incidental mention of its name elsewhere. Within each of those two tiers, results
+    matching more terms rank above results matching fewer. Results are deduped by
     ``(file, line)`` and capped at ``limit``. Read-only and best-effort: an empty/blank
     query, an absent repo, or any git failure yields ``[]`` rather than raising.
     """
     query = (query or "").strip()
     if not query:
         return []
+    terms = query.split()
+    if not terms:
+        return []
+    terms_lower = [term.lower() for term in terms]
 
     repo_path = Path(repo_path)
     exclude = tuple(exclude)
@@ -220,13 +233,10 @@ def search_code(
     if not files:
         return []
 
-    results: list[dict] = []
     seen: set[tuple[str, int]] = set()
-    needle = query.lower()
+    symbol_hits: list[tuple[int, dict]] = []
 
     for rel_path in files:
-        if len(results) >= limit:
-            return results[:limit]
         ext = Path(rel_path).suffix
         family = _EXT_FAMILY.get(ext)
         if not family:
@@ -235,28 +245,41 @@ def search_code(
         if content is None:
             continue
         for symbol in _extract_symbols(content, family):
-            if needle not in symbol["name"].lower():
+            name_lower = symbol["name"].lower()
+            match_count = sum(1 for term in terms_lower if term in name_lower)
+            if match_count == 0:
                 continue
             key = (rel_path, symbol["line"])
             if key in seen:
                 continue
             seen.add(key)
-            results.append(
-                {
-                    "file": rel_path,
-                    "line": symbol["line"],
-                    "kind": symbol["kind"],
-                    "snippet": symbol["signature"],
-                }
+            symbol_hits.append(
+                (
+                    match_count,
+                    {
+                        "file": rel_path,
+                        "line": symbol["line"],
+                        "kind": symbol["kind"],
+                        "snippet": symbol["signature"],
+                    },
+                )
             )
-            if len(results) >= limit:
-                break
+
+    symbol_hits.sort(key=lambda hit: -hit[0])
+    results: list[dict] = [hit[1] for hit in symbol_hits[:limit]]
 
     if len(results) >= limit:
         return results[:limit]
 
-    grep_output = _git(repo_path, "grep", "-n", "-I", "--", query)
+    grep_args = ["grep", "-n", "-I", "-i", "-F"]
+    for i, term in enumerate(terms):
+        if i:
+            grep_args.append("--or")
+        grep_args.extend(["-e", term])
+
+    grep_output = _git(repo_path, *grep_args)
     if grep_output:
+        text_hits: list[tuple[int, dict]] = []
         for line in grep_output.splitlines():
             parsed = _parse_grep_line(line)
             if parsed is None:
@@ -268,11 +291,22 @@ def search_code(
             if key in seen:
                 continue
             seen.add(key)
-            results.append(
-                {"file": rel_path, "line": line_no, "kind": "text", "snippet": snippet.strip()}
+            snippet_lower = snippet.lower()
+            match_count = sum(1 for term in terms_lower if term in snippet_lower)
+            text_hits.append(
+                (
+                    match_count,
+                    {
+                        "file": rel_path,
+                        "line": line_no,
+                        "kind": "text",
+                        "snippet": snippet.strip(),
+                    },
+                )
             )
-            if len(results) >= limit:
-                break
+        text_hits.sort(key=lambda hit: -hit[0])
+        remaining = limit - len(results)
+        results.extend(hit[1] for hit in text_hits[:remaining])
 
     return results[:limit]
 

@@ -192,3 +192,80 @@ def test_search_code_git_failure_returns_empty_list(tmp_path):
     not_a_repo = tmp_path / "not-a-repo"
     not_a_repo.mkdir()
     assert search_code(not_a_repo, "hello") == []
+
+
+# --- multi-term / case-insensitive matching (WU-SEARCH-TERMS) ---------------------
+
+
+def test_search_code_multi_term_query_matches_each_term(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "mod.py").write_text(
+        "def open_pr():\n    pass\n\n\n"
+        "def pr_runner():\n    pass\n\n\n"
+        "def cost_event():\n    pass\n"
+    )
+    _commit_all(repo)
+
+    results = search_code(repo, "open_pr pr_runner cost_event")
+    snippets = [r["snippet"] for r in results]
+    assert any("def open_pr" in s for s in snippets)
+    assert any("def pr_runner" in s for s in snippets)
+    assert any("def cost_event" in s for s in snippets)
+
+
+def test_search_code_multi_term_text_search_uses_or_semantics(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "notes.md").write_text("alpha here\nbeta here\ngamma here\n")
+    _commit_all(repo)
+
+    results = search_code(repo, "alpha gamma")
+    hit_lines = {(r["file"], r["line"]) for r in results}
+    assert ("notes.md", 1) in hit_lines
+    assert ("notes.md", 3) in hit_lines
+    assert ("notes.md", 2) not in hit_lines
+
+
+def test_search_code_ranks_by_number_of_matched_terms(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "mod.py").write_text(
+        "def alpha_beta():\n    pass\n\n\ndef alpha_only():\n    pass\n"
+    )
+    _commit_all(repo)
+
+    results = search_code(repo, "alpha beta")
+    assert results[0]["snippet"].startswith("def alpha_beta")
+    names = [r["snippet"] for r in results]
+    assert any(s.startswith("def alpha_only") for s in names)
+
+
+def test_search_code_symbol_matching_is_case_insensitive(tmp_path):
+    repo = _sample_repo(tmp_path)
+    results = search_code(repo, "HELLO")
+    assert any(r["kind"] == "function" and "def hello" in r["snippet"] for r in results)
+
+
+def test_search_code_text_matching_is_case_insensitive(tmp_path):
+    repo = _sample_repo(tmp_path)
+    results = search_code(repo, "STANDUP")
+    assert any(r["kind"] == "text" and "standup" in r["snippet"].lower() for r in results)
+
+
+def test_search_code_literal_query_with_regex_metacharacters(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "mod.py").write_text("def cost_event(node=None):\n    pass\n")
+    _commit_all(repo)
+
+    results = search_code(repo, "cost_event(node=")
+    assert results, "expected a literal match despite regex metacharacters"
+    assert any("cost_event(node=" in r["snippet"] for r in results)
+
+
+def test_search_code_single_term_dedupes_and_caps_at_limit(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    source = "\n".join(f"def func_{i}():\n    pass\n" for i in range(30))
+    (repo / "many.py").write_text(source)
+    _commit_all(repo)
+
+    results = search_code(repo, "func", limit=5)
+    assert len(results) == 5
+    assert len({(r["file"], r["line"]) for r in results}) == 5
