@@ -39,7 +39,12 @@ from typing import Any
 from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.index import SEARCH_CODE_TOOL_NAME, build_repo_map, create_index_mcp_server
+from blacksmith.index import (
+    READ_SYMBOL_TOOL_NAME,
+    SEARCH_CODE_TOOL_NAME,
+    build_repo_map,
+    create_index_mcp_server,
+)
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.state import BlacksmithState, Status
 
@@ -108,14 +113,16 @@ _PLAN_BLOCKED = [
     "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
 ]
 
-# search_code tool (WU-PLAN-SEARCH-TOOL): ADDITIVE and off by default, gated on the SAME
-# [index].enabled switch as the implementer indexing (blacksmith.nodes.implement) -- no
-# separate toggle. Only when the index is enabled AND a repo_path is given (the target
-# repo -- no worktree exists yet at plan time) is the planner granted the search_code tool
-# alongside its existing read-only Read/Glob/Grep; no write/shell tool is ever added, and
-# with the index disabled the tool surface is byte-for-byte unchanged from before this unit.
+# search_code/read_symbol tools (WU-PLAN-SEARCH-TOOL): ADDITIVE and off by default, gated on
+# the SAME [index].enabled switch as the implementer indexing (blacksmith.nodes.implement) --
+# no separate toggle. Only when the index is enabled AND a repo_path is given (the target
+# repo -- no worktree exists yet at plan time) is the planner granted both search_code and
+# read_symbol alongside its existing read-only Read/Glob/Grep; no write/shell tool is ever
+# added, and with the index disabled the tool surface is byte-for-byte unchanged from before
+# this unit.
 _INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
 _SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
+_READ_SYMBOL_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{READ_SYMBOL_TOOL_NAME}"
 
 
 def select_unit(contract: PRDContract, completed: Sequence[str] = ()) -> WorkUnit | None:
@@ -165,6 +172,7 @@ def plan(
     mcp_servers: dict = {}
     if index_enabled:
         allowed_tools.append(_SEARCH_TOOL_NAME)
+        allowed_tools.append(_READ_SYMBOL_TOOL_NAME)
         mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
             repo_path, exclude=index_config.exclude
         )
