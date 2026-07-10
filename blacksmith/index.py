@@ -383,9 +383,9 @@ def _decorator_adjusted_line(lines: list[str], line_no: int) -> int:
     """Walk ``line_no`` (1-indexed) back over contiguous decorator lines directly above.
 
     A decorator (``@foo``) immediately preceding a definition is part of that
-    definition, not of whatever precedes it -- so a caller using this as an *end*
-    boundary for the previous symbol stops before the decorator, and a caller using it
-    as a *start* for this symbol includes it.
+    definition, not of whatever precedes it -- so the caller, which uses this only as
+    the *end* boundary for the previous symbol's block, stops before the decorator
+    rather than swallowing it into the wrong symbol.
     """
     idx = line_no - 1
     while idx > 0 and lines[idx - 1].strip().startswith("@"):
