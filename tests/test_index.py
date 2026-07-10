@@ -7,7 +7,14 @@ Test contract: integration tests against a small, real git repo created in tmp_p
 import subprocess
 from pathlib import Path
 
-from blacksmith.index import build_repo_map, format_search_results, search_code
+from blacksmith.index import (
+    READ_SYMBOL_MAX_LINES,
+    build_repo_map,
+    create_index_mcp_server,
+    format_search_results,
+    read_symbol,
+    search_code,
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -373,3 +380,125 @@ def test_search_code_tool_description_states_query_shapes():
     tool_def = make_search_code_tool(Path("."))
     for shape in ("space-separated", "OR", "case-insensitive", "literal"):
         assert shape in tool_def.description
+
+
+# --- read_symbol (WU-READ-SYMBOL) -------------------------------------------------
+
+
+def _symbol_repo(tmp_path: Path) -> Path:
+    """A repo with a def, a class, and a decorated def -- to exercise boundaries."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "greet.py").write_text(
+        "def hello(name):\n"
+        "    return f'hi {name}'\n"
+        "\n"
+        "\n"
+        "class Greeter:\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "@decorator\n"
+        "def bye():\n"
+        "    pass\n"
+    )
+    _commit_all(repo)
+    return repo
+
+
+def test_read_symbol_extracts_function_body(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    body = read_symbol(repo, "greet.py", "hello")
+    assert body.startswith("def hello(name):\n    return f'hi {name}'")
+    assert "class Greeter" not in body
+
+
+def test_read_symbol_extracts_class_body_with_decorator_free_boundary(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    body = read_symbol(repo, "greet.py", "Greeter")
+    assert body.startswith("class Greeter:\n    pass")
+    # bye()'s decorator belongs to bye, not to the preceding Greeter block.
+    assert "@decorator" not in body
+    assert "def bye" not in body
+
+
+def test_read_symbol_last_symbol_runs_to_end_of_file(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    body = read_symbol(repo, "greet.py", "bye")
+    assert body == "def bye():\n    pass"
+
+
+def test_read_symbol_caps_at_150_lines_with_truncation_marker(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    body_lines = [f"    x = {i}" for i in range(200)]
+    (repo / "big.py").write_text("def big():\n" + "\n".join(body_lines) + "\n")
+    _commit_all(repo)
+
+    result = read_symbol(repo, "big.py", "big")
+    rendered_lines = result.splitlines()
+
+    assert rendered_lines[0] == "def big():"
+    assert rendered_lines[-1] == f"…(truncated at {READ_SYMBOL_MAX_LINES} lines)…"
+    assert len(rendered_lines) == READ_SYMBOL_MAX_LINES + 1
+
+
+def test_read_symbol_under_cap_has_no_truncation_marker(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    body = read_symbol(repo, "greet.py", "hello")
+    assert "truncated" not in body
+
+
+def test_read_symbol_unknown_file_returns_not_found(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    result = read_symbol(repo, "does_not_exist.py", "hello")
+    assert "not found" in result
+    assert "does_not_exist.py" in result
+
+
+def test_read_symbol_untracked_file_returns_not_found(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    (repo / "untracked.py").write_text("def ghost():\n    pass\n")  # written, never committed
+
+    result = read_symbol(repo, "untracked.py", "ghost")
+    assert "not found" in result
+    assert "untracked.py" in result
+
+
+def test_read_symbol_unknown_symbol_lists_known_symbols(tmp_path):
+    repo = _symbol_repo(tmp_path)
+    result = read_symbol(repo, "greet.py", "nonexistent_symbol")
+    assert "not found" in result
+    assert "nonexistent_symbol" in result
+    assert "hello" in result
+    assert "Greeter" in result
+    assert "bye" in result
+
+
+def test_read_symbol_unrecognized_extension_lists_no_symbols(tmp_path):
+    repo = _sample_repo(tmp_path)
+    result = read_symbol(repo, "notes.md", "anything")
+    assert "not found" in result
+    assert "no known top-level symbols" in result
+
+
+def test_read_symbol_git_failure_returns_not_found(tmp_path):
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    result = read_symbol(not_a_repo, "greet.py", "hello")
+    assert "not found" in result
+
+
+def test_create_index_mcp_server_carries_both_tools(tmp_path):
+    """VERIFY-AT-BUILD: builds a live McpSdkServerConfig and lists its registered tools
+    via the real ``mcp`` Server instance -- no mocked SDK internals."""
+    import asyncio
+
+    from mcp import types as mcp_types
+
+    repo = _symbol_repo(tmp_path)
+    server_config = create_index_mcp_server(repo)
+    server = server_config["instance"]
+    handler = server.request_handlers[mcp_types.ListToolsRequest]
+    result = asyncio.run(handler(None))
+
+    names = {t.name for t in result.root.tools}
+    assert names == {"search_code", "read_symbol"}
