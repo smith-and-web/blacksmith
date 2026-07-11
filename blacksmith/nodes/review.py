@@ -50,6 +50,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from pathlib import Path
 from typing import Any
 
 from blacksmith.config import IndexConfig
@@ -105,7 +106,6 @@ def review(
         return {"errors": [{"node": "review", "message": "missing prd/selected_unit"}]}
 
     implementation = state.get("implementation") or {}
-    system_prompt = _system_prompt(prd.contract)
     panel_size = state.get("review_panel_size") or 1
     emphases = _panel_emphases(panel_size)
     worktree_path = state.get("worktree_path")
@@ -114,6 +114,9 @@ def review(
     # implementer's index tool wiring -- only an explicitly enabled IndexConfig grants it,
     # and it never adds a write/edit/shell tool to the reviewer's surface.
     index_enabled = bool(index_config is not None and index_config.enabled)
+    system_prompt = _system_prompt(
+        prd.contract, index_enabled=index_enabled, worktree_path=worktree_path
+    )
     allowed_tools = list(_REVIEW_READ_ONLY)
     mcp_servers: dict = {}
     if index_enabled:
@@ -298,14 +301,44 @@ def _review_prompt(
     return prompt
 
 
-def _system_prompt(contract: PRDContract) -> str:
-    untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
-    return (
+def _system_prompt(
+    contract: PRDContract,
+    *,
+    index_enabled: bool = False,
+    worktree_path: str | Path | None = None,
+) -> str:
+    prompt = (
         f"You are blacksmith's reviewer for the {contract.component} project "
         f"({contract.primary_target_repo}). A unit's implementation has ALREADY PASSED the "
         "automated test gate; you are a stronger-model adversarial second look for BLOCKING "
         "correctness or regression bugs the tests missed — never style, which is the "
         "linter's job. You have READ-ONLY tools and cannot change anything.\n\n"
         "CONSTITUTION — these are inviolable; a change that touches them without explicit "
-        f"human sign-off is itself a blocking finding:\n{untouchables}"
+        "human sign-off is itself a blocking finding:\n"
+        + "\n".join(f"- {item}" for item in contract.untouchables)
     )
+    # Index guidance (parity with the implement/plan tiers): the reviewer was granted the
+    # index TOOLS by WU-REVIEW-INDEX but never the instructions, and the observed result
+    # was full-file Reads and zero/low index use. Same additive gating as the tool wiring:
+    # with the index disabled this prompt is byte-for-byte unchanged.
+    if index_enabled:
+        prompt += (
+            "\n\nUSE THE INDEX FIRST. You have two read-only index tools: `search_code` to "
+            "find where something is defined or mentioned in ONE call (query is "
+            "space-separated terms matched with OR semantics, case-insensitive, and matched "
+            "literally — not as a regex; pass `path` to scope the search to one file, glob, "
+            "or directory), and `read_symbol` to fetch the source of one named top-level "
+            "function/class. Prefer them over Read/Glob/Grep — reach for Read only when the "
+            "index cannot answer your question, and read a slice (offset/limit), not the "
+            "whole file, when you do."
+        )
+        if worktree_path:
+            worktree_abs = str(Path(worktree_path).resolve())
+            prompt += (
+                f"\n\nThis worktree's absolute path is: {worktree_abs}\n"
+                "Every Read tool call MUST use an absolute path under that worktree path — "
+                "never a relative path, and never a guessed root like /repo or another "
+                "user's home directory. Guessed paths have been observed to waste turns "
+                "failing."
+            )
+    return prompt
