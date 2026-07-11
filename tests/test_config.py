@@ -206,6 +206,51 @@ def test_index_section_defaults():
     assert index.max_map_bytes == 65536
     assert isinstance(index.max_map_bytes, int)
     assert index.exclude == []
+    assert index.graph_rank is False
+
+
+def test_index_graph_rank_defaults_false_when_index_omitted():
+    # WU-GRAPH-RANK-CONFIG: [index].graph_rank is a NEW additive sub-flag, off by
+    # default even when [index] is omitted entirely.
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.index.graph_rank is False
+
+
+def test_index_graph_rank_defaults_false_when_only_enabled_is_set(tmp_path):
+    # Backward compatible: existing configs with [index].enabled=true and no
+    # graph_rank key still load with graph_rank=false.
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[index]\n"
+        "enabled = true\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.index.enabled is True
+    assert cfg.index.graph_rank is False
+
+
+def test_index_graph_rank_true_round_trips(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[index]\n"
+        "enabled = true\n"
+        "graph_rank = true\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.index.graph_rank is True
+
+
+def test_index_graph_rank_rejects_non_bool():
+    with pytest.raises(ValidationError):
+        IndexConfig(graph_rank=["true"])
+    with pytest.raises(ValidationError):
+        IndexConfig(graph_rank="sometimes")
 
 
 def test_index_max_map_bytes_rejects_non_positive():

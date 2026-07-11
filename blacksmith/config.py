@@ -268,11 +268,18 @@ class IndexConfig(_Strict):
       ceiling is exceeded; see ``blacksmith.index.build_repo_map``.
     * ``exclude`` — extra path globs to omit from the map/search, on top of whatever
       ``git ls-files`` already excludes. Empty by default.
+    * ``graph_rank`` — additive sub-flag (WU-GRAPH-RANK-CONFIG) for a future PageRank-style
+      importance ordering of the repo map, layered on top of ``[index]``. OFF by default
+      (``False``): with ``graph_rank=false`` — including every existing config with
+      ``enabled=true`` — ``build_repo_map``'s output is byte-for-byte identical to today's
+      ``index._map_priority`` drop order. This unit only adds the config surface; no
+      graph/ranking behaviour changes here.
     """
 
     enabled: bool = False
     max_map_bytes: int = Field(default=65536, gt=0)
     exclude: list[str] = Field(default_factory=list)
+    graph_rank: bool = False
 
 
 class RespondConfig(_Strict):
@@ -376,6 +383,15 @@ class BlacksmithConfig(_Strict):
                 "or .env file."
             )
         return key
+
+    def resolve_graph_rank(self) -> bool:
+        """Return whether graph-based ranking is enabled for the repo map.
+
+        Additive sub-flag (WU-GRAPH-RANK-CONFIG) layered on ``[index]``, OFF by default.
+        This unit adds only the config surface; ranking/graph behaviour is wired by a
+        later unit, which will consult this resolver rather than the raw field.
+        """
+        return self.index.graph_rank
 
     def resolve_repo_path(self, start: str | Path | None = None) -> Path:
         """Return the effective target repo path (WU-INSTALL).

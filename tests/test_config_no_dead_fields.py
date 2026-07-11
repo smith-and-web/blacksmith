@@ -31,6 +31,7 @@ _RESOLVER_CONSUMED = {
     "key_env_var": "resolve_api_key",
     "admin_key_env_var": "resolve_admin_key",
     "repo_path": "resolve_repo_path",
+    "graph_rank": "resolve_graph_rank",
 }
 
 
