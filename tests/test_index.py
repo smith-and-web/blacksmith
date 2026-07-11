@@ -12,6 +12,7 @@ from blacksmith.index import (
     build_reference_graph,
     build_repo_map,
     create_index_mcp_server,
+    extract_python_structure,
     format_search_results,
     rank_files,
     read_symbol,
@@ -779,3 +780,97 @@ def test_build_reference_graph_git_failure_returns_empty_dict(tmp_path):
 
 def test_rank_files_empty_graph_returns_empty_dict():
     assert rank_files({}) == {}
+
+
+# --- Python AST structure extraction (WU-AST-EXTRACT) -------------------------------
+
+
+def _committed_content(tmp_path: Path, filename: str, content: str) -> str:
+    """Write ``content`` to ``filename`` in a real, freshly-init'd+committed git repo,
+    then read it back off disk -- so the string handed to ``extract_python_structure``
+    genuinely came from a tracked file in a temp git repo, per this unit's test
+    contract, even though the function itself takes a plain string and does no I/O."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / filename).write_text(content)
+    _commit_all(repo)
+    return (repo / filename).read_text()
+
+
+def test_extract_python_structure_top_level_function_class_and_method(tmp_path):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "def top_level():\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "class Widget:\n"
+        "    def spin(self):\n"
+        "        pass\n",
+    )
+
+    entries = extract_python_structure(content)
+
+    by_name = {entry["name"]: entry for entry in entries}
+    assert set(by_name) == {"top_level", "Widget", "spin"}
+
+    assert by_name["top_level"]["kind"] == "function"
+    assert by_name["top_level"]["line"] == 1
+
+    assert by_name["Widget"]["kind"] == "class"
+    assert by_name["Widget"]["line"] == 5
+
+    assert by_name["spin"]["kind"] == "method"
+    assert by_name["spin"]["line"] == 6
+
+
+def test_extract_python_structure_method_carries_class_top_level_function_does_not(
+    tmp_path,
+):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "class Widget:\n    def spin(self):\n        pass\n\n\ndef top_level():\n    pass\n",
+    )
+
+    entries = extract_python_structure(content)
+    by_name = {entry["name"]: entry for entry in entries}
+
+    assert by_name["spin"]["class"] == "Widget"
+    assert by_name["top_level"]["class"] is None
+
+
+def test_extract_python_structure_async_method_is_kind_method(tmp_path):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "class Widget:\n    async def spin(self):\n        pass\n",
+    )
+
+    entries = extract_python_structure(content)
+    by_name = {entry["name"]: entry for entry in entries}
+
+    assert by_name["spin"]["kind"] == "method"
+    assert by_name["spin"]["class"] == "Widget"
+
+
+def test_extract_python_structure_decorated_method_is_captured(tmp_path):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "class Widget:\n    @property\n    def spin(self):\n        pass\n",
+    )
+
+    entries = extract_python_structure(content)
+    by_name = {entry["name"]: entry for entry in entries}
+
+    assert by_name["spin"]["kind"] == "method"
+    assert by_name["spin"]["class"] == "Widget"
+    assert by_name["spin"]["line"] == 3
+    assert by_name["spin"]["end_line"] == 4
+
+
+def test_extract_python_structure_syntax_error_yields_empty_list(tmp_path):
+    content = _committed_content(tmp_path, "broken.py", "def not_valid(:\n    pass\n")
+
+    assert extract_python_structure(content) == []

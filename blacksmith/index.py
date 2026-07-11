@@ -21,6 +21,7 @@ Both public functions are:
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import re
 import subprocess
@@ -830,3 +831,63 @@ def create_index_mcp_server(
             make_read_symbol_tool(repo_path),
         ],
     )
+
+
+# --- Python AST structure extraction (WU-AST-EXTRACT) -------------------------------
+#
+# Pure and additive: this function is a plain library addition, not wired into
+# build_repo_map/search_code/read_symbol above or into any node/tool/prompt -- a later
+# unit does that wiring, if it happens at all. Unlike the regex-based
+# ``_extract_symbols`` (which stays language-agnostic and only sees top-level, unindented
+# declarations), this uses the stdlib ``ast`` module to walk a *parsed* Python module, so
+# it can also see methods nested one level inside a class body. Still Python-only, still
+# stdlib-only (no tree-sitter): out of scope for every other language.
+
+
+def extract_python_structure(content: str) -> list[dict]:
+    """Extract module-level classes/functions and their methods from Python ``content``.
+
+    Returns one dict per module-level class, per method defined directly in a class
+    body (``def``/``async def``, decorated or not), and per module-level function
+    (``def``/``async def``). Each dict has:
+
+    * ``kind`` -- ``"class"``, ``"method"``, or ``"function"``.
+    * ``name`` -- the identifier.
+    * ``class`` -- the enclosing class's name for a method, else ``None``.
+    * ``signature`` -- the class/def source line, stripped.
+    * ``line`` -- 1-indexed line the ``class``/``def`` statement starts on.
+    * ``end_line`` -- the ``ast`` ``end_lineno`` of the definition.
+
+    Pure and read-only: operates only on the ``content`` string passed in, no I/O.
+    Best-effort: content that fails to parse (``SyntaxError``) yields ``[]`` rather
+    than raising.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return []
+
+    lines = content.splitlines()
+
+    def _entry(node: ast.AST, kind: str, class_name: str | None) -> dict:
+        line_no = node.lineno
+        signature = lines[line_no - 1].strip() if 0 < line_no <= len(lines) else ""
+        return {
+            "kind": kind,
+            "name": node.name,
+            "class": class_name,
+            "signature": signature,
+            "line": line_no,
+            "end_line": node.end_lineno,
+        }
+
+    entries: list[dict] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            entries.append(_entry(node, "function", None))
+        elif isinstance(node, ast.ClassDef):
+            entries.append(_entry(node, "class", None))
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    entries.append(_entry(child, "method", node.name))
+    return entries
