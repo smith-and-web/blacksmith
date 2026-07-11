@@ -527,7 +527,10 @@ def _build_repo_map(worktree_path: str | Path, index_config: IndexConfig | None)
         return None
     return (
         build_repo_map(
-            worktree_path, max_bytes=index_config.max_map_bytes, exclude=index_config.exclude
+            worktree_path,
+            max_bytes=index_config.max_map_bytes,
+            exclude=index_config.exclude,
+            rank_by_graph=index_config.graph_rank,
         )
         or None
     )

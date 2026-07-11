@@ -818,3 +818,72 @@ def test_build_repo_map_enabled_bounded_by_max_map_bytes(tmp_path):
     assert "helper.py" in result
     assert "known_symbol" not in result
     assert "symbols omitted" in result
+
+
+# --- graph_rank forwarding (WU-RANK-WIRE) -------------------------------------
+
+
+def test_implement_forwards_graph_rank_true_to_build_repo_map(tmp_path, monkeypatch):
+    import blacksmith.nodes.implement as implement_module
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    calls: list[dict] = []
+    real_build_repo_map = implement_module.build_repo_map
+
+    def spy_build_repo_map(*args, **kwargs):
+        calls.append(kwargs)
+        return real_build_repo_map(*args, **kwargs)
+
+    monkeypatch.setattr(implement_module, "build_repo_map", spy_build_repo_map)
+
+    implement_module._build_repo_map(str(wt.path), IndexConfig(enabled=True, graph_rank=True))
+
+    assert len(calls) == 1
+    assert calls[0]["rank_by_graph"] is True
+
+
+def test_implement_forwards_graph_rank_false_by_default(tmp_path, monkeypatch):
+    import blacksmith.nodes.implement as implement_module
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    calls: list[dict] = []
+    real_build_repo_map = implement_module.build_repo_map
+
+    def spy_build_repo_map(*args, **kwargs):
+        calls.append(kwargs)
+        return real_build_repo_map(*args, **kwargs)
+
+    monkeypatch.setattr(implement_module, "build_repo_map", spy_build_repo_map)
+
+    implement_module._build_repo_map(str(wt.path), IndexConfig(enabled=True))
+
+    assert len(calls) == 1
+    assert calls[0]["rank_by_graph"] is False
+
+
+def test_implement_no_map_built_when_index_disabled_regardless_of_graph_rank(
+    tmp_path, monkeypatch
+):
+    import blacksmith.nodes.implement as implement_module
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    calls: list[dict] = []
+
+    def spy_build_repo_map(*args, **kwargs):
+        calls.append(kwargs)
+        raise AssertionError("build_repo_map must not be called when index is disabled")
+
+    monkeypatch.setattr(implement_module, "build_repo_map", spy_build_repo_map)
+
+    result = implement_module._build_repo_map(
+        str(wt.path), IndexConfig(enabled=False, graph_rank=True)
+    )
+
+    assert result is None
+    assert calls == []

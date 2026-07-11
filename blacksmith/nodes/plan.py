@@ -270,7 +270,10 @@ def _build_repo_map(
         return None
     return (
         build_repo_map(
-            repo_path, max_bytes=index_config.max_map_bytes, exclude=index_config.exclude
+            repo_path,
+            max_bytes=index_config.max_map_bytes,
+            exclude=index_config.exclude,
+            rank_by_graph=index_config.graph_rank,
         )
         or None
     )

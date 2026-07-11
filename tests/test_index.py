@@ -9,9 +9,11 @@ from pathlib import Path
 
 from blacksmith.index import (
     READ_SYMBOL_MAX_LINES,
+    build_reference_graph,
     build_repo_map,
     create_index_mcp_server,
     format_search_results,
+    rank_files,
     read_symbol,
     search_code,
 )
@@ -159,6 +161,141 @@ def test_build_repo_map_tiny_budget_still_lists_every_path(tmp_path):
     assert "priority_two" not in repo_map
     assert "priority_three" not in repo_map
     assert repo_map.endswith("\n…(3 files' symbols omitted)…")
+
+
+# --- graph-ranked drop order (WU-RANKED-MAP) --------------------------------------
+
+
+def _graph_rank_repo(tmp_path: Path) -> Path:
+    """Three files, all outside ``tests/``/``docs/`` (identical directory priority):
+
+    * ``hub.py``  -- defines ``hh``, referenced by ``user.py``; the most-central file
+      in the reference graph.
+    * ``user.py`` -- references ``hub.py``'s symbol; not referenced by anyone. Carries
+      three symbols so dropping it frees a large, unambiguous chunk of the budget.
+    * ``leaf.py`` -- three symbols nobody references, and it references nothing
+      itself; the most peripheral file in the graph.
+
+    Since all three share the same directory-heuristic priority, the *only* way to
+    tell ``hub.py`` apart from ``leaf.py``/``user.py`` for drop-order purposes is
+    graph centrality.
+    """
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "hub.py").write_text("def hh():\n    pass\n")
+    (repo / "user.py").write_text(
+        "def u1():\n    return hh()\n\n\ndef u2():\n    pass\n\n\ndef u3():\n    pass\n"
+    )
+    (repo / "leaf.py").write_text(
+        "def l1():\n    pass\n\n\ndef l2():\n    pass\n\n\ndef l3():\n    pass\n"
+    )
+    _commit_all(repo)
+    return repo
+
+
+def test_build_repo_map_rank_by_graph_default_false_is_byte_for_byte_unchanged(tmp_path):
+    repo = _priority_repo(tmp_path)
+    partial = (
+        "docs/config.py\n"
+        "notes.md\n"
+        "pkg/core.py\n"
+        "  def priority_one():\n"
+        "tests/test_thing.py"
+    )
+    max_bytes = len(partial.encode("utf-8")) + 80
+
+    default_map = build_repo_map(repo, max_bytes=max_bytes)
+    explicit_false_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=False)
+
+    # Regression guard: the new keyword-only parameter changes nothing about today's
+    # directory-heuristic drop order when it's left at its default (or set explicitly
+    # to False) -- byte-for-byte identical output.
+    assert explicit_false_map == default_map
+    assert "priority_one" in default_map
+    assert "priority_two" not in default_map
+    assert "priority_three" not in default_map
+
+
+def test_build_repo_map_rank_by_graph_retains_central_file_drops_peripheral_leaf(
+    tmp_path,
+):
+    repo = _graph_rank_repo(tmp_path)
+    # Tight enough to force dropping symbol blocks, generous enough that only the two
+    # least-central files' blocks need to go, leaving hub.py's kept.
+    max_bytes = 78
+
+    heuristic_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=False)
+    ranked_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=True)
+
+    # Every tracked file's path is still listed, even the ones whose symbols were cut.
+    for path in ("hub.py", "leaf.py", "user.py"):
+        assert path in ranked_map
+
+    # Graph-ranked: the highly-referenced hub is retained, the peripheral leaf is not.
+    assert "def hh" in ranked_map
+    assert "def l1" not in ranked_map
+    assert "symbols omitted" in ranked_map
+
+    # Distinguishable from the directory heuristic: since all three files share the
+    # same directory priority, the heuristic's tie-break (declaration order) drops
+    # hub.py's symbols too at this same budget -- graph ranking alone saves it.
+    assert "def hh" not in heuristic_map
+
+
+def test_build_repo_map_rank_by_graph_under_budget_matches_default(tmp_path):
+    repo = _sample_repo(tmp_path)
+    without_rank = build_repo_map(repo, max_bytes=100_000)
+    with_rank = build_repo_map(repo, max_bytes=100_000, rank_by_graph=True)
+    assert with_rank == without_rank
+    assert "symbols omitted" not in with_rank
+
+
+def test_build_repo_map_rank_by_graph_falls_back_when_graph_build_raises(
+    tmp_path, monkeypatch
+):
+    import blacksmith.index as index_mod
+
+    repo = _priority_repo(tmp_path)
+    partial = (
+        "docs/config.py\n"
+        "notes.md\n"
+        "pkg/core.py\n"
+        "  def priority_one():\n"
+        "tests/test_thing.py"
+    )
+    max_bytes = len(partial.encode("utf-8")) + 80
+
+    heuristic_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=False)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("graph build blew up")
+
+    monkeypatch.setattr(index_mod, "build_reference_graph", _boom)
+
+    fallback_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=True)
+
+    assert fallback_map == heuristic_map
+
+
+def test_build_repo_map_rank_by_graph_falls_back_when_graph_is_empty(tmp_path, monkeypatch):
+    import blacksmith.index as index_mod
+
+    repo = _priority_repo(tmp_path)
+    partial = (
+        "docs/config.py\n"
+        "notes.md\n"
+        "pkg/core.py\n"
+        "  def priority_one():\n"
+        "tests/test_thing.py"
+    )
+    max_bytes = len(partial.encode("utf-8")) + 80
+
+    heuristic_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=False)
+
+    monkeypatch.setattr(index_mod, "build_reference_graph", lambda *a, **k: {})
+
+    fallback_map = build_repo_map(repo, max_bytes=max_bytes, rank_by_graph=True)
+
+    assert fallback_map == heuristic_map
 
 
 def test_search_code_ranks_symbol_definition_above_text_mention(tmp_path):
@@ -569,3 +706,76 @@ def test_create_index_mcp_server_carries_both_tools(tmp_path):
 
     names = {t.name for t in result.root.tools}
     assert names == {"search_code", "read_symbol"}
+
+
+# --- reference graph + PageRank (WU-DEP-GRAPH) ------------------------------------
+
+
+def test_build_reference_graph_symbol_usage_creates_edge_without_self_edge(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "a.py").write_text("def shared_helper():\n    pass\n")
+    (repo / "b.py").write_text(
+        "from a import shared_helper\n"
+        "\n"
+        "def use_it():\n"
+        "    return shared_helper()\n"
+    )
+    (repo / "c.py").write_text("def recursive():\n    return recursive()\n")
+    _commit_all(repo)
+
+    graph = build_reference_graph(repo)
+
+    # b.py mentions a.py's symbol -> edge b.py -> a.py.
+    assert graph["b.py"] == {"a.py"}
+    # a.py never mentions anything b.py defines.
+    assert "b.py" not in graph["a.py"]
+    # c.py calls its own symbol recursively -- never a self-edge, even so.
+    assert graph["c.py"] == set()
+    assert graph["a.py"] == set()
+
+
+def test_rank_files_referenced_by_several_outranks_unreferenced_leaf(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "hub.py").write_text("def utility():\n    pass\n")
+    (repo / "leaf.py").write_text("def lonely():\n    pass\n")
+    (repo / "user_a.py").write_text(
+        "from hub import utility\n\ndef call_a():\n    return utility()\n"
+    )
+    (repo / "user_b.py").write_text(
+        "from hub import utility\n\ndef call_b():\n    return utility()\n"
+    )
+    _commit_all(repo)
+
+    graph = build_reference_graph(repo)
+    ranks = rank_files(graph)
+
+    assert ranks["hub.py"] > ranks["leaf.py"]
+
+
+def test_rank_files_is_deterministic_across_repeated_calls(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "hub.py").write_text("def utility():\n    pass\n")
+    (repo / "user.py").write_text(
+        "from hub import utility\n\ndef call():\n    return utility()\n"
+    )
+    _commit_all(repo)
+
+    graph = build_reference_graph(repo)
+
+    assert rank_files(graph) == rank_files(graph)
+
+
+def test_build_reference_graph_empty_repo_returns_empty_dict(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    # git init only -- nothing committed, so there are no tracked files at all.
+    assert build_reference_graph(repo) == {}
+
+
+def test_build_reference_graph_git_failure_returns_empty_dict(tmp_path):
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    assert build_reference_graph(not_a_repo) == {}
+
+
+def test_rank_files_empty_graph_returns_empty_dict():
+    assert rank_files({}) == {}

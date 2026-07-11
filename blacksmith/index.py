@@ -95,7 +95,13 @@ _FAMILY_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
 }
 
 
-def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[str] = ()) -> str:
+def build_repo_map(
+    repo_path: str | Path,
+    *,
+    max_bytes: int,
+    exclude: Iterable[str] = (),
+    rank_by_graph: bool = False,
+) -> str:
     """Build a compact outline of the repo: tracked files + their top-level symbols.
 
     Spends the ``max_bytes`` budget in priority order:
@@ -105,14 +111,23 @@ def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[s
     2. Remaining budget goes to symbol outlines (each file's top-level
        ``def``/``class``/``fn``/``struct``/etc. signatures, listed under its path).
        When the full outline doesn't fit, whole per-file symbol blocks are dropped --
-       never a mid-file byte cut -- lowest priority first: files outside ``tests/``
-       and ``docs/`` with a recognized extension are kept longest, then files under
-       ``tests/``, then everything else (docs/config and unrecognized extensions).
+       never a mid-file byte cut. By default (``rank_by_graph=False``) the drop order
+       is the directory heuristic: files outside ``tests/`` and ``docs/`` with a
+       recognized extension are kept longest, then files under ``tests/``, then
+       everything else (docs/config and unrecognized extensions) -- see
+       :func:`_map_priority`.
+
+       When ``rank_by_graph=True``, the drop order instead follows graph centrality
+       (:func:`build_reference_graph` + :func:`rank_files`, WU-DEP-GRAPH), ascending:
+       the least-central (least-referenced) files' symbols are dropped first, so the
+       byte budget is spent on the most-referenced files. Best-effort -- an empty or
+       unrankable graph falls back to the directory heuristic above rather than
+       raising.
 
     If any file's symbols were dropped, the map ends with an explicit marker naming
     how many files that happened to. A map that fits under budget untouched is
-    returned unchanged, with no marker. Read-only and best-effort: any git failure
-    yields ``""`` rather than raising.
+    returned unchanged, with no marker, regardless of ``rank_by_graph``. Read-only and
+    best-effort: any git failure yields ``""`` rather than raising.
     """
     repo_path = Path(repo_path)
     exclude = tuple(exclude)
@@ -152,12 +167,29 @@ def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[s
     if len(full.encode("utf-8")) <= max_bytes:
         return full
 
-    # Over budget: drop whole per-file symbol blocks, lowest priority first. Paths
-    # are never dropped or cut mid-file -- see the priority order in the docstring.
-    droppable = sorted(
-        (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
-        key=lambda i: (-entries[i]["priority"], i),
-    )
+    # Over budget: drop whole per-file symbol blocks. Paths are never dropped or cut
+    # mid-file -- see the priority order in the docstring.
+    ranks: dict[str, float] | None = None
+    if rank_by_graph:
+        try:
+            graph = build_reference_graph(repo_path, exclude=exclude)
+            computed = rank_files(graph) if graph else {}
+        except Exception:
+            computed = {}
+        ranks = computed or None
+
+    if ranks is not None:
+        # Ascending centrality: least-referenced files' symbols dropped first.
+        droppable = sorted(
+            (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
+            key=lambda i: (ranks.get(entries[i]["path"], 0.0), i),
+        )
+    else:
+        # Fallback / default: directory heuristic, lowest priority first.
+        droppable = sorted(
+            (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
+            key=lambda i: (-entries[i]["priority"], i),
+        )
     if not droppable:
         return full  # nothing droppable; paths alone already exceed max_bytes
 
@@ -522,6 +554,123 @@ def _git(repo_path: Path, *args: str) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout
+
+
+# --- reference graph + PageRank (WU-DEP-GRAPH) --------------------------------------
+#
+# Pure and additive: these two functions back build_repo_map's rank_by_graph=True path
+# above (WU-RANKED-MAP) -- OFF by default, since rank_by_graph itself defaults False
+# and the [index].graph_rank config sub-flag that drives it also defaults False.
+# Reuses the SAME stdlib symbol extraction (_extract_symbols) and git-backed file
+# enumeration (_list_files) already above -- no new parsing, no new git plumbing.
+# Read-only and best-effort throughout.
+
+_WORD_RE = re.compile(r"\w+")
+
+
+def build_reference_graph(
+    repo_path: str | Path, *, exclude: Iterable[str] = ()
+) -> dict[str, set[str]]:
+    """Build a file-level reference graph over tracked files with recognized extensions.
+
+    For each such file A, the returned set is every OTHER tracked (recognized) file B
+    such that A's content mentions, as a whole word, a top-level symbol name defined in
+    B. A file with no recognized symbols anywhere referencing it, or that references
+    nothing, maps to an empty set -- it is never omitted from the dict. There is never
+    a self-edge, even when a file uses a symbol it defines itself.
+
+    Read-only and best-effort: an absent repo, an empty tracked-file list, or a git
+    failure yields ``{}`` rather than raising.
+    """
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+    files = _list_files(repo_path, exclude)
+    if not files:
+        return {}
+
+    recognized_files = [f for f in files if _EXT_FAMILY.get(Path(f).suffix)]
+    if not recognized_files:
+        return {}
+
+    contents: dict[str, str] = {}
+    symbol_to_files: dict[str, set[str]] = {}
+    for rel_path in recognized_files:
+        content = _read_file(repo_path, rel_path)
+        contents[rel_path] = content or ""
+        if content is None:
+            continue
+        family = _EXT_FAMILY[Path(rel_path).suffix]
+        for symbol in _extract_symbols(content, family):
+            symbol_to_files.setdefault(symbol["name"], set()).add(rel_path)
+
+    words_by_file: dict[str, set[str]] = {
+        rel_path: set(_WORD_RE.findall(contents[rel_path])) for rel_path in recognized_files
+    }
+
+    graph: dict[str, set[str]] = {rel_path: set() for rel_path in recognized_files}
+    for a in recognized_files:
+        words_a = words_by_file[a]
+        if not words_a:
+            continue
+        for name, defining_files in symbol_to_files.items():
+            if name not in words_a:
+                continue
+            for b in defining_files:
+                if b != a:
+                    graph[a].add(b)
+
+    return graph
+
+
+_PAGERANK_DAMPING = 0.85
+_PAGERANK_MAX_ITERATIONS = 100
+_PAGERANK_TOLERANCE = 1e-10
+
+
+def rank_files(graph: dict[str, set[str]]) -> dict[str, float]:
+    """Score each node in ``graph`` by PageRank centrality, normalized to sum to 1.
+
+    A bounded, deterministic stdlib power-iteration -- fixed damping (0.85), a fixed
+    iteration cap, and an early-exit convergence tolerance -- over the plain
+    ``dict[str, set[str]]`` adjacency ``build_reference_graph`` returns. Dangling nodes
+    (no outgoing edges) redistribute their mass evenly across every node each
+    iteration, same as standard PageRank, so their score doesn't just vanish. NOT
+    networkx: a hand-rolled loop over stdlib dicts/sets, no third-party dependency.
+
+    Pure and read-only: performs no I/O, only operates on the graph structure given.
+    An empty graph yields ``{}`` rather than raising or dividing by zero.
+    """
+    nodes = list(graph.keys())
+    n = len(nodes)
+    if n == 0:
+        return {}
+
+    out_degree = {node: len(graph.get(node) or ()) for node in nodes}
+    predecessors: dict[str, list[str]] = {node: [] for node in nodes}
+    for a, targets in graph.items():
+        if a not in out_degree:
+            continue
+        for b in targets:
+            if b in predecessors:
+                predecessors[b].append(a)
+
+    scores = {node: 1.0 / n for node in nodes}
+    for _ in range(_PAGERANK_MAX_ITERATIONS):
+        dangling_mass = sum(scores[node] for node in nodes if out_degree[node] == 0)
+        base = (1.0 - _PAGERANK_DAMPING) / n + _PAGERANK_DAMPING * dangling_mass / n
+        new_scores: dict[str, float] = {}
+        for node in nodes:
+            incoming = sum(scores[p] / out_degree[p] for p in predecessors[node])
+            new_scores[node] = base + _PAGERANK_DAMPING * incoming
+        delta = sum(abs(new_scores[node] - scores[node]) for node in nodes)
+        scores = new_scores
+        if delta < _PAGERANK_TOLERANCE:
+            break
+
+    total = sum(scores.values())
+    if total > 0:
+        scores = {node: value / total for node, value in scores.items()}
+    return scores
 
 
 # --- search_code tool (WU-SEARCH-TOOL) --------------------------------------------------
