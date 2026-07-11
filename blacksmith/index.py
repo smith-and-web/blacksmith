@@ -891,3 +891,148 @@ def extract_python_structure(content: str) -> list[dict]:
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     entries.append(_entry(child, "method", node.name))
     return entries
+
+
+def _iter_python_structure(
+    repo_path: Path, exclude: tuple[str, ...]
+) -> Iterable[tuple[str, dict]]:
+    """Yield ``(rel_path, entry)`` for every :func:`extract_python_structure` entry
+    across tracked ``.py`` files under ``repo_path``. Read-only and best-effort: a git
+    failure or absence of ``.py`` files simply yields nothing."""
+    for rel_path in _list_files(repo_path, exclude):
+        if Path(rel_path).suffix != ".py":
+            continue
+        content = _read_file(repo_path, rel_path)
+        if content is None:
+            continue
+        for entry in extract_python_structure(content):
+            yield rel_path, entry
+
+
+def _structural_result(rel_path: str, entry: dict) -> dict:
+    return {
+        "file": rel_path,
+        "line": entry["line"],
+        "kind": entry["kind"],
+        "name": entry["name"],
+        "class": entry["class"],
+        "signature": entry["signature"],
+    }
+
+
+def search_class(
+    repo_path: str | Path,
+    name: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+) -> list[dict]:
+    """Return class definitions across tracked ``.py`` files whose identifier equals
+    ``name`` case-insensitively -- an EXACT-identifier match, not the substring/grep
+    matching :func:`search_code` does. Results are deduped by ``(file, line)`` and
+    capped at ``limit``. Read-only and best-effort: a blank ``name``, a repo with no
+    ``.py`` files, or a git failure yields ``[]`` rather than raising.
+    """
+    name = (name or "").strip()
+    if not name:
+        return []
+    name_lower = name.lower()
+
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+
+    seen: set[tuple[str, int]] = set()
+    results: list[dict] = []
+    for rel_path, entry in _iter_python_structure(repo_path, exclude):
+        if entry["kind"] != "class" or entry["name"].lower() != name_lower:
+            continue
+        key = (rel_path, entry["line"])
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(_structural_result(rel_path, entry))
+        if len(results) >= limit:
+            break
+    return results
+
+
+def search_method(
+    repo_path: str | Path,
+    name: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+) -> list[dict]:
+    """Return methods AND top-level functions across tracked ``.py`` files whose
+    identifier equals ``name`` case-insensitively -- an EXACT-identifier match, not the
+    substring/grep matching :func:`search_code` does. Each result's ``class`` is the
+    enclosing class's name for a method, or ``None`` for a top-level function. Results
+    are deduped by ``(file, line)`` and capped at ``limit``. Read-only and best-effort:
+    a blank ``name``, a repo with no ``.py`` files, or a git failure yields ``[]``
+    rather than raising.
+    """
+    name = (name or "").strip()
+    if not name:
+        return []
+    name_lower = name.lower()
+
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+
+    seen: set[tuple[str, int]] = set()
+    results: list[dict] = []
+    for rel_path, entry in _iter_python_structure(repo_path, exclude):
+        if entry["kind"] not in ("method", "function"):
+            continue
+        if entry["name"].lower() != name_lower:
+            continue
+        key = (rel_path, entry["line"])
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(_structural_result(rel_path, entry))
+        if len(results) >= limit:
+            break
+    return results
+
+
+def search_method_in_class(
+    repo_path: str | Path,
+    class_name: str,
+    method_name: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+) -> list[dict]:
+    """Return methods named ``method_name`` (case-insensitively) defined within a class
+    named ``class_name`` (case-insensitively) across tracked ``.py`` files -- an
+    EXACT-identifier match on both names, not the substring/grep matching
+    :func:`search_code` does. Results are deduped by ``(file, line)`` and capped at
+    ``limit``. Read-only and best-effort: a blank ``class_name``/``method_name``, a
+    repo with no ``.py`` files, or a git failure yields ``[]`` rather than raising.
+    """
+    class_name = (class_name or "").strip()
+    method_name = (method_name or "").strip()
+    if not class_name or not method_name:
+        return []
+    class_name_lower = class_name.lower()
+    method_name_lower = method_name.lower()
+
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+
+    seen: set[tuple[str, int]] = set()
+    results: list[dict] = []
+    for rel_path, entry in _iter_python_structure(repo_path, exclude):
+        if entry["kind"] != "method" or entry["name"].lower() != method_name_lower:
+            continue
+        if (entry["class"] or "").lower() != class_name_lower:
+            continue
+        key = (rel_path, entry["line"])
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(_structural_result(rel_path, entry))
+        if len(results) >= limit:
+            break
+    return results

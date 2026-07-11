@@ -16,7 +16,10 @@ from blacksmith.index import (
     format_search_results,
     rank_files,
     read_symbol,
+    search_class,
     search_code,
+    search_method,
+    search_method_in_class,
 )
 
 
@@ -874,3 +877,125 @@ def test_extract_python_structure_syntax_error_yields_empty_list(tmp_path):
     content = _committed_content(tmp_path, "broken.py", "def not_valid(:\n    pass\n")
 
     assert extract_python_structure(content) == []
+
+
+# --- structural search: search_class / search_method / search_method_in_class ------
+# (WU-STRUCT-SEARCH)
+
+
+def _structural_repo(tmp_path: Path) -> Path:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "widget.py").write_text(
+        "class Widget:\n"
+        "    def spin(self):\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class SubWidget:\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "class WidgetExtra:\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "def run():\n"
+        "    pass\n"
+    )
+    (repo / "foo.py").write_text(
+        "class Foo:\n"
+        "    def run(self):\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Bar:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
+    (repo / "notes.md").write_text("# Widget\n\nrun the Widget through its paces.\n")
+    _commit_all(repo)
+    return repo
+
+
+def test_search_class_finds_exact_name_case_insensitively_not_substrings(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    results = search_class(repo, "widget")
+
+    assert len(results) == 1
+    hit = results[0]
+    assert hit["file"] == "widget.py"
+    assert hit["name"] == "Widget"
+    assert hit["kind"] == "class"
+    assert hit["class"] is None
+    assert hit["line"] == 1
+
+
+def test_search_class_no_match_returns_empty_list(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    assert search_class(repo, "NoSuchClass") == []
+
+
+def test_search_method_finds_method_and_same_named_top_level_function(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    results = search_method(repo, "run")
+
+    by_class = {(r["file"], r["class"]): r for r in results}
+    assert ("widget.py", None) in by_class
+    assert by_class[("widget.py", None)]["kind"] == "function"
+
+    assert ("foo.py", "Foo") in by_class
+    assert by_class[("foo.py", "Foo")]["kind"] == "method"
+
+    assert ("foo.py", "Bar") in by_class
+    assert by_class[("foo.py", "Bar")]["kind"] == "method"
+
+
+def test_search_method_in_class_returns_only_matching_class_method(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    results = search_method_in_class(repo, "foo", "RUN")
+
+    assert len(results) == 1
+    hit = results[0]
+    assert hit["file"] == "foo.py"
+    assert hit["class"] == "Foo"
+    assert hit["name"] == "run"
+    assert hit["kind"] == "method"
+
+
+def test_search_method_in_class_no_match_returns_empty_list(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    assert search_method_in_class(repo, "Foo", "no_such_method") == []
+    assert search_method_in_class(repo, "NoSuchClass", "run") == []
+
+
+def test_structural_search_blank_query_returns_empty_list(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    assert search_class(repo, "") == []
+    assert search_method(repo, "   ") == []
+    assert search_method_in_class(repo, "", "run") == []
+    assert search_method_in_class(repo, "Foo", "") == []
+
+
+def test_structural_search_no_python_files_returns_empty_list(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "notes.md").write_text("# Widget\n\nclass Widget lives here in prose only.\n")
+    _commit_all(repo)
+
+    assert search_class(repo, "Widget") == []
+    assert search_method(repo, "run") == []
+    assert search_method_in_class(repo, "Widget", "run") == []
+
+
+def test_structural_search_git_failure_returns_empty_list(tmp_path):
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+
+    assert search_class(not_a_repo, "Widget") == []
+    assert search_method(not_a_repo, "run") == []
+    assert search_method_in_class(not_a_repo, "Widget", "run") == []
