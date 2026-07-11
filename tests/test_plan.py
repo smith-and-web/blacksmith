@@ -268,6 +268,81 @@ def test_plan_node_builds_repo_map_once_not_per_unit(tmp_path, monkeypatch):
     assert len(calls) == 1  # the repo map itself is built exactly once, not once per unit
 
 
+# --- graph_rank forwarding (WU-RANK-WIRE) -------------------------------------
+
+
+def test_plan_node_forwards_graph_rank_true_to_build_repo_map(tmp_path, monkeypatch):
+    import blacksmith.nodes.plan as plan_module
+
+    repo = _init_target_repo(tmp_path)
+    calls: list[dict] = []
+    real_build_repo_map = plan_module.build_repo_map
+
+    def spy_build_repo_map(*args, **kwargs):
+        calls.append(kwargs)
+        return real_build_repo_map(*args, **kwargs)
+
+    monkeypatch.setattr(plan_module, "build_repo_map", spy_build_repo_map)
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=FakeExecutor(),
+        index_config=IndexConfig(enabled=True, graph_rank=True),
+        repo_path=str(repo),
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["rank_by_graph"] is True
+
+
+def test_plan_node_forwards_graph_rank_false_by_default(tmp_path, monkeypatch):
+    import blacksmith.nodes.plan as plan_module
+
+    repo = _init_target_repo(tmp_path)
+    calls: list[dict] = []
+    real_build_repo_map = plan_module.build_repo_map
+
+    def spy_build_repo_map(*args, **kwargs):
+        calls.append(kwargs)
+        return real_build_repo_map(*args, **kwargs)
+
+    monkeypatch.setattr(plan_module, "build_repo_map", spy_build_repo_map)
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=FakeExecutor(),
+        index_config=IndexConfig(enabled=True),
+        repo_path=str(repo),
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["rank_by_graph"] is False
+
+
+def test_plan_node_no_map_built_when_index_disabled_regardless_of_graph_rank(
+    tmp_path, monkeypatch
+):
+    import blacksmith.nodes.plan as plan_module
+
+    repo = _init_target_repo(tmp_path)
+    calls: list[dict] = []
+
+    def spy_build_repo_map(*args, **kwargs):
+        calls.append(kwargs)
+        raise AssertionError("build_repo_map must not be called when index is disabled")
+
+    monkeypatch.setattr(plan_module, "build_repo_map", spy_build_repo_map)
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=FakeExecutor(),
+        index_config=IndexConfig(enabled=False, graph_rank=True),
+        repo_path=str(repo),
+    )
+
+    assert calls == []
+
+
 # --- search_code tool grant (WU-PLAN-SEARCH-TOOL) -----------------------------
 
 
