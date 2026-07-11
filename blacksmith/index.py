@@ -95,7 +95,13 @@ _FAMILY_PATTERNS: dict[str, list[tuple[str, re.Pattern[str]]]] = {
 }
 
 
-def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[str] = ()) -> str:
+def build_repo_map(
+    repo_path: str | Path,
+    *,
+    max_bytes: int,
+    exclude: Iterable[str] = (),
+    rank_by_graph: bool = False,
+) -> str:
     """Build a compact outline of the repo: tracked files + their top-level symbols.
 
     Spends the ``max_bytes`` budget in priority order:
@@ -105,14 +111,23 @@ def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[s
     2. Remaining budget goes to symbol outlines (each file's top-level
        ``def``/``class``/``fn``/``struct``/etc. signatures, listed under its path).
        When the full outline doesn't fit, whole per-file symbol blocks are dropped --
-       never a mid-file byte cut -- lowest priority first: files outside ``tests/``
-       and ``docs/`` with a recognized extension are kept longest, then files under
-       ``tests/``, then everything else (docs/config and unrecognized extensions).
+       never a mid-file byte cut. By default (``rank_by_graph=False``) the drop order
+       is the directory heuristic: files outside ``tests/`` and ``docs/`` with a
+       recognized extension are kept longest, then files under ``tests/``, then
+       everything else (docs/config and unrecognized extensions) -- see
+       :func:`_map_priority`.
+
+       When ``rank_by_graph=True``, the drop order instead follows graph centrality
+       (:func:`build_reference_graph` + :func:`rank_files`, WU-DEP-GRAPH), ascending:
+       the least-central (least-referenced) files' symbols are dropped first, so the
+       byte budget is spent on the most-referenced files. Best-effort -- an empty or
+       unrankable graph falls back to the directory heuristic above rather than
+       raising.
 
     If any file's symbols were dropped, the map ends with an explicit marker naming
     how many files that happened to. A map that fits under budget untouched is
-    returned unchanged, with no marker. Read-only and best-effort: any git failure
-    yields ``""`` rather than raising.
+    returned unchanged, with no marker, regardless of ``rank_by_graph``. Read-only and
+    best-effort: any git failure yields ``""`` rather than raising.
     """
     repo_path = Path(repo_path)
     exclude = tuple(exclude)
@@ -152,12 +167,29 @@ def build_repo_map(repo_path: str | Path, *, max_bytes: int, exclude: Iterable[s
     if len(full.encode("utf-8")) <= max_bytes:
         return full
 
-    # Over budget: drop whole per-file symbol blocks, lowest priority first. Paths
-    # are never dropped or cut mid-file -- see the priority order in the docstring.
-    droppable = sorted(
-        (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
-        key=lambda i: (-entries[i]["priority"], i),
-    )
+    # Over budget: drop whole per-file symbol blocks. Paths are never dropped or cut
+    # mid-file -- see the priority order in the docstring.
+    ranks: dict[str, float] | None = None
+    if rank_by_graph:
+        try:
+            graph = build_reference_graph(repo_path, exclude=exclude)
+            computed = rank_files(graph) if graph else {}
+        except Exception:
+            computed = {}
+        ranks = computed or None
+
+    if ranks is not None:
+        # Ascending centrality: least-referenced files' symbols dropped first.
+        droppable = sorted(
+            (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
+            key=lambda i: (ranks.get(entries[i]["path"], 0.0), i),
+        )
+    else:
+        # Fallback / default: directory heuristic, lowest priority first.
+        droppable = sorted(
+            (i for i, entry in enumerate(entries) if entry["symbol_lines"]),
+            key=lambda i: (-entries[i]["priority"], i),
+        )
     if not droppable:
         return full  # nothing droppable; paths alone already exceed max_bytes
 
@@ -489,11 +521,12 @@ def _git(repo_path: Path, *args: str) -> str | None:
 
 # --- reference graph + PageRank (WU-DEP-GRAPH) --------------------------------------
 #
-# Pure, additive, OFF by default: these two functions are not wired into
-# build_repo_map or any node in this unit -- a later unit does that behind the
-# [index].graph_rank sub-flag. Reuses the SAME stdlib symbol extraction
-# (_extract_symbols) and git-backed file enumeration (_list_files) already above --
-# no new parsing, no new git plumbing. Read-only and best-effort throughout.
+# Pure and additive: these two functions back build_repo_map's rank_by_graph=True path
+# above (WU-RANKED-MAP) -- OFF by default, since rank_by_graph itself defaults False
+# and the [index].graph_rank config sub-flag that drives it also defaults False.
+# Reuses the SAME stdlib symbol extraction (_extract_symbols) and git-backed file
+# enumeration (_list_files) already above -- no new parsing, no new git plumbing.
+# Read-only and best-effort throughout.
 
 _WORD_RE = re.compile(r"\w+")
 
