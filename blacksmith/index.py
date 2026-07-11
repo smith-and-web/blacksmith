@@ -200,9 +200,20 @@ def _omitted_symbols_marker(count: int) -> str:
 
 
 def search_code(
-    repo_path: str | Path, query: str, *, limit: int = 20, exclude: Iterable[str] = ()
+    repo_path: str | Path,
+    query: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+    path: str | None = None,
 ) -> list[dict]:
     """Rank search results for ``query`` across the repo's tracked files.
+
+    ``path`` (optional) scopes the search to files matching a path or glob (fnmatch
+    against the repo-relative path, or a directory prefix -- the same two forms
+    ``exclude`` accepts). This exists because "which lines in THIS file mention X?" is
+    a real, observed query shape (a reviewer/planner narrowing into one test file) and
+    without it agents fall back to path-scoped ``Grep`` calls the index can't answer.
 
     ``query`` is split on whitespace into terms and matched with OR semantics: a
     symbol whose name contains ANY term (case-insensitive) is a symbol hit, and the
@@ -235,6 +246,8 @@ def search_code(
     repo_path = Path(repo_path)
     exclude = tuple(exclude)
     files = _list_files(repo_path, exclude)
+    if path:
+        files = [f for f in files if _matches_path(f, path)]
     if not files:
         return []
 
@@ -294,6 +307,8 @@ def search_code(
             rel_path, line_no, snippet = parsed
             if exclude and _is_excluded(rel_path, exclude):
                 continue
+            if path and not _matches_path(rel_path, path):
+                continue
             key = (rel_path, line_no)
             if key in seen:
                 continue
@@ -336,6 +351,11 @@ def read_symbol(repo_path: str | Path, file: str, name: str) -> str:
     definition, no blank line between them) belong to *that* symbol, not the one being
     read, so the boundary is walked back above them.
 
+    The output's first line is a ``file:start-end`` header (1-indexed, inclusive) naming
+    the block's line span, so a caller can follow up with an offset-scoped ``Read`` (or
+    anchor an edit) without grepping for the line number. The header always spans the
+    FULL block, even when the body below is truncated.
+
     Capped at :data:`READ_SYMBOL_MAX_LINES` lines; a block longer than that is cut and
     an explicit :data:`READ_SYMBOL_TRUNCATION_MARKER` line is appended so the agent
     knows the block was cut rather than mistaking it for the whole thing.
@@ -370,10 +390,15 @@ def read_symbol(repo_path: str | Path, file: str, name: str) -> str:
         end_line = len(lines) + 1
 
     block = lines[start_line - 1 : end_line - 1]
+    # First line is a `file:start-end` header (1-indexed, inclusive, the FULL block's
+    # span even when the body below is truncated) so the agent can follow up with an
+    # offset-scoped Read or anchor an Edit without a Grep just to learn the line number
+    # -- an observed wasted turn.
+    header = f"{file}:{start_line}-{end_line - 1}"
     truncated = len(block) > READ_SYMBOL_MAX_LINES
     if truncated:
         block = block[:READ_SYMBOL_MAX_LINES]
-    text = "\n".join(block)
+    text = header + "\n" + "\n".join(block)
     if truncated:
         text += f"\n{READ_SYMBOL_TRUNCATION_MARKER}"
     return text
@@ -472,6 +497,18 @@ def _is_excluded(rel_path: str, exclude: tuple[str, ...]) -> bool:
     return False
 
 
+def _matches_path(rel_path: str, pattern: str) -> bool:
+    """Inclusion twin of :func:`_is_excluded`: does ``rel_path`` match ``pattern``?
+
+    Accepts the same two forms -- an fnmatch glob against the repo-relative path
+    (``tests/test_foo.py``, ``blacksmith/*.py``) or a directory prefix (``tests``,
+    ``tests/``) that matches everything under it.
+    """
+    if fnmatch.fnmatch(rel_path, pattern):
+        return True
+    return fnmatch.fnmatch(rel_path, f"{pattern.rstrip('/')}/*")
+
+
 def _git(repo_path: Path, *args: str) -> str | None:
     try:
         result = subprocess.run(
@@ -559,7 +596,13 @@ def make_search_code_tool(
     exclude = tuple(exclude)
 
     async def handler(args: dict[str, Any]) -> dict[str, Any]:
-        results = search_code(repo_path, args.get("query", ""), limit=limit, exclude=exclude)
+        results = search_code(
+            repo_path,
+            args.get("query", ""),
+            limit=limit,
+            exclude=exclude,
+            path=args.get("path") or None,
+        )
         text = format_search_results(results, limit=limit)
         return {"content": [{"type": "text", "text": text}]}
 
@@ -569,8 +612,26 @@ def make_search_code_tool(
         "ranked matches (symbol definitions first, then plain-text hits) as `file:line: "
         "snippet` lines, each with up to 2 lines of surrounding context -- use it to find "
         "where something is defined or mentioned instead of guessing paths or reading files "
-        f"blind. Query syntax: {QUERY_SYNTAX_HELP}.",
-        {"query": str},
+        f"blind. Query syntax: {QUERY_SYNTAX_HELP}. Pass `path` (a file path, glob, or "
+        "directory like `tests/test_foo.py`, `blacksmith/*.py`, or `tests`) to scope the "
+        "search to matching files -- use that instead of a path-scoped Grep.",
+        # JSON Schema (not the simple dict form) so `path` can be genuinely optional.
+        {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": f"search terms -- {QUERY_SYNTAX_HELP}",
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "optional file path, glob, or directory to scope the search to"
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
     )(handler)
 
 
@@ -593,7 +654,9 @@ def make_read_symbol_tool(repo_path: str | Path) -> SdkMcpTool[Any]:
         "Return the source of a single named top-level function/class from a tracked "
         "file in this repository -- the definition line through the line before the "
         "next top-level symbol (or end of file), capped at "
-        f"{READ_SYMBOL_MAX_LINES} lines. Prefer this over Read when you only need one "
+        f"{READ_SYMBOL_MAX_LINES} lines. The first output line is a `file:start-end` "
+        "header naming the block's line span, so you never need a Grep just to learn "
+        "the line number. Prefer this over Read when you only need one "
         "function or class, not the whole file -- it's cheaper and skips everything "
         "else in the file. An unknown file or symbol name returns a 'not found' "
         "message listing the file's known top-level symbols.",

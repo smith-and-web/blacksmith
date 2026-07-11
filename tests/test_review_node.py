@@ -307,6 +307,38 @@ def test_review_index_enabled_still_forbids_write_tools():
     assert "Bash" not in call["allowed_tools"]
 
 
+def test_review_index_enabled_prompt_teaches_index_and_absolute_path():
+    fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=fake, index_config=IndexConfig(enabled=True))
+    system_prompt = fake.calls[0]["system_prompt"]
+    # Index-first guidance names both tools and the query semantics (parity with the
+    # implement/plan tiers -- the reviewer had the tools but not the instructions, and
+    # the observed result was full-file Reads and hallucinated paths).
+    assert "USE THE INDEX FIRST" in system_prompt
+    assert "search_code" in system_prompt
+    assert "read_symbol" in system_prompt
+    assert "`path`" in system_prompt
+    # The worktree's ABSOLUTE path is stated so the reviewer never guesses one
+    # (observed: Read /repo/... and Read /Users/smith/... both failed and wasted turns).
+    assert str(Path("/tmp/does-not-matter").resolve()) in system_prompt
+    assert "absolute path" in system_prompt.lower()
+
+
+def test_review_index_disabled_prompt_is_unchanged():
+    baseline_fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=baseline_fake)
+
+    disabled_fake = FakeExecutor(_result(CLEAN_VERDICT))
+    review(_state(), executor=disabled_fake, index_config=IndexConfig(enabled=False))
+
+    baseline_prompt = baseline_fake.calls[0]["system_prompt"]
+    disabled_prompt = disabled_fake.calls[0]["system_prompt"]
+    # Disabled = byte-for-byte the pre-index prompt: no guidance text leaks in.
+    assert baseline_prompt == disabled_prompt
+    assert "USE THE INDEX FIRST" not in baseline_prompt
+    assert "absolute path" not in baseline_prompt.lower()
+
+
 def test_review_index_disabled_matches_baseline_tool_surface():
     baseline_fake = FakeExecutor(_result(CLEAN_VERDICT))
     review(_state(), executor=baseline_fake)

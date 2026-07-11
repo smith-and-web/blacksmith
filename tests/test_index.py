@@ -278,6 +278,54 @@ def test_search_code_single_term_dedupes_and_caps_at_limit(tmp_path):
     assert len({(r["file"], r["line"]) for r in results}) == 5
 
 
+# --- path scoping (index-followups) -----------------------------------------------
+
+
+def _two_file_repo(tmp_path):
+    """Same symbol/text in two files so path scoping is observable."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "mod.py").write_text("def gate_failed():\n    pass\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_mod.py").write_text(
+        "def test_gate_failed():\n    assert gate_failed\n"
+    )
+    _commit_all(repo)
+    return repo
+
+
+def test_search_code_path_scopes_symbol_hits_to_one_file(tmp_path):
+    repo = _two_file_repo(tmp_path)
+    results = search_code(repo, "gate_failed", path="tests/test_mod.py")
+    assert results
+    assert all(r["file"] == "tests/test_mod.py" for r in results)
+
+
+def test_search_code_path_scopes_text_hits_too(tmp_path):
+    repo = _two_file_repo(tmp_path)
+    results = search_code(repo, "gate_failed", path="mod.py")
+    assert results
+    assert all(r["file"] == "mod.py" for r in results)
+
+
+def test_search_code_path_accepts_glob_and_directory_prefix(tmp_path):
+    repo = _two_file_repo(tmp_path)
+    for pattern in ("tests/*.py", "tests", "tests/"):
+        results = search_code(repo, "gate_failed", path=pattern)
+        assert results, f"expected hits for path={pattern!r}"
+        assert all(r["file"].startswith("tests/") for r in results)
+
+
+def test_search_code_path_with_no_matching_files_returns_empty(tmp_path):
+    repo = _two_file_repo(tmp_path)
+    assert search_code(repo, "gate_failed", path="docs/*.md") == []
+
+
+def test_search_code_no_path_still_searches_whole_repo(tmp_path):
+    repo = _two_file_repo(tmp_path)
+    files = {r["file"] for r in search_code(repo, "gate_failed")}
+    assert files == {"mod.py", "tests/test_mod.py"}
+
+
 # --- context lines / limit signal / no-match help (WU-SEARCH-FEEDBACK) -----------
 
 
@@ -380,6 +428,11 @@ def test_search_code_tool_description_states_query_shapes():
     tool_def = make_search_code_tool(Path("."))
     for shape in ("space-separated", "OR", "case-insensitive", "literal"):
         assert shape in tool_def.description
+    # path scoping (index-followups): the description teaches the optional `path` arg
+    # and the schema declares it optional (query stays the only required field).
+    assert "`path`" in tool_def.description
+    assert tool_def.input_schema["required"] == ["query"]
+    assert "path" in tool_def.input_schema["properties"]
 
 
 # --- read_symbol (WU-READ-SYMBOL) -------------------------------------------------
@@ -408,14 +461,15 @@ def _symbol_repo(tmp_path: Path) -> Path:
 def test_read_symbol_extracts_function_body(tmp_path):
     repo = _symbol_repo(tmp_path)
     body = read_symbol(repo, "greet.py", "hello")
-    assert body.startswith("def hello(name):\n    return f'hi {name}'")
+    assert body.startswith("greet.py:1-")  # file:start-end header first (WU follow-up)
+    assert "def hello(name):\n    return f'hi {name}'" in body
     assert "class Greeter" not in body
 
 
 def test_read_symbol_extracts_class_body_with_decorator_free_boundary(tmp_path):
     repo = _symbol_repo(tmp_path)
     body = read_symbol(repo, "greet.py", "Greeter")
-    assert body.startswith("class Greeter:\n    pass")
+    assert "class Greeter:\n    pass" in body
     # bye()'s decorator belongs to bye, not to the preceding Greeter block.
     assert "@decorator" not in body
     assert "def bye" not in body
@@ -424,7 +478,19 @@ def test_read_symbol_extracts_class_body_with_decorator_free_boundary(tmp_path):
 def test_read_symbol_last_symbol_runs_to_end_of_file(tmp_path):
     repo = _symbol_repo(tmp_path)
     body = read_symbol(repo, "greet.py", "bye")
-    assert body == "def bye():\n    pass"
+    # bye's def is on line 10, its body ends at line 11 (the file's last line).
+    assert body == "greet.py:10-11\ndef bye():\n    pass"
+
+
+def test_read_symbol_header_names_full_span_even_when_truncated(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    body_lines = [f"    x = {i}" for i in range(200)]
+    (repo / "big.py").write_text("def big():\n" + "\n".join(body_lines) + "\n")
+    _commit_all(repo)
+
+    result = read_symbol(repo, "big.py", "big")
+    # Header spans the FULL 201-line block, not just the 150 shown below it.
+    assert result.splitlines()[0] == "big.py:1-201"
 
 
 def test_read_symbol_caps_at_150_lines_with_truncation_marker(tmp_path):
@@ -436,9 +502,10 @@ def test_read_symbol_caps_at_150_lines_with_truncation_marker(tmp_path):
     result = read_symbol(repo, "big.py", "big")
     rendered_lines = result.splitlines()
 
-    assert rendered_lines[0] == "def big():"
+    assert rendered_lines[1] == "def big():"  # [0] is the file:start-end header
     assert rendered_lines[-1] == f"…(truncated at {READ_SYMBOL_MAX_LINES} lines)…"
-    assert len(rendered_lines) == READ_SYMBOL_MAX_LINES + 1
+    # header + capped body + truncation marker
+    assert len(rendered_lines) == READ_SYMBOL_MAX_LINES + 2
 
 
 def test_read_symbol_under_cap_has_no_truncation_marker(tmp_path):
