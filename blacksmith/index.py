@@ -487,6 +487,122 @@ def _git(repo_path: Path, *args: str) -> str | None:
     return result.stdout
 
 
+# --- reference graph + PageRank (WU-DEP-GRAPH) --------------------------------------
+#
+# Pure, additive, OFF by default: these two functions are not wired into
+# build_repo_map or any node in this unit -- a later unit does that behind the
+# [index].graph_rank sub-flag. Reuses the SAME stdlib symbol extraction
+# (_extract_symbols) and git-backed file enumeration (_list_files) already above --
+# no new parsing, no new git plumbing. Read-only and best-effort throughout.
+
+_WORD_RE = re.compile(r"\w+")
+
+
+def build_reference_graph(
+    repo_path: str | Path, *, exclude: Iterable[str] = ()
+) -> dict[str, set[str]]:
+    """Build a file-level reference graph over tracked files with recognized extensions.
+
+    For each such file A, the returned set is every OTHER tracked (recognized) file B
+    such that A's content mentions, as a whole word, a top-level symbol name defined in
+    B. A file with no recognized symbols anywhere referencing it, or that references
+    nothing, maps to an empty set -- it is never omitted from the dict. There is never
+    a self-edge, even when a file uses a symbol it defines itself.
+
+    Read-only and best-effort: an absent repo, an empty tracked-file list, or a git
+    failure yields ``{}`` rather than raising.
+    """
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+    files = _list_files(repo_path, exclude)
+    if not files:
+        return {}
+
+    recognized_files = [f for f in files if _EXT_FAMILY.get(Path(f).suffix)]
+    if not recognized_files:
+        return {}
+
+    contents: dict[str, str] = {}
+    symbol_to_files: dict[str, set[str]] = {}
+    for rel_path in recognized_files:
+        content = _read_file(repo_path, rel_path)
+        contents[rel_path] = content or ""
+        if content is None:
+            continue
+        family = _EXT_FAMILY[Path(rel_path).suffix]
+        for symbol in _extract_symbols(content, family):
+            symbol_to_files.setdefault(symbol["name"], set()).add(rel_path)
+
+    words_by_file: dict[str, set[str]] = {
+        rel_path: set(_WORD_RE.findall(contents[rel_path])) for rel_path in recognized_files
+    }
+
+    graph: dict[str, set[str]] = {rel_path: set() for rel_path in recognized_files}
+    for a in recognized_files:
+        words_a = words_by_file[a]
+        if not words_a:
+            continue
+        for name, defining_files in symbol_to_files.items():
+            if name not in words_a:
+                continue
+            for b in defining_files:
+                if b != a:
+                    graph[a].add(b)
+
+    return graph
+
+
+_PAGERANK_DAMPING = 0.85
+_PAGERANK_MAX_ITERATIONS = 100
+_PAGERANK_TOLERANCE = 1e-10
+
+
+def rank_files(graph: dict[str, set[str]]) -> dict[str, float]:
+    """Score each node in ``graph`` by PageRank centrality, normalized to sum to 1.
+
+    A bounded, deterministic stdlib power-iteration -- fixed damping (0.85), a fixed
+    iteration cap, and an early-exit convergence tolerance -- over the plain
+    ``dict[str, set[str]]`` adjacency ``build_reference_graph`` returns. Dangling nodes
+    (no outgoing edges) redistribute their mass evenly across every node each
+    iteration, same as standard PageRank, so their score doesn't just vanish. NOT
+    networkx: a hand-rolled loop over stdlib dicts/sets, no third-party dependency.
+
+    Pure and read-only: performs no I/O, only operates on the graph structure given.
+    An empty graph yields ``{}`` rather than raising or dividing by zero.
+    """
+    nodes = list(graph.keys())
+    n = len(nodes)
+    if n == 0:
+        return {}
+
+    out_degree = {node: len(graph.get(node) or ()) for node in nodes}
+    predecessors: dict[str, list[str]] = {node: [] for node in nodes}
+    for a, targets in graph.items():
+        if a not in out_degree:
+            continue
+        for b in targets:
+            if b in predecessors:
+                predecessors[b].append(a)
+
+    scores = {node: 1.0 / n for node in nodes}
+    for _ in range(_PAGERANK_MAX_ITERATIONS):
+        dangling_mass = sum(scores[node] for node in nodes if out_degree[node] == 0)
+        base = (1.0 - _PAGERANK_DAMPING) / n + _PAGERANK_DAMPING * dangling_mass / n
+        new_scores: dict[str, float] = {}
+        for node in nodes:
+            incoming = sum(scores[p] / out_degree[p] for p in predecessors[node])
+            new_scores[node] = base + _PAGERANK_DAMPING * incoming
+        delta = sum(abs(new_scores[node] - scores[node]) for node in nodes)
+        scores = new_scores
+        if delta < _PAGERANK_TOLERANCE:
+            break
+
+    total = sum(scores.values())
+    if total > 0:
+        scores = {node: value / total for node, value in scores.items()}
+    return scores
+
+
 # --- search_code tool (WU-SEARCH-TOOL) --------------------------------------------------
 #
 # Grants the implementer a controlled way to ask "where is X defined/mentioned?" over the

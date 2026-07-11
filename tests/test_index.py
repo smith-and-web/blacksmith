@@ -9,9 +9,11 @@ from pathlib import Path
 
 from blacksmith.index import (
     READ_SYMBOL_MAX_LINES,
+    build_reference_graph,
     build_repo_map,
     create_index_mcp_server,
     format_search_results,
+    rank_files,
     read_symbol,
     search_code,
 )
@@ -502,3 +504,76 @@ def test_create_index_mcp_server_carries_both_tools(tmp_path):
 
     names = {t.name for t in result.root.tools}
     assert names == {"search_code", "read_symbol"}
+
+
+# --- reference graph + PageRank (WU-DEP-GRAPH) ------------------------------------
+
+
+def test_build_reference_graph_symbol_usage_creates_edge_without_self_edge(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "a.py").write_text("def shared_helper():\n    pass\n")
+    (repo / "b.py").write_text(
+        "from a import shared_helper\n"
+        "\n"
+        "def use_it():\n"
+        "    return shared_helper()\n"
+    )
+    (repo / "c.py").write_text("def recursive():\n    return recursive()\n")
+    _commit_all(repo)
+
+    graph = build_reference_graph(repo)
+
+    # b.py mentions a.py's symbol -> edge b.py -> a.py.
+    assert graph["b.py"] == {"a.py"}
+    # a.py never mentions anything b.py defines.
+    assert "b.py" not in graph["a.py"]
+    # c.py calls its own symbol recursively -- never a self-edge, even so.
+    assert graph["c.py"] == set()
+    assert graph["a.py"] == set()
+
+
+def test_rank_files_referenced_by_several_outranks_unreferenced_leaf(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "hub.py").write_text("def utility():\n    pass\n")
+    (repo / "leaf.py").write_text("def lonely():\n    pass\n")
+    (repo / "user_a.py").write_text(
+        "from hub import utility\n\ndef call_a():\n    return utility()\n"
+    )
+    (repo / "user_b.py").write_text(
+        "from hub import utility\n\ndef call_b():\n    return utility()\n"
+    )
+    _commit_all(repo)
+
+    graph = build_reference_graph(repo)
+    ranks = rank_files(graph)
+
+    assert ranks["hub.py"] > ranks["leaf.py"]
+
+
+def test_rank_files_is_deterministic_across_repeated_calls(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "hub.py").write_text("def utility():\n    pass\n")
+    (repo / "user.py").write_text(
+        "from hub import utility\n\ndef call():\n    return utility()\n"
+    )
+    _commit_all(repo)
+
+    graph = build_reference_graph(repo)
+
+    assert rank_files(graph) == rank_files(graph)
+
+
+def test_build_reference_graph_empty_repo_returns_empty_dict(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    # git init only -- nothing committed, so there are no tracked files at all.
+    assert build_reference_graph(repo) == {}
+
+
+def test_build_reference_graph_git_failure_returns_empty_dict(tmp_path):
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    assert build_reference_graph(not_a_repo) == {}
+
+
+def test_rank_files_empty_graph_returns_empty_dict():
+    assert rank_files({}) == {}
