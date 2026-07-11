@@ -4,6 +4,7 @@ Test contract: integration tests against a small, real git repo created in tmp_p
 (real ``git init`` + a couple of committed source files) — no mocking of git.
 """
 
+import asyncio
 import subprocess
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from blacksmith.index import (
     create_index_mcp_server,
     extract_python_structure,
     format_search_results,
+    make_search_class_tool,
+    make_search_method_in_class_tool,
+    make_search_method_tool,
     rank_files,
     read_symbol,
     search_class,
@@ -709,7 +713,13 @@ def test_create_index_mcp_server_carries_both_tools(tmp_path):
     result = asyncio.run(handler(None))
 
     names = {t.name for t in result.root.tools}
-    assert names == {"search_code", "read_symbol"}
+    assert names == {
+        "search_code",
+        "read_symbol",
+        "search_class",
+        "search_method",
+        "search_method_in_class",
+    }
 
 
 # --- reference graph + PageRank (WU-DEP-GRAPH) ------------------------------------
@@ -999,3 +1009,84 @@ def test_structural_search_git_failure_returns_empty_list(tmp_path):
     assert search_class(not_a_repo, "Widget") == []
     assert search_method(not_a_repo, "run") == []
     assert search_method_in_class(not_a_repo, "Widget", "run") == []
+
+
+# --- structural search tools: search_class / search_method / search_method_in_class -
+# (WU-STRUCT-TOOLS)
+
+
+def _invoke(tool_def, **args) -> str:
+    result = asyncio.run(tool_def.handler(args))
+    return result["content"][0]["text"]
+
+
+def test_search_class_tool_returns_match_as_compact_text(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_class_tool(repo)
+
+    text = _invoke(tool_def, name="widget")
+
+    assert text == "widget.py:1: class Widget:"
+
+
+def test_search_class_tool_no_match_renders_no_matches_note(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_class_tool(repo)
+
+    text = _invoke(tool_def, name="NoSuchClass")
+
+    assert text.startswith("no matches")
+
+
+def test_search_method_tool_returns_method_with_enclosing_class_prefix(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_tool(repo)
+
+    text = _invoke(tool_def, name="run")
+
+    lines = text.splitlines()
+    assert "widget.py:14: def run():" in lines
+    assert "foo.py:2: Foo.def run(self):" in lines
+    assert "foo.py:7: Bar.def run(self):" in lines
+
+
+def test_search_method_tool_no_match_renders_no_matches_note(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_tool(repo)
+
+    text = _invoke(tool_def, name="no_such_method")
+
+    assert text.startswith("no matches")
+
+
+def test_search_method_in_class_tool_returns_only_matching_class_method(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_in_class_tool(repo)
+
+    text = _invoke(tool_def, class_name="foo", method_name="RUN")
+
+    assert text == "foo.py:2: Foo.def run(self):"
+
+
+def test_search_method_in_class_tool_no_match_renders_no_matches_note(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_in_class_tool(repo)
+
+    text = _invoke(tool_def, class_name="Foo", method_name="no_such_method")
+
+    assert text.startswith("no matches")
+
+
+def test_search_class_tool_is_named_search_class(tmp_path):
+    tool_def = make_search_class_tool(Path("."))
+    assert tool_def.name == "search_class"
+
+
+def test_search_method_tool_is_named_search_method(tmp_path):
+    tool_def = make_search_method_tool(Path("."))
+    assert tool_def.name == "search_method"
+
+
+def test_search_method_in_class_tool_is_named_search_method_in_class(tmp_path):
+    tool_def = make_search_method_in_class_tool(Path("."))
+    assert tool_def.name == "search_method_in_class"

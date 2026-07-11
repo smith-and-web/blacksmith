@@ -820,15 +820,19 @@ def create_index_mcp_server(
     limit: int = DEFAULT_SEARCH_LIMIT,
     exclude: Iterable[str] = (),
 ) -> McpSdkServerConfig:
-    """Build the in-process MCP server exposing ``search_code`` and ``read_symbol`` for
-    a call's ``ClaudeAgentOptions.mcp_servers`` -- the same in-process (no subprocess,
-    no IPC) ``create_sdk_mcp_server``/``tool`` pattern :mod:`blacksmith.sandbox` uses
-    for ``run_command``."""
+    """Build the in-process MCP server exposing ``search_code``, ``read_symbol``,
+    ``search_class``, ``search_method``, and ``search_method_in_class`` for a call's
+    ``ClaudeAgentOptions.mcp_servers`` -- the same in-process (no subprocess, no IPC)
+    ``create_sdk_mcp_server``/``tool`` pattern :mod:`blacksmith.sandbox` uses for
+    ``run_command``."""
     return create_sdk_mcp_server(
         name="blacksmith-index",
         tools=[
             make_search_code_tool(repo_path, limit=limit, exclude=exclude),
             make_read_symbol_tool(repo_path),
+            make_search_class_tool(repo_path, limit=limit, exclude=exclude),
+            make_search_method_tool(repo_path, limit=limit, exclude=exclude),
+            make_search_method_in_class_tool(repo_path, limit=limit, exclude=exclude),
         ],
     )
 
@@ -1036,3 +1040,135 @@ def search_method_in_class(
         if len(results) >= limit:
             break
     return results
+
+
+# --- structural search tools (WU-STRUCT-TOOLS) ---------------------------------------
+#
+# Same in-process create_sdk_mcp_server/tool pattern as make_search_code_tool /
+# make_read_symbol_tool above -- no subprocess, no IPC, no new dependency. Each handler
+# routes straight into its WU-STRUCT-SEARCH function (search_class / search_method /
+# search_method_in_class), which stays read-only, best-effort, and Python-only exactly
+# as documented there; these tools add no new execution path or write capability.
+# Rendering reuses format_search_results by adapting each structural hit into the
+# ``{file, line, snippet}`` shape it already knows how to render (a method's snippet is
+# prefixed with its enclosing class, e.g. ``Foo.bar``), so the "no matches" text and
+# compact ``file:line: ...`` layout stay identical to search_code's.
+
+
+def _structural_snippet(entry: dict) -> dict:
+    """Adapt a structural search hit into the ``{file, line, snippet}`` shape
+    :func:`format_search_results` expects, prefixing a method's signature with its
+    enclosing class (``Foo.bar``) so the class is visible without a second lookup."""
+    prefix = f"{entry['class']}." if entry.get("class") else ""
+    return {
+        "file": entry["file"],
+        "line": entry["line"],
+        "snippet": f"{prefix}{entry['signature']}",
+    }
+
+
+def _render_structural_results(results: list[dict]) -> str:
+    return format_search_results([_structural_snippet(r) for r in results])
+
+
+SEARCH_CLASS_TOOL_NAME = "search_class"
+
+
+def make_search_class_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_class`` SDK tool bound to ``repo_path`` (the run's worktree).
+
+    The handler NEVER does anything but call :func:`search_class` against
+    ``repo_path`` -- exact-identifier, Python-only class lookup.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_class(repo_path, args.get("name", ""), limit=limit, exclude=exclude)
+        text = _render_structural_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_CLASS_TOOL_NAME,
+        "Find a Python class definition by its EXACT identifier (case-insensitive) "
+        "across this repository's tracked `.py` files -- unlike `search_code`'s "
+        "substring/text matching, this only matches the whole class name, not a "
+        "partial one. Returns `file:line: signature` lines. Python-only.",
+        {"name": str},
+    )(handler)
+
+
+SEARCH_METHOD_TOOL_NAME = "search_method"
+
+
+def make_search_method_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_method`` SDK tool bound to ``repo_path`` (the run's worktree).
+
+    The handler NEVER does anything but call :func:`search_method` against
+    ``repo_path`` -- exact-identifier, Python-only method/function lookup.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_method(repo_path, args.get("name", ""), limit=limit, exclude=exclude)
+        text = _render_structural_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_METHOD_TOOL_NAME,
+        "Find a Python method or top-level function by its EXACT identifier "
+        "(case-insensitive) across this repository's tracked `.py` files -- unlike "
+        "`search_code`'s substring/text matching, this only matches the whole name. "
+        "A method's line is prefixed with its enclosing class (`Foo.bar`). Returns "
+        "`file:line: signature` lines. Python-only.",
+        {"name": str},
+    )(handler)
+
+
+SEARCH_METHOD_IN_CLASS_TOOL_NAME = "search_method_in_class"
+
+
+def make_search_method_in_class_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_method_in_class`` SDK tool bound to ``repo_path`` (the run's
+    worktree).
+
+    The handler NEVER does anything but call :func:`search_method_in_class` against
+    ``repo_path`` -- exact-identifier, Python-only lookup of a method defined within a
+    specific class.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_method_in_class(
+            repo_path,
+            args.get("class_name", ""),
+            args.get("method_name", ""),
+            limit=limit,
+            exclude=exclude,
+        )
+        text = _render_structural_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+        "Find a Python method by its EXACT identifier (case-insensitive) defined "
+        "within a specific class (also matched by EXACT identifier, case-insensitive) "
+        "across this repository's tracked `.py` files. Use this to disambiguate when "
+        "several classes define a same-named method. Returns `file:line: "
+        "Class.signature` lines. Python-only.",
+        {"class_name": str, "method_name": str},
+    )(handler)
