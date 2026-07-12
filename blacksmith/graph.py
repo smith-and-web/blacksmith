@@ -33,7 +33,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
-from blacksmith.config import IndexConfig, LimitsConfig, ReviewConfig, SBFLConfig
+from blacksmith.config import CriticConfig, IndexConfig, LimitsConfig, ReviewConfig, SBFLConfig
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
@@ -1304,6 +1304,7 @@ def build_graph(
     sandbox: SandboxManager | None = None,
     index: IndexConfig | None = None,
     sbfl: SBFLConfig | None = None,
+    critic: CriticConfig | None = None,
     default_branch: str | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
@@ -1340,6 +1341,14 @@ def build_graph(
     fix-retry feedback is byte-for-byte unchanged — no collection runs and the gate's
     pass/fail decision is never touched.
 
+    ``critic`` wires the additive, opt-in plan critic loop (WU-PLAN-CRITIC-LOOP) into the
+    ``plan`` node the SAME opt-in-forwarding way as review/index/sandbox/sbfl: when provided
+    AND ``critic.enabled``, the plan node critiques each auto-gated unit's plan and, while
+    disapproved and revisions remain (``critic.max_plan_revisions``), re-plans it with the
+    critique fed back — bounded, and it PROCEEDS (never halts) once the budget is exhausted.
+    Left unset (the default, every existing test) or disabled, the plan node makes zero
+    critic calls and its output is byte-for-byte unchanged.
+
     ``default_branch`` is the target repo's default branch (``[target].default_branch``):
     when provided, ``prepare_worktree`` seeds it into state so the PR node opens the combined
     PR against it (``gh pr create --base``). Left unset (the default, every existing test)
@@ -1350,7 +1359,13 @@ def build_graph(
     graph.add_node("ingest_prd", ingest_prd)
     graph.add_node(
         "plan",
-        _node_with(plan, executor=executor, index_config=index, repo_path=plan_repo_path),
+        _node_with(
+            plan,
+            executor=executor,
+            index_config=index,
+            repo_path=plan_repo_path,
+            critic=critic,
+        ),
     )
     graph.add_node("approve_plan", approve_plan)
     graph.add_node(
@@ -1563,6 +1578,7 @@ def compile_graph(
     sandbox: SandboxManager | None = None,
     index: IndexConfig | None = None,
     sbfl: SBFLConfig | None = None,
+    critic: CriticConfig | None = None,
     default_branch: str | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
@@ -1597,6 +1613,11 @@ def compile_graph(
     ``fix_retry`` node; ``None`` (the default) or one with ``enabled=False`` leaves the
     fix-retry feedback byte-for-byte unchanged and never touches the gate's decision.
 
+    ``critic`` wires the additive, opt-in plan critic loop (WU-PLAN-CRITIC-LOOP) into the
+    ``plan`` node; ``None`` (the default) or one with ``enabled=False`` leaves the plan node's
+    output byte-for-byte unchanged -- no critic call, no re-plan, and the ``approve_plan``
+    gate's semantics are never touched.
+
     ``default_branch`` (``[target].default_branch``) is seeded into state by
     ``prepare_worktree`` so the PR node opens the combined PR against it; ``None`` (the
     default) leaves the PR base unset and gh falls back to the repo's own default.
@@ -1612,6 +1633,7 @@ def compile_graph(
         sandbox=sandbox,
         index=index,
         sbfl=sbfl,
+        critic=critic,
         default_branch=default_branch,
     ).compile(
         checkpointer=checkpointer,

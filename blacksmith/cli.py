@@ -110,6 +110,13 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         # False) is the on/off switch; when enabled it enriches ONLY the fix-retry feedback and
         # never touches the gate's pass/fail decision.
         sbfl=config.sbfl,
+        # Wire the advisory plan critic loop (WU-PLAN-CRITIC-LOOP) into production. Without
+        # this the critic config never reaches the graph and the whole feature stays dark on
+        # real runs regardless of [critic].enabled — a wired-but-dark feature. CriticConfig.
+        # enabled (default False) is the on/off switch; when enabled it can only trigger a
+        # bounded re-plan of a unit before the plan is surfaced, and never touches the
+        # approve_plan gate's semantics.
+        critic=config.critic,
         # Open the combined PR against the target repo's configured default branch
         # (``[target].default_branch``) via ``gh pr create --base``, instead of relying on
         # gh to guess the repo default. Without this the field was declared and documented

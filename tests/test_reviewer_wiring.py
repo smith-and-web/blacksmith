@@ -56,6 +56,10 @@ def test_build_graph_for_forwards_every_opt_in_feature(monkeypatch):
     # SBFL is forwarded straight from config too, so the fault-localization feedback can't become a
     # wired-but-dark feature: enabled in [sbfl] yet never reaching the fix_retry node.
     assert captured["sbfl"] is config.sbfl
+    # The plan critic is forwarded straight from config too (default OFF), so it can't become a
+    # wired-but-dark feature: enabled in [critic] yet never reaching the plan node.
+    assert captured["critic"] is config.critic
+    assert captured["critic"].enabled is False
     # The target repo's default branch is forwarded so the PR is opened against it
     # (gh pr create --base) rather than whatever gh guesses.
     assert captured["default_branch"] == config.target.default_branch
