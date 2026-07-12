@@ -11,10 +11,10 @@ from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.graph import build_checkpointer, compile_graph
+from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
 from blacksmith.nodes.plan import (
     _PLAN_BLOCKED,
     _PLAN_READ_ONLY,
-    _SEARCH_TOOL_NAME,
     plan,
     select_unit,
 )
@@ -212,8 +212,9 @@ def test_plan_node_index_prompt_names_both_tools_and_query_semantics(tmp_path):
     assert "OR" in system_prompt
     assert "case-insensitive" in system_prompt
     assert "literal" in system_prompt.lower()
-    # Read is scoped to files being edited or questions the index can't answer
-    assert "about to edit" in system_prompt
+    # Read is scoped to questions the index can't answer (the planner does not edit, so
+    # the shared advertisement's implementer-flavored "about to edit" tail is not used here)
+    assert "Reach for Read only when the index cannot answer" in system_prompt
 
 
 def test_plan_node_system_prompt_unchanged_when_index_disabled(tmp_path):
@@ -358,7 +359,7 @@ def test_plan_node_grants_search_code_tool_when_index_enabled(tmp_path):
     )
 
     call = fake.calls[0]
-    assert _SEARCH_TOOL_NAME in call["allowed_tools"]
+    assert set(QUALIFIED_INDEX_TOOL_NAMES) <= set(call["allowed_tools"])
     assert "blacksmith-index" in call["mcp_servers"]
     # the plan tier stays read-only: raw Read/Glob/Grep stay available...
     for raw_tool in _PLAN_READ_ONLY:
@@ -392,8 +393,9 @@ def test_plan_node_tool_surface_unchanged_when_index_disabled(tmp_path):
     assert baseline_call["allowed_tools"] == disabled_call["allowed_tools"] == _PLAN_READ_ONLY
     assert "mcp_servers" not in baseline_call
     assert "mcp_servers" not in disabled_call
-    assert _SEARCH_TOOL_NAME not in baseline_call["allowed_tools"]
-    assert _SEARCH_TOOL_NAME not in disabled_call["allowed_tools"]
+    for name in QUALIFIED_INDEX_TOOL_NAMES:
+        assert name not in baseline_call["allowed_tools"]
+        assert name not in disabled_call["allowed_tools"]
 
 
 # --- structural tool grants (WU-STRUCT-WIRE) -----------------------------------
@@ -401,16 +403,8 @@ def test_plan_node_tool_surface_unchanged_when_index_disabled(tmp_path):
 
 def test_plan_node_grants_structural_tools_when_index_enabled(tmp_path):
     # search_class/search_method/search_method_in_class are exposed on the same in-process
-    # MCP server as search_code/read_symbol (create_index_mcp_server), but a tool the agent
-    # can't name in allowed_tools is dead weight (the PR #70 lesson) — so the index enable
-    # switch must ALSO grant these three tool names, alongside search_code/read_symbol.
-    from blacksmith.nodes.plan import (
-        _READ_SYMBOL_TOOL_NAME,
-        _SEARCH_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_TOOL_NAME,
-    )
-
+    # MCP server as search_code/read_symbol (create_index_mcp_server) and granted together as
+    # the single QUALIFIED_INDEX_TOOL_NAMES set — the index enable switch grants the WHOLE set.
     repo = _init_target_repo(tmp_path)
     fake = FakeExecutor()
 
@@ -422,11 +416,7 @@ def test_plan_node_grants_structural_tools_when_index_enabled(tmp_path):
     )
 
     allowed = fake.calls[0]["allowed_tools"]
-    assert _SEARCH_TOOL_NAME in allowed
-    assert _READ_SYMBOL_TOOL_NAME in allowed
-    assert _SEARCH_CLASS_TOOL_NAME in allowed
-    assert _SEARCH_METHOD_TOOL_NAME in allowed
-    assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME in allowed
+    assert set(QUALIFIED_INDEX_TOOL_NAMES) <= set(allowed)
 
 
 def test_plan_node_prompt_names_structural_tools_when_index_enabled(tmp_path):
@@ -446,13 +436,21 @@ def test_plan_node_prompt_names_structural_tools_when_index_enabled(tmp_path):
     assert "search_method_in_class" in system_prompt
 
 
-def test_plan_node_structural_tools_absent_when_index_disabled(tmp_path):
-    from blacksmith.nodes.plan import (
-        _SEARCH_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_TOOL_NAME,
-    )
+def test_plan_system_prompt_advertises_index_tools_when_enabled_even_without_repo_map():
+    # Regression (the wiring-cleanup fix): mirror the implement tier — the plan system
+    # prompt advertises the index tools whenever the index is WIRED (index_enabled), not
+    # only when a repo map built. An empty/failed map must not silently un-advertise them.
+    from blacksmith.nodes.plan import _system_prompt
 
+    contract = parse_prd(VENDORED_PRD).contract
+    prompt = _system_prompt(contract, None, None, index_enabled=True)
+    assert "USE THE INDEX FIRST" in prompt
+    assert "search_code" in prompt
+    assert "search_class" in prompt
+    assert "REPO MAP" not in prompt
+
+
+def test_plan_node_structural_tools_absent_when_index_disabled(tmp_path):
     repo = _init_target_repo(tmp_path)
 
     baseline = FakeExecutor()
@@ -467,8 +465,7 @@ def test_plan_node_structural_tools_absent_when_index_disabled(tmp_path):
     )
 
     for call in (baseline.calls[0], disabled.calls[0]):
-        assert _SEARCH_CLASS_TOOL_NAME not in call["allowed_tools"]
-        assert _SEARCH_METHOD_TOOL_NAME not in call["allowed_tools"]
-        assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME not in call["allowed_tools"]
+        for name in QUALIFIED_INDEX_TOOL_NAMES:
+            assert name not in call["allowed_tools"]
         assert "search_class" not in call["system_prompt"]
         assert "search_method" not in call["system_prompt"]

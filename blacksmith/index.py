@@ -814,6 +814,13 @@ def make_read_symbol_tool(repo_path: str | Path) -> SdkMcpTool[Any]:
     )(handler)
 
 
+# The in-process MCP server's name -- single source of truth. Both node tiers build their
+# qualified ``mcp__<server>__<tool>`` grants from this, so the server name can never drift
+# out of sync with the allow-list entries (it used to be re-hardcoded per node with a
+# "must match" comment -- exactly the kind of duplication that silently rots).
+INDEX_MCP_SERVER_NAME = "blacksmith-index"
+
+
 def create_index_mcp_server(
     repo_path: str | Path,
     *,
@@ -824,9 +831,16 @@ def create_index_mcp_server(
     ``search_class``, ``search_method``, and ``search_method_in_class`` for a call's
     ``ClaudeAgentOptions.mcp_servers`` -- the same in-process (no subprocess, no IPC)
     ``create_sdk_mcp_server``/``tool`` pattern :mod:`blacksmith.sandbox` uses for
-    ``run_command``."""
+    ``run_command``.
+
+    Wiring this server is what makes the tools callable. NOTE: naming a tool in a call's
+    ``allowed_tools`` is NOT what gates an in-process MCP tool in the pinned Agent SDK --
+    ``read_symbol`` was observed being called successfully from the implementer while it
+    was absent from that call's ``allowed_tools``. The node tiers still list every index
+    tool (see :data:`QUALIFIED_INDEX_TOOL_NAMES`) so the allow-list stays honest and
+    symmetric, but the load-bearing switch is this function, not the allow-list."""
     return create_sdk_mcp_server(
-        name="blacksmith-index",
+        name=INDEX_MCP_SERVER_NAME,
         tools=[
             make_search_code_tool(repo_path, limit=limit, exclude=exclude),
             make_read_symbol_tool(repo_path),
@@ -1172,3 +1186,53 @@ def make_search_method_in_class_tool(
         "Class.signature` lines. Python-only.",
         {"class_name": str, "method_name": str},
     )(handler)
+
+
+# --- shared index-tier wiring (single source of truth for both node tiers) ----------
+#
+# The plan and implement nodes both (a) grant the index tools and (b) advertise them in
+# their system prompt. Each used to hand-maintain its OWN copy of the qualified tool-name
+# list AND the (long) advertisement paragraph -- which drifted: implement omitted
+# read_symbol from its list, and both bundled the advertisement INSIDE the repo-map block,
+# so an enabled index whose map came back empty (a git hiccup / empty repo) silently
+# un-advertised working tools. These two definitions are the single source both nodes now
+# consume, so the tool set and the advertisement can't diverge again.
+
+QUALIFIED_INDEX_TOOL_NAMES: list[str] = [
+    f"mcp__{INDEX_MCP_SERVER_NAME}__{name}"
+    for name in (
+        SEARCH_CODE_TOOL_NAME,
+        READ_SYMBOL_TOOL_NAME,
+        SEARCH_CLASS_TOOL_NAME,
+        SEARCH_METHOD_TOOL_NAME,
+        SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+    )
+]
+
+
+def index_tools_prompt_section() -> str:
+    """The shared CORE advertisement of the index tools (what they are + query syntax).
+
+    Injected into the plan, implement, AND review system prompts whenever the index is
+    ENABLED -- gated on the index being wired, never on whether a repo map happened to
+    build (an empty/failed map must not silently un-advertise tools that still work:
+    ``search_code`` et al. query the repo live, map or no map). This is the tier-neutral
+    core; each node appends its own one-line "when to still reach for Read" tail (the
+    implementer edits, the reviewer reads slices, etc.), so the shared description can't
+    drift across tiers while the per-tier nuance is preserved.
+    """
+    return (
+        "USE THE INDEX FIRST. You have `search_code` to find where something is defined "
+        "or mentioned in this repo in ONE call (query is space-separated terms matched "
+        "with OR semantics, case-insensitive, and matched literally — not as a regex; "
+        "pass `path` to scope the search to one file, glob, or directory instead of a "
+        "path-scoped Grep), and `read_symbol` to fetch the source of one named top-level "
+        "function/class once you know which file it's in. You also have three structural "
+        "tools, scoped to Python (`.py`) files only: `search_class` to find a class "
+        "definition by its EXACT name, `search_method` to find a method or top-level "
+        "function by its EXACT name, and `search_method_in_class` to find a method by its "
+        "EXACT name within a specific class by its EXACT name. For a where-is-this-class-"
+        "or-method question, prefer `search_class`/`search_method`/`search_method_in_class` "
+        "over `search_code` or a blind Grep — they match the exact identifier instead of "
+        "ranking text mentions. Prefer these index tools over Read/Glob/Grep."
+    )
