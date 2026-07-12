@@ -7,7 +7,7 @@ fake executor stands in for the live model call (the manual smoke is separate).
 import subprocess
 from pathlib import Path
 
-from blacksmith.config import IndexConfig
+from blacksmith.config import CriticConfig, IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.graph import build_checkpointer, compile_graph
@@ -15,6 +15,8 @@ from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
 from blacksmith.nodes.plan import (
     _PLAN_BLOCKED,
     _PLAN_READ_ONLY,
+    _parse_critique,
+    _plan_critique_prompt,
     plan,
     select_unit,
 )
@@ -469,3 +471,187 @@ def test_plan_node_structural_tools_absent_when_index_disabled(tmp_path):
             assert name not in call["allowed_tools"]
         assert "search_class" not in call["system_prompt"]
         assert "search_method" not in call["system_prompt"]
+
+
+# --- plan critic prompt + verdict parsing (WU-PLAN-CRITIC-CORE) ---------------
+#
+# Pure helpers only: no loop, no re-plan, no wiring into plan() here.
+
+
+def test_plan_critique_prompt_names_unit_id_and_test_contract():
+    unit = _contract().work_unit_by_id("WU-01")
+    prompt = _plan_critique_prompt(unit, "1. do the thing\n2. test the thing")
+    assert unit.id in prompt
+    assert unit.test_contract in prompt
+
+
+def test_parse_critique_well_formed_disapproving_verdict():
+    text = (
+        "Here is my verdict:\n"
+        '```json\n{"approved": false, "critique": "misses the untouchables check"}\n```'
+    )
+    result = _parse_critique(text)
+    assert result == {"approved": False, "critique": "misses the untouchables check"}
+
+
+def test_parse_critique_well_formed_approving_verdict():
+    text = '```json\n{"approved": true, "critique": "covers the test contract"}\n```'
+    result = _parse_critique(text)
+    assert result == {"approved": True, "critique": "covers the test contract"}
+
+
+def test_parse_critique_fails_open_on_garbage():
+    assert _parse_critique("not json at all, just prose") == {
+        "approved": True,
+        "critique": "",
+    }
+
+
+def test_parse_critique_fails_open_on_no_fenced_block():
+    assert _parse_critique('{"approved": false, "critique": "no fence"}') == {
+        "approved": True,
+        "critique": "",
+    }
+
+
+def test_parse_critique_fails_open_on_wrong_shape():
+    assert _parse_critique('```json\n{"critique": "missing approved key"}\n```') == {
+        "approved": True,
+        "critique": "",
+    }
+
+
+def test_parse_critique_fails_open_on_empty_text():
+    assert _parse_critique("") == {"approved": True, "critique": ""}
+
+
+# --- plan critic loop (WU-PLAN-CRITIC-LOOP) -----------------------------------
+#
+# Bounded, gated re-plan of a single auto-gated unit, driven off scripted critic verdicts —
+# no live calls.
+
+_CRITIC_PRD_TEMPLATE = """\
+---
+contract_version: 1
+component: demo
+version: v0
+primary_target_repo: owner/demo
+layers:
+  py-logic: auto
+untouchables:
+  - "do not touch the brand files"
+work_units:
+  - id: WU-S
+    title: "solo unit"
+    layers: [py-logic]
+    target_modules: ["wu-s.txt"]
+    test_contract: "the gate command passes"
+    depends_on: []
+---
+# Demo PRD
+
+## 1. Purpose
+demo.
+
+## 2. Scope fences
+demo.
+
+## 7. Untouchables
+none.
+
+## 10. Acceptance criteria
+done.
+"""
+
+_DISAPPROVE = '```json\n{"approved": false, "critique": "misses the error-handling path"}\n```'
+_APPROVE = '```json\n{"approved": true, "critique": ""}\n```'
+
+
+def _critic_prd(tmp_path):
+    path = tmp_path / "prd.md"
+    path.write_text(_CRITIC_PRD_TEMPLATE)
+    return parse_prd(path)
+
+
+class CriticFakeExecutor:
+    """A plan executor whose ``run_plan_critique`` verdicts are scripted (one per call, in
+    order) and whose ``run_plan`` returns a distinct, numbered plan each call so a re-plan is
+    observable in the surfaced ``steps``."""
+
+    def __init__(self, critique_texts):
+        self.critique_texts = list(critique_texts)
+        self.plan_calls: list[dict] = []
+        self.critique_calls: list[dict] = []
+
+    def run_plan(self, prompt, **kwargs):
+        self.plan_calls.append({"prompt": prompt, **kwargs})
+        return ExecutorResult(
+            text=f"plan v{len(self.plan_calls)}",
+            model="claude-sonnet-4-6",
+            is_error=False,
+            num_turns=1,
+            cost_usd=0.01,
+            usage={},
+            session_id="s1",
+        )
+
+    def run_plan_critique(self, prompt, **kwargs):
+        self.critique_calls.append({"prompt": prompt, **kwargs})
+        text = self.critique_texts[len(self.critique_calls) - 1]
+        return ExecutorResult(
+            text=text,
+            model="claude-sonnet-4-6",
+            is_error=False,
+            num_turns=1,
+            cost_usd=0.005,
+            usage={},
+            session_id="s2",
+        )
+
+
+def test_plan_critic_disapprove_then_approve_replans_once_with_final_plan_revised(tmp_path):
+    prd = _critic_prd(tmp_path)
+    fake = CriticFakeExecutor([_DISAPPROVE, _APPROVE])
+
+    out = plan({"prd": prd}, executor=fake, critic=CriticConfig(enabled=True))
+
+    assert len(fake.plan_calls) == 2  # the original plan + exactly one re-plan
+    assert len(fake.critique_calls) == 2  # critique after each plan
+    # the re-plan prompt fed the critique back, the same way a fix-retry feeds gate output
+    assert "misses the error-handling path" in fake.plan_calls[1]["prompt"]
+    # the FINAL (post-critique) plan is what is surfaced
+    assert out["plans"][0]["steps"] == "plan v2"
+    assert out["status"] == Status.AWAITING_PLAN_APPROVAL
+
+
+def test_plan_critic_always_disapprove_is_bounded_by_max_plan_revisions_and_proceeds(tmp_path):
+    prd = _critic_prd(tmp_path)
+    fake = CriticFakeExecutor([_DISAPPROVE, _DISAPPROVE])
+
+    out = plan(
+        {"prd": prd}, executor=fake, critic=CriticConfig(enabled=True, max_plan_revisions=1)
+    )
+
+    # exactly one re-plan (bounded), never more, even though the critic keeps disapproving
+    assert len(fake.plan_calls) == 2
+    assert len(fake.critique_calls) == 2
+    # the budget was exhausted, but the run PROCEEDS with the latest plan — it never halts
+    assert out["status"] == Status.AWAITING_PLAN_APPROVAL
+    assert out["plans"][0]["steps"] == "plan v2"
+
+
+def test_plan_critic_disabled_makes_zero_critic_calls_and_plans_are_unchanged(tmp_path):
+    prd = _critic_prd(tmp_path)
+
+    baseline = FakeExecutor(text="1. scaffold\n2. test")
+    baseline_out = plan({"prd": prd}, executor=baseline)  # no critic kwarg at all
+
+    # FakeExecutor has no run_plan_critique method at all — if the plan node ever called it
+    # with the critic disabled, this would raise AttributeError instead of silently no-op'ing.
+    disabled = FakeExecutor(text="1. scaffold\n2. test")
+    disabled_out = plan(
+        {"prd": prd}, executor=disabled, critic=CriticConfig(enabled=False)
+    )
+
+    assert baseline_out == disabled_out
+    assert len(disabled.calls) == 1

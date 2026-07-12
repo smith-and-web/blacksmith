@@ -36,6 +36,7 @@ _RESOLVER_CONSUMED = {
     "coverage_json": "resolve_sbfl_config",
     "junit_xml": "resolve_sbfl_config",
     "max_locations": "resolve_sbfl_config",
+    "max_plan_revisions": "resolve_critic_config",
 }
 
 

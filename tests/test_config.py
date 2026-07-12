@@ -16,6 +16,7 @@ from blacksmith.config import (
     BlacksmithConfig,
     CheckpointerConfig,
     ConfigError,
+    CriticConfig,
     IndexConfig,
     LimitsConfig,
     ModelTiers,
@@ -383,6 +384,48 @@ def test_explicit_sbfl_config_loads(tmp_path):
     assert cfg.sbfl.coverage_json == "cov.json"
     assert cfg.sbfl.junit_xml == "junit.xml"
     assert cfg.sbfl.max_locations == 10
+
+
+def test_critic_section_defaults():
+    # WU-CRITIC-CONFIG: [critic] is off by default, with a sane default for
+    # max_plan_revisions so enabling it later requires no other config changes.
+    critic = CriticConfig()
+    assert critic.enabled is False
+    assert critic.max_plan_revisions == 1
+    assert isinstance(critic.max_plan_revisions, int)
+
+
+def test_critic_max_plan_revisions_rejects_negative():
+    with pytest.raises(ValidationError):
+        CriticConfig(max_plan_revisions=-1)
+
+
+def test_critic_defaults_when_config_omits_section():
+    # A config that omits [critic] entirely still loads, with enabled=false and
+    # the default — behaving exactly as today (backward compatible).
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.critic == CriticConfig()
+    assert cfg.critic.enabled is False
+
+
+def test_critic_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.critic == CriticConfig()
+
+
+def test_explicit_critic_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[critic]\n"
+        "enabled = true\n"
+        "max_plan_revisions = 3\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.critic.enabled is True
+    assert cfg.critic.max_plan_revisions == 3
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):

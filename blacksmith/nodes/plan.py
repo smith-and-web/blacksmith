@@ -25,6 +25,16 @@ no new write/shell tool, and the tool is only wired when a target ``repo_path`` 
 (no worktree exists yet at plan time). Disabled, the plan tool surface is byte-for-byte
 unchanged.
 
+When ``config.critic.enabled`` (WU-PLAN-CRITIC-LOOP), after each auto-gated unit's plan is
+produced the SAME plan-tier critique from WU-PLAN-CRITIC-CORE (``executor.run_plan_critique``)
+judges it; while the verdict disapproves and re-plans remain (``config.critic.
+max_plan_revisions``), the unit is RE-PLANNED with the critique fed back into the plan prompt
+(appended, exactly like a fix-retry feeds gate output back to the implementer) and
+re-critiqued. On exhausting the budget it PROCEEDS with the latest plan — the critic is
+advisory and can only trigger a bounded re-plan; it never halts and never touches the
+``approve_plan`` gate. Off by default (``critic=None`` or ``enabled=False``), the plan node
+makes ZERO critic calls and its output is byte-for-byte unchanged.
+
 Without an executor wired (skeleton/tests), the node is a pass-through that only advances
 ``status`` — the real decomposition runs only when an executor is injected at graph-build
 time. This keeps the deterministic graph tests independent of any model call.
@@ -32,11 +42,13 @@ time. This keeps the deterministic graph tests independent of any model call.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from blacksmith.config import IndexConfig
+from blacksmith.config import CriticConfig, IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -140,6 +152,7 @@ def plan(
     executor: Executor | None = None,
     index_config: IndexConfig | None = None,
     repo_path: str | Path | None = None,
+    critic: CriticConfig | None = None,
 ) -> dict:
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
@@ -180,6 +193,13 @@ def plan(
         mcp_servers[INDEX_MCP_SERVER_NAME] = create_index_mcp_server(
             repo_path, exclude=index_config.exclude
         )
+    # Plan critic (WU-PLAN-CRITIC-LOOP): ADVISORY and OFF by default -- with no critic config
+    # or ``enabled=False`` (the default), ``critic_enabled`` is False and the loop below never
+    # calls run_plan_critique, so plan()'s output is byte-for-byte unchanged from before this
+    # unit existed.
+    critic_enabled = bool(critic is not None and critic.enabled)
+    max_plan_revisions = critic.max_plan_revisions if critic is not None else 0
+
     plans: list[dict] = []
     cost_events: list[dict] = []
     for unit in auto_units:
@@ -204,6 +224,26 @@ def plan(
                     {"node": "plan", "message": f"plan call failed for {unit.id}: {result.text}"}
                 ],
             }
+        if critic_enabled:
+            result = _critic_loop(
+                executor,
+                unit,
+                result,
+                call_kwargs=call_kwargs,
+                max_revisions=max_plan_revisions,
+                cost_events=cost_events,
+            )
+            if result.is_error:
+                return {
+                    "status": Status.HALTED,
+                    "cost_events": cost_events,
+                    "errors": [
+                        {
+                            "node": "plan",
+                            "message": f"plan call failed for {unit.id}: {result.text}",
+                        }
+                    ],
+                }
         plans.append(
             {
                 "unit_id": unit.id,
@@ -226,8 +266,8 @@ def plan(
     }
 
 
-def _plan_prompt(unit: WorkUnit) -> str:
-    return (
+def _plan_prompt(unit: WorkUnit, critique: str | None = None) -> str:
+    prompt = (
         "Produce a concise, step-by-step implementation plan for this work unit. "
         "List the steps only — do not write code yet.\n\n"
         f"Unit {unit.id}: {unit.title}\n"
@@ -235,6 +275,18 @@ def _plan_prompt(unit: WorkUnit) -> str:
         f"Target modules: {', '.join(unit.target_modules)}\n"
         f"Test contract (must be satisfied): {unit.test_contract}"
     )
+    if critique and critique.strip():
+        # Plan critic re-plan (WU-PLAN-CRITIC-LOOP): a prior plan for THIS unit was flagged by
+        # the critic. Feed the critique back so the re-plan fixes the real gap instead of
+        # re-planning blind -- the SAME pattern the implementer's self-heal retry uses to feed
+        # a gate failure back (nodes.implement._implement_prompt).
+        prompt += (
+            "\n\nYOUR PREVIOUS PLAN FOR THIS UNIT WAS FLAGGED BY THE CRITIC. Read the critique "
+            "below and revise the plan so it actually satisfies the test contract, stays within "
+            "the declared target modules, and respects the untouchables. Critique:\n"
+            f"{critique.strip()}"
+        )
+    return prompt
 
 
 def _prior_lessons(contract: PRDContract) -> list[dict]:
@@ -323,3 +375,126 @@ def _system_prompt(
             f"{repo_map}"
         )
     return prompt
+
+
+# --- plan critic (WU-PLAN-CRITIC-CORE) ---------------------------------------
+#
+# ADVISORY and OFF by default (the [critic].enabled flag, read in ``plan()`` above and the
+# loop below): the critic is a cheap one-shot call on the EXISTING plan model tier
+# (``run_plan_critique``, which mirrors ``run_summary`` -- no new model tier). Its verdict is
+# parsed with the stdlib, fail-open, mirroring ``nodes.review._parse_findings``.
+
+_CRITIQUE_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _plan_critique_prompt(unit: WorkUnit, plan: str) -> str:
+    """Ask the critic whether ``plan`` actually satisfies ``unit``'s contract.
+
+    Names the unit id and its test_contract explicitly, and asks the critic to check the
+    plan stays within ``target_modules``, respects the untouchables, and covers the
+    required work -- then answer with a single fenced ```json block.
+    """
+    return (
+        "You are reviewing a proposed implementation plan for a work unit BEFORE any "
+        "code is written. Judge whether the plan actually satisfies this unit's "
+        "contract: does it satisfy the test contract, stay within the declared target "
+        "modules, respect the untouchables, and cover the required work?\n\n"
+        f"Unit {unit.id}: {unit.title}\n"
+        f"Target modules: {', '.join(unit.target_modules)}\n"
+        f"Test contract (must be satisfied): {unit.test_contract}\n\n"
+        "Proposed plan:\n"
+        f"{plan}\n\n"
+        "Respond with a single fenced json block and nothing else, in this exact shape:\n"
+        '```json\n{"approved": true|false, "critique": "..."}\n```'
+    )
+
+
+def _parse_critique(text: str) -> dict:
+    """Parse the critic's fenced JSON verdict into ``{"approved": bool, "critique": str}``.
+
+    Fail-open (mirroring ``nodes.review._parse_findings``): any unparseable, absent, or
+    wrong-shape input -- no fenced block, invalid JSON, non-dict, missing/non-bool
+    ``approved`` -- is treated as approved with no critique, so a broken critic can never
+    stall or halt planning.
+    """
+    fallback = {"approved": True, "critique": ""}
+    if not text or not text.strip():
+        return fallback
+    match = _CRITIQUE_FENCE_RE.search(text)
+    if match is None:
+        return fallback
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return fallback
+    if not isinstance(parsed, dict):
+        return fallback
+    approved = parsed.get("approved")
+    if not isinstance(approved, bool):
+        return fallback
+    critique = parsed.get("critique", "")
+    if not isinstance(critique, str):
+        critique = ""
+    return {"approved": approved, "critique": critique}
+
+
+# --- plan critic loop (WU-PLAN-CRITIC-LOOP) -----------------------------------
+#
+# Wires the pure helpers above into a bounded, gated re-plan loop. ADVISORY and OFF by
+# default: only reached from ``plan()`` when ``critic_enabled`` (config.critic.enabled).
+# READ-ONLY, best-effort, plan-tier only -- never blocks, never halts on its own; the
+# critic can only trigger a bounded RE-PLAN before the plan is surfaced to the human
+# ``approve_plan`` gate, which remains the sole authority.
+
+
+def _critic_loop(
+    executor: Executor,
+    unit: WorkUnit,
+    result: Any,
+    *,
+    call_kwargs: dict,
+    max_revisions: int,
+    cost_events: list[dict],
+) -> Any:
+    """Critique ``result``'s plan and, while disapproved and revisions remain, re-plan.
+
+    Each critique call is ledgered as its own ``cost_event`` (node ``"plan_critic"``); each
+    re-plan call is ledgered exactly like the original plan call (node ``"plan"``). Returns
+    the FINAL (post-critique) ``ExecutorResult`` -- either the original plan (approved, or
+    the budget was zero) or the latest re-plan once the budget is exhausted. Never raises:
+    a critique call that errors or returns garbage is parsed fail-open (``_parse_critique``)
+    as approved, so a broken critic can only ever shorten this loop, never stall it. If a
+    RE-PLAN call itself errors, that errored result is returned so the caller halts exactly
+    as it would have on the original plan call failing.
+    """
+    revisions_used = 0
+    while True:
+        critique = _run_critique(executor, unit, result.text, cost_events)
+        if critique["approved"] or revisions_used >= max_revisions:
+            return result
+        revisions_used += 1
+        result = executor.run_plan(_plan_prompt(unit, critique["critique"]), **call_kwargs)
+        cost_events.append(cost_event("plan", unit.id, result))
+        if result.is_error:
+            return result
+
+
+def _run_critique(
+    executor: Executor, unit: WorkUnit, plan_text: str, cost_events: list[dict]
+) -> dict:
+    """One fail-open critique call: ``{"approved": bool, "critique": str}``.
+
+    Any exception raised by the call itself (not just an ``is_error`` result) is treated as
+    approved with no critique -- the critic can never stall or halt planning, matching the
+    fail-open contract of ``_parse_critique`` for a malformed/absent verdict.
+    """
+    try:
+        critique_result = executor.run_plan_critique(
+            _plan_critique_prompt(unit, plan_text), raise_on_error=False
+        )
+    except Exception:
+        return {"approved": True, "critique": ""}
+    cost_events.append(cost_event("plan_critic", unit.id, critique_result))
+    if critique_result.is_error:
+        return {"approved": True, "critique": ""}
+    return _parse_critique(critique_result.text)
