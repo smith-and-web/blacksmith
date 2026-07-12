@@ -1,6 +1,11 @@
 import json
+import sys
 
-from blacksmith.sbfl import rank_suspicious_locations
+from blacksmith.sbfl import (
+    collect_suspicious_locations,
+    format_suspicious_locations,
+    rank_suspicious_locations,
+)
 
 
 def _write_coverage(tmp_path, files: dict) -> str:
@@ -169,3 +174,125 @@ def test_junit_test_class_normalizes_to_same_id_space_as_coverage_context(tmp_pa
     assert results == [
         {"file": "pkg/mod.py", "line": 10, "score": 1.0, "failed": 1, "passed": 0}
     ]
+
+
+def _write_fixture_script(tmp_path) -> str:
+    """A tiny script that writes coverage.json + junit.xml into its cwd.
+
+    Standing in for a real ``coverage_cmd`` — it writes the same shape of
+    artifacts a `pytest --cov ... --cov-context=test --junit-xml=...` run
+    would, into whatever directory it is invoked from (the worktree).
+    """
+    script_path = tmp_path / "write_fixtures.py"
+    script_path.write_text(
+        "import json\n"
+        "from pathlib import Path\n"
+        "Path('coverage.json').write_text(json.dumps({'files': {'pkg/mod.py': "
+        "{'contexts': {'10': ['tests/test_foo.py::test_fails|run']}}}}))\n"
+        "Path('junit.xml').write_text("
+        "'<testsuite><testcase classname=\"tests.test_foo\" name=\"test_fails\">"
+        "<failure message=\"boom\">trace</failure></testcase></testsuite>')\n"
+    )
+    return str(script_path)
+
+
+def test_collect_runs_coverage_cmd_and_returns_ranked_locations(tmp_path):
+    script = _write_fixture_script(tmp_path)
+
+    results = collect_suspicious_locations(
+        str(tmp_path),
+        coverage_cmd=f"{sys.executable} {script}",
+        coverage_json="coverage.json",
+        junit_xml="junit.xml",
+    )
+
+    assert results == [
+        {"file": "pkg/mod.py", "line": 10, "score": 1.0, "failed": 1, "passed": 0}
+    ]
+
+
+def test_collect_empty_coverage_cmd_returns_empty_without_running(tmp_path, monkeypatch):
+    def _boom(*args, **kwargs):
+        raise AssertionError("subprocess.run must not be called for an empty coverage_cmd")
+
+    monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+
+    results = collect_suspicious_locations(
+        str(tmp_path), coverage_cmd="", coverage_json="coverage.json", junit_xml="junit.xml"
+    )
+
+    assert results == []
+
+
+def test_collect_blank_coverage_cmd_returns_empty_without_running(tmp_path, monkeypatch):
+    def _boom(*args, **kwargs):
+        raise AssertionError("subprocess.run must not be called for a blank coverage_cmd")
+
+    monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+
+    results = collect_suspicious_locations(
+        str(tmp_path), coverage_cmd="   ", coverage_json="coverage.json", junit_xml="junit.xml"
+    )
+
+    assert results == []
+
+
+def test_collect_command_writing_no_artifacts_returns_empty_without_raising(tmp_path):
+    results = collect_suspicious_locations(
+        str(tmp_path),
+        coverage_cmd=f'{sys.executable} -c "pass"',
+        coverage_json="coverage.json",
+        junit_xml="junit.xml",
+    )
+
+    assert results == []
+
+
+def test_collect_failing_command_is_ignored_and_only_artifacts_matter(tmp_path):
+    script = _write_fixture_script(tmp_path)
+
+    results = collect_suspicious_locations(
+        str(tmp_path),
+        coverage_cmd=f"{sys.executable} {script} && exit 1",
+        coverage_json="coverage.json",
+        junit_xml="junit.xml",
+    )
+
+    assert results == [
+        {"file": "pkg/mod.py", "line": 10, "score": 1.0, "failed": 1, "passed": 0}
+    ]
+
+
+def test_collect_raising_subprocess_returns_empty_without_raising(tmp_path, monkeypatch):
+    def _boom(*args, **kwargs):
+        raise OSError("no such executable")
+
+    monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+
+    results = collect_suspicious_locations(
+        str(tmp_path),
+        coverage_cmd="does-not-matter",
+        coverage_json="coverage.json",
+        junit_xml="junit.xml",
+    )
+
+    assert results == []
+
+
+def test_format_suspicious_locations_renders_labelled_block():
+    locations = [
+        {"file": "pkg/mod.py", "line": 10, "score": 1.0, "failed": 2, "passed": 1},
+        {"file": "pkg/mod.py", "line": 20, "score": 0.5, "failed": 1, "passed": 3},
+    ]
+
+    rendered = format_suspicious_locations(locations)
+
+    assert rendered == (
+        "SUSPICIOUS LOCATIONS (fault localization, most-suspicious first):\n"
+        "pkg/mod.py:10 (score 1.00, 2 failing / 1 passing tests)\n"
+        "pkg/mod.py:20 (score 0.50, 1 failing / 3 passing tests)"
+    )
+
+
+def test_format_suspicious_locations_empty_list_is_empty_string():
+    assert format_suspicious_locations([]) == ""

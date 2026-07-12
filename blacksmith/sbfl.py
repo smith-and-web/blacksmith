@@ -1,12 +1,16 @@
 """SBFL — Spectrum-Based Fault Localization (Ochiai ranking).
 
-This module is PURE, READ-ONLY, and stdlib-only: it parses artifacts that a
-target repo's own ``coverage_cmd`` already produced (a coverage.py
-``--show-contexts`` JSON report and a JUnit XML test-outcome report) and
-ranks source (file, line) locations by Ochiai suspiciousness. It never runs a
-subprocess, never writes anything, and never raises — any failure (a
-missing/malformed file, an unparseable format, zero failing tests, zero
-covered lines) degrades to an empty result.
+This module is READ-ONLY and stdlib-only: ``collect_suspicious_locations``
+runs the target repo's own configured ``coverage_cmd`` as a plain subprocess
+in the worktree (the same shell-parsed way ``gate.py``'s ``_run`` runs the
+test command — no new dependency), then ``rank_suspicious_locations`` parses
+the artifacts it produced (a coverage.py ``--show-contexts`` JSON report and
+a JUnit XML test-outcome report) and ranks source (file, line) locations by
+Ochiai suspiciousness. Everything here is best-effort and never raises — any
+failure (an empty/blank/raising/timing-out coverage_cmd, a missing/malformed
+artifact, an unparseable format, zero failing tests, zero covered lines)
+degrades to an empty result, and nothing here ever writes to or otherwise
+mutates the repo.
 
 SBFL is ADVISORY-ONLY and OFF by default (PRD constitution): this module
 never touches the test gate's pass/fail decision. It only ever feeds
@@ -18,7 +22,60 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+from pathlib import Path
 from xml.etree import ElementTree
+
+
+def collect_suspicious_locations(
+    worktree_path,
+    *,
+    coverage_cmd: str,
+    coverage_json: str,
+    junit_xml: str,
+    limit: int = 5,
+) -> list[dict]:
+    """Run ``coverage_cmd`` in the worktree, then rank the artifacts it produced.
+
+    Best-effort end to end: an empty ``coverage_cmd``, a command that raises,
+    times out, or exits non-zero, or missing/malformed artifacts all yield
+    ``[]`` rather than raising. The command's own exit code is deliberately
+    ignored — it is expected to "fail" when the tests it runs fail; only the
+    artifacts it wrote (if any) matter. Read-only over the repo: this function
+    only reads the artifacts the command wrote, never writing or mutating the
+    worktree itself.
+    """
+    if not coverage_cmd or not coverage_cmd.strip():
+        return []
+
+    worktree = Path(worktree_path)
+    try:
+        # shell=True mirrors gate.py's _run, the same way the gate's own test
+        # command is parsed — no new subprocess-invocation dependency. The
+        # return code is intentionally discarded: it is expected to be
+        # non-zero when the tests it runs fail.
+        subprocess.run(
+            coverage_cmd, cwd=str(worktree), capture_output=True, text=True, shell=True
+        )
+    except Exception:
+        return []
+
+    coverage_json_path = worktree / coverage_json
+    junit_xml_path = worktree / junit_xml
+    return rank_suspicious_locations(coverage_json_path, junit_xml_path, limit=limit)
+
+
+def format_suspicious_locations(locations: list[dict]) -> str:
+    """Render ranked locations as a compact, labelled block; "" for an empty list."""
+    if not locations:
+        return ""
+    lines = ["SUSPICIOUS LOCATIONS (fault localization, most-suspicious first):"]
+    for loc in locations:
+        lines.append(
+            f"{loc['file']}:{loc['line']} (score {loc['score']:.2f}, "
+            f"{loc['failed']} failing / {loc['passed']} passing tests)"
+        )
+    return "\n".join(lines)
 
 
 def rank_suspicious_locations(coverage_json_path, junit_xml_path, *, limit: int = 5) -> list[dict]:
