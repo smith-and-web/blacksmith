@@ -32,6 +32,10 @@ _RESOLVER_CONSUMED = {
     "admin_key_env_var": "resolve_admin_key",
     "repo_path": "resolve_repo_path",
     "graph_rank": "resolve_graph_rank",
+    "coverage_cmd": "resolve_sbfl_config",
+    "coverage_json": "resolve_sbfl_config",
+    "junit_xml": "resolve_sbfl_config",
+    "max_locations": "resolve_sbfl_config",
 }
 
 

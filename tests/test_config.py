@@ -22,6 +22,7 @@ from blacksmith.config import (
     RespondConfig,
     ReviewConfig,
     SandboxConfig,
+    SBFLConfig,
     find_config,
     find_git_root,
 )
@@ -329,6 +330,59 @@ def test_explicit_respond_config_loads(tmp_path):
     )
     cfg = BlacksmithConfig.load(cfg_file)
     assert cfg.respond.max_attempts == 3
+
+
+def test_sbfl_section_defaults():
+    # WU-SBFL-CONFIG: [sbfl] is off by default, with sane defaults for the other
+    # fields so enabling it later requires no other config changes.
+    sbfl = SBFLConfig()
+    assert sbfl.enabled is False
+    assert sbfl.coverage_cmd == ""
+    assert sbfl.coverage_json == "coverage.json"
+    assert sbfl.junit_xml == "sbfl-junit.xml"
+    assert sbfl.max_locations == 5
+    assert isinstance(sbfl.max_locations, int)
+
+
+def test_sbfl_max_locations_rejects_non_positive():
+    with pytest.raises(ValidationError):
+        SBFLConfig(max_locations=0)
+    with pytest.raises(ValidationError):
+        SBFLConfig(max_locations=-1)
+
+
+def test_sbfl_defaults_when_config_omits_section():
+    # A config that omits [sbfl] entirely still loads, with enabled=false and the
+    # defaults — behaving exactly as today (backward compatible).
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.sbfl == SBFLConfig()
+    assert cfg.sbfl.enabled is False
+
+
+def test_sbfl_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.sbfl == SBFLConfig()
+
+
+def test_explicit_sbfl_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[sbfl]\n"
+        "enabled = true\n"
+        'coverage_cmd = "uv run --with pytest-cov pytest --cov"\n'
+        'coverage_json = "cov.json"\n'
+        'junit_xml = "junit.xml"\n'
+        "max_locations = 10\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.sbfl.enabled is True
+    assert cfg.sbfl.coverage_cmd == "uv run --with pytest-cov pytest --cov"
+    assert cfg.sbfl.coverage_json == "cov.json"
+    assert cfg.sbfl.junit_xml == "junit.xml"
+    assert cfg.sbfl.max_locations == 10
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):

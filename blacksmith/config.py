@@ -299,6 +299,35 @@ class RespondConfig(_Strict):
     max_attempts: int = Field(default=2, ge=1)
 
 
+class SBFLConfig(_Strict):
+    """Additive, opt-in spectrum-based fault localization settings (WU-SBFL-CONFIG).
+
+    ADVISORY-ONLY and OFF by default (``enabled=false``): SBFL never changes the test
+    gate's (``blacksmith/gate.py``) pass/fail decision — it only enriches the
+    fix-retry feedback the implementer already receives on a gate failure. With
+    ``enabled=false`` (the default) a run's gate, prompts, and behaviour are
+    byte-for-byte unchanged from today. This unit only adds the config surface; no
+    graph/gate/implement behaviour changes here.
+
+    * ``enabled`` — plain on/off toggle, default ``False``.
+    * ``coverage_cmd`` — the command, run in the worktree on a gate failure, that
+      produces the per-test coverage JSON and JUnit XML. Empty string (the default)
+      means collect nothing.
+    * ``coverage_json`` — the coverage.py contexts JSON path, relative to the
+      worktree, default ``"coverage.json"``.
+    * ``junit_xml`` — the JUnit results XML path, relative to the worktree, default
+      ``"sbfl-junit.xml"``.
+    * ``max_locations`` — how many ranked suspicious locations to surface, an
+      int > 0, default 5.
+    """
+
+    enabled: bool = False
+    coverage_cmd: str = ""
+    coverage_json: str = "coverage.json"
+    junit_xml: str = "sbfl-junit.xml"
+    max_locations: int = Field(default=5, gt=0)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth (PRD §8 / §12 decision 3).
 
@@ -331,6 +360,7 @@ class BlacksmithConfig(_Strict):
     sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     respond: RespondConfig = Field(default_factory=RespondConfig)
+    sbfl: SBFLConfig = Field(default_factory=SBFLConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:
@@ -392,6 +422,18 @@ class BlacksmithConfig(_Strict):
         later unit, which will consult this resolver rather than the raw field.
         """
         return self.index.graph_rank
+
+    def resolve_sbfl_config(self) -> SBFLConfig:
+        """Return the ``[sbfl]`` settings (WU-SBFL-CONFIG).
+
+        SBFL is ADVISORY-ONLY and OFF by default: with ``enabled=false`` (the
+        default) it never changes the test gate's (``blacksmith/gate.py``)
+        pass/fail decision, and a run's gate, prompts, and behaviour are
+        byte-for-byte unchanged. This unit adds only the config surface — no
+        gate/graph/implement behaviour reads ``[sbfl]`` yet; a later unit will
+        call this resolver rather than reaching into ``self.sbfl`` directly.
+        """
+        return self.sbfl
 
     def resolve_repo_path(self, start: str | Path | None = None) -> Path:
         """Return the effective target repo path (WU-INSTALL).

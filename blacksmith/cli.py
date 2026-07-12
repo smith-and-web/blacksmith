@@ -104,6 +104,12 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
                 exec_timeout_s=config.sandbox.exec_timeout_s,
             )
         ),
+        # Wire spectrum-based fault localization (WU-SBFL-*) into production. Without this the
+        # SBFL config never reaches the graph and the whole feature stays dark on real runs
+        # regardless of [sbfl].enabled — a wired-but-dark feature. SBFLConfig.enabled (default
+        # False) is the on/off switch; when enabled it enriches ONLY the fix-retry feedback and
+        # never touches the gate's pass/fail decision.
+        sbfl=config.sbfl,
         # Open the combined PR against the target repo's configured default branch
         # (``[target].default_branch``) via ``gh pr create --base``, instead of relying on
         # gh to guess the repo default. Without this the field was declared and documented
