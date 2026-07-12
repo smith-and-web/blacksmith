@@ -665,6 +665,99 @@ def test_implement_index_prompt_names_both_tools_and_worktree_path(tmp_path):
     assert "absolute path" in system_prompt.lower()
 
 
+def test_implement_grants_structural_tools_when_index_enabled(tmp_path):
+    # WU-STRUCT-WIRE: search_class/search_method/search_method_in_class are exposed on the
+    # same in-process MCP server as search_code/read_symbol (create_index_mcp_server), but a
+    # tool the agent can't name in allowed_tools is dead weight (the PR #70 lesson) — so the
+    # index enable switch must ALSO grant these three tool names, alongside search_code.
+    from blacksmith.config import IndexConfig
+    from blacksmith.nodes.implement import (
+        _SEARCH_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_TOOL_NAME,
+        _SEARCH_TOOL_NAME,
+    )
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+    )
+
+    allowed = fake.calls[0]["allowed_tools"]
+    assert _SEARCH_TOOL_NAME in allowed
+    assert _SEARCH_CLASS_TOOL_NAME in allowed
+    assert _SEARCH_METHOD_TOOL_NAME in allowed
+    assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME in allowed
+
+
+def test_implement_index_prompt_names_structural_tools_when_index_enabled(tmp_path):
+    from blacksmith.config import IndexConfig
+
+    wt = _scratch_worktree(tmp_path)
+    _commit_helper_module(wt)
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+    fake = EditingFakeExecutor()
+
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+    )
+
+    system_prompt = fake.calls[0]["system_prompt"]
+    assert "search_class" in system_prompt
+    assert "search_method" in system_prompt
+    assert "search_method_in_class" in system_prompt
+
+
+def test_implement_structural_tools_absent_when_index_disabled(tmp_path):
+    from blacksmith.config import IndexConfig
+    from blacksmith.nodes.implement import (
+        _SEARCH_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_TOOL_NAME,
+    )
+
+    prd = parse_prd(VENDORED_PRD)
+    unit = prd.contract.work_unit_by_id("WU-01")
+
+    baseline_dir = tmp_path / "baseline"
+    baseline_dir.mkdir()
+    wt_baseline = _scratch_worktree(baseline_dir)
+    _commit_helper_module(wt_baseline)
+    fake_baseline = EditingFakeExecutor()
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_baseline.path)},
+        executor=fake_baseline,
+    )
+
+    disabled_dir = tmp_path / "disabled"
+    disabled_dir.mkdir()
+    wt_disabled = _scratch_worktree(disabled_dir)
+    _commit_helper_module(wt_disabled)
+    fake_disabled = EditingFakeExecutor()
+    implement(
+        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_disabled.path)},
+        executor=fake_disabled,
+        index_config=IndexConfig(enabled=False),
+    )
+
+    for call in (fake_baseline.calls[0], fake_disabled.calls[0]):
+        assert _SEARCH_CLASS_TOOL_NAME not in call["allowed_tools"]
+        assert _SEARCH_METHOD_TOOL_NAME not in call["allowed_tools"]
+        assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME not in call["allowed_tools"]
+        assert "search_class" not in call["system_prompt"]
+        assert "search_method" not in call["system_prompt"]
+
+
 def test_implement_prompt_and_system_prompt_agree_on_path_style_when_index_enabled(tmp_path):
     # Regression: the always-sent user prompt (_implement_prompt) must never contradict the
     # system prompt's absolute-path directive when the index is enabled — an agent told

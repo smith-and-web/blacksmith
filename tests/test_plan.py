@@ -394,3 +394,81 @@ def test_plan_node_tool_surface_unchanged_when_index_disabled(tmp_path):
     assert "mcp_servers" not in disabled_call
     assert _SEARCH_TOOL_NAME not in baseline_call["allowed_tools"]
     assert _SEARCH_TOOL_NAME not in disabled_call["allowed_tools"]
+
+
+# --- structural tool grants (WU-STRUCT-WIRE) -----------------------------------
+
+
+def test_plan_node_grants_structural_tools_when_index_enabled(tmp_path):
+    # search_class/search_method/search_method_in_class are exposed on the same in-process
+    # MCP server as search_code/read_symbol (create_index_mcp_server), but a tool the agent
+    # can't name in allowed_tools is dead weight (the PR #70 lesson) — so the index enable
+    # switch must ALSO grant these three tool names, alongside search_code/read_symbol.
+    from blacksmith.nodes.plan import (
+        _READ_SYMBOL_TOOL_NAME,
+        _SEARCH_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_TOOL_NAME,
+    )
+
+    repo = _init_target_repo(tmp_path)
+    fake = FakeExecutor()
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+        repo_path=str(repo),
+    )
+
+    allowed = fake.calls[0]["allowed_tools"]
+    assert _SEARCH_TOOL_NAME in allowed
+    assert _READ_SYMBOL_TOOL_NAME in allowed
+    assert _SEARCH_CLASS_TOOL_NAME in allowed
+    assert _SEARCH_METHOD_TOOL_NAME in allowed
+    assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME in allowed
+
+
+def test_plan_node_prompt_names_structural_tools_when_index_enabled(tmp_path):
+    repo = _init_target_repo(tmp_path)
+    fake = FakeExecutor()
+
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=fake,
+        index_config=IndexConfig(enabled=True),
+        repo_path=str(repo),
+    )
+
+    system_prompt = fake.calls[0]["system_prompt"]
+    assert "search_class" in system_prompt
+    assert "search_method" in system_prompt
+    assert "search_method_in_class" in system_prompt
+
+
+def test_plan_node_structural_tools_absent_when_index_disabled(tmp_path):
+    from blacksmith.nodes.plan import (
+        _SEARCH_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+        _SEARCH_METHOD_TOOL_NAME,
+    )
+
+    repo = _init_target_repo(tmp_path)
+
+    baseline = FakeExecutor()
+    plan({"prd": parse_prd(VENDORED_PRD)}, executor=baseline)  # today's call, no index kwargs
+
+    disabled = FakeExecutor()
+    plan(
+        {"prd": parse_prd(VENDORED_PRD)},
+        executor=disabled,
+        index_config=IndexConfig(enabled=False),
+        repo_path=str(repo),
+    )
+
+    for call in (baseline.calls[0], disabled.calls[0]):
+        assert _SEARCH_CLASS_TOOL_NAME not in call["allowed_tools"]
+        assert _SEARCH_METHOD_TOOL_NAME not in call["allowed_tools"]
+        assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME not in call["allowed_tools"]
+        assert "search_class" not in call["system_prompt"]
+        assert "search_method" not in call["system_prompt"]

@@ -21,6 +21,7 @@ Both public functions are:
 
 from __future__ import annotations
 
+import ast
 import fnmatch
 import re
 import subprocess
@@ -819,14 +820,355 @@ def create_index_mcp_server(
     limit: int = DEFAULT_SEARCH_LIMIT,
     exclude: Iterable[str] = (),
 ) -> McpSdkServerConfig:
-    """Build the in-process MCP server exposing ``search_code`` and ``read_symbol`` for
-    a call's ``ClaudeAgentOptions.mcp_servers`` -- the same in-process (no subprocess,
-    no IPC) ``create_sdk_mcp_server``/``tool`` pattern :mod:`blacksmith.sandbox` uses
-    for ``run_command``."""
+    """Build the in-process MCP server exposing ``search_code``, ``read_symbol``,
+    ``search_class``, ``search_method``, and ``search_method_in_class`` for a call's
+    ``ClaudeAgentOptions.mcp_servers`` -- the same in-process (no subprocess, no IPC)
+    ``create_sdk_mcp_server``/``tool`` pattern :mod:`blacksmith.sandbox` uses for
+    ``run_command``."""
     return create_sdk_mcp_server(
         name="blacksmith-index",
         tools=[
             make_search_code_tool(repo_path, limit=limit, exclude=exclude),
             make_read_symbol_tool(repo_path),
+            make_search_class_tool(repo_path, limit=limit, exclude=exclude),
+            make_search_method_tool(repo_path, limit=limit, exclude=exclude),
+            make_search_method_in_class_tool(repo_path, limit=limit, exclude=exclude),
         ],
     )
+
+
+# --- Python AST structure extraction (WU-AST-EXTRACT) -------------------------------
+#
+# Pure and additive: this function is a plain library addition, not wired into
+# build_repo_map/search_code/read_symbol above or into any node/tool/prompt -- a later
+# unit does that wiring, if it happens at all. Unlike the regex-based
+# ``_extract_symbols`` (which stays language-agnostic and only sees top-level, unindented
+# declarations), this uses the stdlib ``ast`` module to walk a *parsed* Python module, so
+# it can also see methods nested one level inside a class body. Still Python-only, still
+# stdlib-only (no tree-sitter): out of scope for every other language.
+
+
+def extract_python_structure(content: str) -> list[dict]:
+    """Extract module-level classes/functions and their methods from Python ``content``.
+
+    Returns one dict per module-level class, per method defined directly in a class
+    body (``def``/``async def``, decorated or not), and per module-level function
+    (``def``/``async def``). Each dict has:
+
+    * ``kind`` -- ``"class"``, ``"method"``, or ``"function"``.
+    * ``name`` -- the identifier.
+    * ``class`` -- the enclosing class's name for a method, else ``None``.
+    * ``signature`` -- the class/def source line, stripped.
+    * ``line`` -- 1-indexed line the ``class``/``def`` statement starts on.
+    * ``end_line`` -- the ``ast`` ``end_lineno`` of the definition.
+
+    Pure and read-only: operates only on the ``content`` string passed in, no I/O.
+    Best-effort: content that fails to parse (``SyntaxError``) yields ``[]`` rather
+    than raising.
+    """
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return []
+
+    lines = content.splitlines()
+
+    def _entry(node: ast.AST, kind: str, class_name: str | None) -> dict:
+        line_no = node.lineno
+        signature = lines[line_no - 1].strip() if 0 < line_no <= len(lines) else ""
+        return {
+            "kind": kind,
+            "name": node.name,
+            "class": class_name,
+            "signature": signature,
+            "line": line_no,
+            "end_line": node.end_lineno,
+        }
+
+    entries: list[dict] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            entries.append(_entry(node, "function", None))
+        elif isinstance(node, ast.ClassDef):
+            entries.append(_entry(node, "class", None))
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    entries.append(_entry(child, "method", node.name))
+    return entries
+
+
+def _iter_python_structure(
+    repo_path: Path, exclude: tuple[str, ...]
+) -> Iterable[tuple[str, dict]]:
+    """Yield ``(rel_path, entry)`` for every :func:`extract_python_structure` entry
+    across tracked ``.py`` files under ``repo_path``. Read-only and best-effort: a git
+    failure or absence of ``.py`` files simply yields nothing."""
+    for rel_path in _list_files(repo_path, exclude):
+        if Path(rel_path).suffix != ".py":
+            continue
+        content = _read_file(repo_path, rel_path)
+        if content is None:
+            continue
+        for entry in extract_python_structure(content):
+            yield rel_path, entry
+
+
+def _structural_result(rel_path: str, entry: dict) -> dict:
+    return {
+        "file": rel_path,
+        "line": entry["line"],
+        "kind": entry["kind"],
+        "name": entry["name"],
+        "class": entry["class"],
+        "signature": entry["signature"],
+    }
+
+
+def search_class(
+    repo_path: str | Path,
+    name: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+) -> list[dict]:
+    """Return class definitions across tracked ``.py`` files whose identifier equals
+    ``name`` case-insensitively -- an EXACT-identifier match, not the substring/grep
+    matching :func:`search_code` does. Results are deduped by ``(file, line)`` and
+    capped at ``limit``. Read-only and best-effort: a blank ``name``, a repo with no
+    ``.py`` files, or a git failure yields ``[]`` rather than raising.
+    """
+    name = (name or "").strip()
+    if not name:
+        return []
+    name_lower = name.lower()
+
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+
+    seen: set[tuple[str, int]] = set()
+    results: list[dict] = []
+    for rel_path, entry in _iter_python_structure(repo_path, exclude):
+        if entry["kind"] != "class" or entry["name"].lower() != name_lower:
+            continue
+        key = (rel_path, entry["line"])
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(_structural_result(rel_path, entry))
+        if len(results) >= limit:
+            break
+    return results
+
+
+def search_method(
+    repo_path: str | Path,
+    name: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+) -> list[dict]:
+    """Return methods AND top-level functions across tracked ``.py`` files whose
+    identifier equals ``name`` case-insensitively -- an EXACT-identifier match, not the
+    substring/grep matching :func:`search_code` does. Each result's ``class`` is the
+    enclosing class's name for a method, or ``None`` for a top-level function. Results
+    are deduped by ``(file, line)`` and capped at ``limit``. Read-only and best-effort:
+    a blank ``name``, a repo with no ``.py`` files, or a git failure yields ``[]``
+    rather than raising.
+    """
+    name = (name or "").strip()
+    if not name:
+        return []
+    name_lower = name.lower()
+
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+
+    seen: set[tuple[str, int]] = set()
+    results: list[dict] = []
+    for rel_path, entry in _iter_python_structure(repo_path, exclude):
+        if entry["kind"] not in ("method", "function"):
+            continue
+        if entry["name"].lower() != name_lower:
+            continue
+        key = (rel_path, entry["line"])
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(_structural_result(rel_path, entry))
+        if len(results) >= limit:
+            break
+    return results
+
+
+def search_method_in_class(
+    repo_path: str | Path,
+    class_name: str,
+    method_name: str,
+    *,
+    limit: int = 20,
+    exclude: Iterable[str] = (),
+) -> list[dict]:
+    """Return methods named ``method_name`` (case-insensitively) defined within a class
+    named ``class_name`` (case-insensitively) across tracked ``.py`` files -- an
+    EXACT-identifier match on both names, not the substring/grep matching
+    :func:`search_code` does. Results are deduped by ``(file, line)`` and capped at
+    ``limit``. Read-only and best-effort: a blank ``class_name``/``method_name``, a
+    repo with no ``.py`` files, or a git failure yields ``[]`` rather than raising.
+    """
+    class_name = (class_name or "").strip()
+    method_name = (method_name or "").strip()
+    if not class_name or not method_name:
+        return []
+    class_name_lower = class_name.lower()
+    method_name_lower = method_name.lower()
+
+    repo_path = Path(repo_path)
+    exclude = tuple(exclude)
+
+    seen: set[tuple[str, int]] = set()
+    results: list[dict] = []
+    for rel_path, entry in _iter_python_structure(repo_path, exclude):
+        if entry["kind"] != "method" or entry["name"].lower() != method_name_lower:
+            continue
+        if (entry["class"] or "").lower() != class_name_lower:
+            continue
+        key = (rel_path, entry["line"])
+        if key in seen:
+            continue
+        seen.add(key)
+        results.append(_structural_result(rel_path, entry))
+        if len(results) >= limit:
+            break
+    return results
+
+
+# --- structural search tools (WU-STRUCT-TOOLS) ---------------------------------------
+#
+# Same in-process create_sdk_mcp_server/tool pattern as make_search_code_tool /
+# make_read_symbol_tool above -- no subprocess, no IPC, no new dependency. Each handler
+# routes straight into its WU-STRUCT-SEARCH function (search_class / search_method /
+# search_method_in_class), which stays read-only, best-effort, and Python-only exactly
+# as documented there; these tools add no new execution path or write capability.
+# Rendering reuses format_search_results by adapting each structural hit into the
+# ``{file, line, snippet}`` shape it already knows how to render (a method's snippet is
+# prefixed with its enclosing class, e.g. ``Foo.bar``), so the "no matches" text and
+# compact ``file:line: ...`` layout stay identical to search_code's.
+
+
+def _structural_snippet(entry: dict) -> dict:
+    """Adapt a structural search hit into the ``{file, line, snippet}`` shape
+    :func:`format_search_results` expects, prefixing a method's signature with its
+    enclosing class (``Foo.bar``) so the class is visible without a second lookup."""
+    prefix = f"{entry['class']}." if entry.get("class") else ""
+    return {
+        "file": entry["file"],
+        "line": entry["line"],
+        "snippet": f"{prefix}{entry['signature']}",
+    }
+
+
+def _render_structural_results(results: list[dict]) -> str:
+    return format_search_results([_structural_snippet(r) for r in results])
+
+
+SEARCH_CLASS_TOOL_NAME = "search_class"
+
+
+def make_search_class_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_class`` SDK tool bound to ``repo_path`` (the run's worktree).
+
+    The handler NEVER does anything but call :func:`search_class` against
+    ``repo_path`` -- exact-identifier, Python-only class lookup.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_class(repo_path, args.get("name", ""), limit=limit, exclude=exclude)
+        text = _render_structural_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_CLASS_TOOL_NAME,
+        "Find a Python class definition by its EXACT identifier (case-insensitive) "
+        "across this repository's tracked `.py` files -- unlike `search_code`'s "
+        "substring/text matching, this only matches the whole class name, not a "
+        "partial one. Returns `file:line: signature` lines. Python-only.",
+        {"name": str},
+    )(handler)
+
+
+SEARCH_METHOD_TOOL_NAME = "search_method"
+
+
+def make_search_method_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_method`` SDK tool bound to ``repo_path`` (the run's worktree).
+
+    The handler NEVER does anything but call :func:`search_method` against
+    ``repo_path`` -- exact-identifier, Python-only method/function lookup.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_method(repo_path, args.get("name", ""), limit=limit, exclude=exclude)
+        text = _render_structural_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_METHOD_TOOL_NAME,
+        "Find a Python method or top-level function by its EXACT identifier "
+        "(case-insensitive) across this repository's tracked `.py` files -- unlike "
+        "`search_code`'s substring/text matching, this only matches the whole name. "
+        "A method's line is prefixed with its enclosing class (`Foo.bar`). Returns "
+        "`file:line: signature` lines. Python-only.",
+        {"name": str},
+    )(handler)
+
+
+SEARCH_METHOD_IN_CLASS_TOOL_NAME = "search_method_in_class"
+
+
+def make_search_method_in_class_tool(
+    repo_path: str | Path,
+    *,
+    limit: int = DEFAULT_SEARCH_LIMIT,
+    exclude: Iterable[str] = (),
+) -> SdkMcpTool[Any]:
+    """Build the ``search_method_in_class`` SDK tool bound to ``repo_path`` (the run's
+    worktree).
+
+    The handler NEVER does anything but call :func:`search_method_in_class` against
+    ``repo_path`` -- exact-identifier, Python-only lookup of a method defined within a
+    specific class.
+    """
+    exclude = tuple(exclude)
+
+    async def handler(args: dict[str, Any]) -> dict[str, Any]:
+        results = search_method_in_class(
+            repo_path,
+            args.get("class_name", ""),
+            args.get("method_name", ""),
+            limit=limit,
+            exclude=exclude,
+        )
+        text = _render_structural_results(results)
+        return {"content": [{"type": "text", "text": text}]}
+
+    return tool(
+        SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+        "Find a Python method by its EXACT identifier (case-insensitive) defined "
+        "within a specific class (also matched by EXACT identifier, case-insensitive) "
+        "across this repository's tracked `.py` files. Use this to disambiguate when "
+        "several classes define a same-named method. Returns `file:line: "
+        "Class.signature` lines. Python-only.",
+        {"class_name": str, "method_name": str},
+    )(handler)

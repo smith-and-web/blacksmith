@@ -26,7 +26,14 @@ from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.index import SEARCH_CODE_TOOL_NAME, build_repo_map, create_index_mcp_server
+from blacksmith.index import (
+    SEARCH_CLASS_TOOL_NAME,
+    SEARCH_CODE_TOOL_NAME,
+    SEARCH_METHOD_IN_CLASS_TOOL_NAME,
+    SEARCH_METHOD_TOOL_NAME,
+    build_repo_map,
+    create_index_mcp_server,
+)
 from blacksmith.nodes.plan import cost_event, usage_breakdown
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
@@ -69,6 +76,19 @@ _DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
 # way.
 _INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
 _SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
+
+# Structural tool grants (WU-STRUCT-WIRE): ADDITIVE and gated on the SAME [index].enabled
+# switch as search_code above -- no separate toggle. create_index_mcp_server already exposes
+# these three Python-only structural tools (WU-AST-EXTRACT / WU-STRUCT-TOOLS) on the same
+# in-process MCP server search_code uses, but a tool exposed by the server is only callable if
+# it is also named in allowed_tools -- granting the server without naming the tool here left
+# it dead weight (the PR #70 lesson). With the index disabled none of this is wired in and the
+# tool surface is byte-for-byte unchanged from before this unit.
+_SEARCH_CLASS_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CLASS_TOOL_NAME}"
+_SEARCH_METHOD_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_METHOD_TOOL_NAME}"
+_SEARCH_METHOD_IN_CLASS_TOOL_NAME = (
+    f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_METHOD_IN_CLASS_TOOL_NAME}"
+)
 
 # Conventional-Commits header so the unit's commit is never rejected by a target repo's
 # commit-msg hook (commitlint / config-conventional) AFTER its expensive implementation
@@ -251,6 +271,9 @@ def implement(
         allowed_tools.append(_SANDBOX_TOOL_NAME)
     if index_enabled:
         allowed_tools.append(_SEARCH_TOOL_NAME)
+        allowed_tools.append(_SEARCH_CLASS_TOOL_NAME)
+        allowed_tools.append(_SEARCH_METHOD_TOOL_NAME)
+        allowed_tools.append(_SEARCH_METHOD_IN_CLASS_TOOL_NAME)
     repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
         "system_prompt": _system_prompt(
@@ -567,9 +590,16 @@ def _system_prompt(
             "matched with OR semantics, case-insensitive, and matched literally — not as a "
             "regex; pass `path` to scope the search to one file, glob, or directory instead "
             "of a path-scoped Grep), and `read_symbol` to fetch the source of one named top-level "
-            "function/class once you know which file it's in. Prefer the map above and these "
-            "two tools over Read/Glob/Grep — reach for Read only for a file you are actually "
-            "about to edit, or when the index cannot answer your question."
+            "function/class once you know which file it's in. You also have three structural "
+            "tools, scoped to Python (`.py`) files only: `search_class` to find a class "
+            "definition by its EXACT name, `search_method` to find a method or top-level "
+            "function by its EXACT name, and `search_method_in_class` to find a method by its "
+            "EXACT name within a specific class by its EXACT name. For a where-is-this-class-"
+            "or-method question, prefer `search_class`/`search_method`/`search_method_in_class` "
+            "over `search_code` or a blind Grep — they match the exact identifier instead of "
+            "ranking text mentions. Prefer the map above and these tools over Read/Glob/Grep "
+            "— reach for Read only for a file you are actually about to edit, or when the "
+            "index cannot answer your question."
         )
         if worktree_path:
             worktree_abs = str(Path(worktree_path).resolve())

@@ -4,6 +4,7 @@ Test contract: integration tests against a small, real git repo created in tmp_p
 (real ``git init`` + a couple of committed source files) — no mocking of git.
 """
 
+import asyncio
 import subprocess
 from pathlib import Path
 
@@ -12,10 +13,17 @@ from blacksmith.index import (
     build_reference_graph,
     build_repo_map,
     create_index_mcp_server,
+    extract_python_structure,
     format_search_results,
+    make_search_class_tool,
+    make_search_method_in_class_tool,
+    make_search_method_tool,
     rank_files,
     read_symbol,
+    search_class,
     search_code,
+    search_method,
+    search_method_in_class,
 )
 
 
@@ -705,7 +713,13 @@ def test_create_index_mcp_server_carries_both_tools(tmp_path):
     result = asyncio.run(handler(None))
 
     names = {t.name for t in result.root.tools}
-    assert names == {"search_code", "read_symbol"}
+    assert names == {
+        "search_code",
+        "read_symbol",
+        "search_class",
+        "search_method",
+        "search_method_in_class",
+    }
 
 
 # --- reference graph + PageRank (WU-DEP-GRAPH) ------------------------------------
@@ -779,3 +793,300 @@ def test_build_reference_graph_git_failure_returns_empty_dict(tmp_path):
 
 def test_rank_files_empty_graph_returns_empty_dict():
     assert rank_files({}) == {}
+
+
+# --- Python AST structure extraction (WU-AST-EXTRACT) -------------------------------
+
+
+def _committed_content(tmp_path: Path, filename: str, content: str) -> str:
+    """Write ``content`` to ``filename`` in a real, freshly-init'd+committed git repo,
+    then read it back off disk -- so the string handed to ``extract_python_structure``
+    genuinely came from a tracked file in a temp git repo, per this unit's test
+    contract, even though the function itself takes a plain string and does no I/O."""
+    repo = _init_repo(tmp_path / "repo")
+    (repo / filename).write_text(content)
+    _commit_all(repo)
+    return (repo / filename).read_text()
+
+
+def test_extract_python_structure_top_level_function_class_and_method(tmp_path):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "def top_level():\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "class Widget:\n"
+        "    def spin(self):\n"
+        "        pass\n",
+    )
+
+    entries = extract_python_structure(content)
+
+    by_name = {entry["name"]: entry for entry in entries}
+    assert set(by_name) == {"top_level", "Widget", "spin"}
+
+    assert by_name["top_level"]["kind"] == "function"
+    assert by_name["top_level"]["line"] == 1
+
+    assert by_name["Widget"]["kind"] == "class"
+    assert by_name["Widget"]["line"] == 5
+
+    assert by_name["spin"]["kind"] == "method"
+    assert by_name["spin"]["line"] == 6
+
+
+def test_extract_python_structure_method_carries_class_top_level_function_does_not(
+    tmp_path,
+):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "class Widget:\n    def spin(self):\n        pass\n\n\ndef top_level():\n    pass\n",
+    )
+
+    entries = extract_python_structure(content)
+    by_name = {entry["name"]: entry for entry in entries}
+
+    assert by_name["spin"]["class"] == "Widget"
+    assert by_name["top_level"]["class"] is None
+
+
+def test_extract_python_structure_async_method_is_kind_method(tmp_path):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "class Widget:\n    async def spin(self):\n        pass\n",
+    )
+
+    entries = extract_python_structure(content)
+    by_name = {entry["name"]: entry for entry in entries}
+
+    assert by_name["spin"]["kind"] == "method"
+    assert by_name["spin"]["class"] == "Widget"
+
+
+def test_extract_python_structure_decorated_method_is_captured(tmp_path):
+    content = _committed_content(
+        tmp_path,
+        "mod.py",
+        "class Widget:\n    @property\n    def spin(self):\n        pass\n",
+    )
+
+    entries = extract_python_structure(content)
+    by_name = {entry["name"]: entry for entry in entries}
+
+    assert by_name["spin"]["kind"] == "method"
+    assert by_name["spin"]["class"] == "Widget"
+    assert by_name["spin"]["line"] == 3
+    assert by_name["spin"]["end_line"] == 4
+
+
+def test_extract_python_structure_syntax_error_yields_empty_list(tmp_path):
+    content = _committed_content(tmp_path, "broken.py", "def not_valid(:\n    pass\n")
+
+    assert extract_python_structure(content) == []
+
+
+# --- structural search: search_class / search_method / search_method_in_class ------
+# (WU-STRUCT-SEARCH)
+
+
+def _structural_repo(tmp_path: Path) -> Path:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "widget.py").write_text(
+        "class Widget:\n"
+        "    def spin(self):\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class SubWidget:\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "class WidgetExtra:\n"
+        "    pass\n"
+        "\n"
+        "\n"
+        "def run():\n"
+        "    pass\n"
+    )
+    (repo / "foo.py").write_text(
+        "class Foo:\n"
+        "    def run(self):\n"
+        "        pass\n"
+        "\n"
+        "\n"
+        "class Bar:\n"
+        "    def run(self):\n"
+        "        pass\n"
+    )
+    (repo / "notes.md").write_text("# Widget\n\nrun the Widget through its paces.\n")
+    _commit_all(repo)
+    return repo
+
+
+def test_search_class_finds_exact_name_case_insensitively_not_substrings(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    results = search_class(repo, "widget")
+
+    assert len(results) == 1
+    hit = results[0]
+    assert hit["file"] == "widget.py"
+    assert hit["name"] == "Widget"
+    assert hit["kind"] == "class"
+    assert hit["class"] is None
+    assert hit["line"] == 1
+
+
+def test_search_class_no_match_returns_empty_list(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    assert search_class(repo, "NoSuchClass") == []
+
+
+def test_search_method_finds_method_and_same_named_top_level_function(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    results = search_method(repo, "run")
+
+    by_class = {(r["file"], r["class"]): r for r in results}
+    assert ("widget.py", None) in by_class
+    assert by_class[("widget.py", None)]["kind"] == "function"
+
+    assert ("foo.py", "Foo") in by_class
+    assert by_class[("foo.py", "Foo")]["kind"] == "method"
+
+    assert ("foo.py", "Bar") in by_class
+    assert by_class[("foo.py", "Bar")]["kind"] == "method"
+
+
+def test_search_method_in_class_returns_only_matching_class_method(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    results = search_method_in_class(repo, "foo", "RUN")
+
+    assert len(results) == 1
+    hit = results[0]
+    assert hit["file"] == "foo.py"
+    assert hit["class"] == "Foo"
+    assert hit["name"] == "run"
+    assert hit["kind"] == "method"
+
+
+def test_search_method_in_class_no_match_returns_empty_list(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    assert search_method_in_class(repo, "Foo", "no_such_method") == []
+    assert search_method_in_class(repo, "NoSuchClass", "run") == []
+
+
+def test_structural_search_blank_query_returns_empty_list(tmp_path):
+    repo = _structural_repo(tmp_path)
+
+    assert search_class(repo, "") == []
+    assert search_method(repo, "   ") == []
+    assert search_method_in_class(repo, "", "run") == []
+    assert search_method_in_class(repo, "Foo", "") == []
+
+
+def test_structural_search_no_python_files_returns_empty_list(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "notes.md").write_text("# Widget\n\nclass Widget lives here in prose only.\n")
+    _commit_all(repo)
+
+    assert search_class(repo, "Widget") == []
+    assert search_method(repo, "run") == []
+    assert search_method_in_class(repo, "Widget", "run") == []
+
+
+def test_structural_search_git_failure_returns_empty_list(tmp_path):
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+
+    assert search_class(not_a_repo, "Widget") == []
+    assert search_method(not_a_repo, "run") == []
+    assert search_method_in_class(not_a_repo, "Widget", "run") == []
+
+
+# --- structural search tools: search_class / search_method / search_method_in_class -
+# (WU-STRUCT-TOOLS)
+
+
+def _invoke(tool_def, **args) -> str:
+    result = asyncio.run(tool_def.handler(args))
+    return result["content"][0]["text"]
+
+
+def test_search_class_tool_returns_match_as_compact_text(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_class_tool(repo)
+
+    text = _invoke(tool_def, name="widget")
+
+    assert text == "widget.py:1: class Widget:"
+
+
+def test_search_class_tool_no_match_renders_no_matches_note(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_class_tool(repo)
+
+    text = _invoke(tool_def, name="NoSuchClass")
+
+    assert text.startswith("no matches")
+
+
+def test_search_method_tool_returns_method_with_enclosing_class_prefix(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_tool(repo)
+
+    text = _invoke(tool_def, name="run")
+
+    lines = text.splitlines()
+    assert "widget.py:14: def run():" in lines
+    assert "foo.py:2: Foo.def run(self):" in lines
+    assert "foo.py:7: Bar.def run(self):" in lines
+
+
+def test_search_method_tool_no_match_renders_no_matches_note(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_tool(repo)
+
+    text = _invoke(tool_def, name="no_such_method")
+
+    assert text.startswith("no matches")
+
+
+def test_search_method_in_class_tool_returns_only_matching_class_method(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_in_class_tool(repo)
+
+    text = _invoke(tool_def, class_name="foo", method_name="RUN")
+
+    assert text == "foo.py:2: Foo.def run(self):"
+
+
+def test_search_method_in_class_tool_no_match_renders_no_matches_note(tmp_path):
+    repo = _structural_repo(tmp_path)
+    tool_def = make_search_method_in_class_tool(repo)
+
+    text = _invoke(tool_def, class_name="Foo", method_name="no_such_method")
+
+    assert text.startswith("no matches")
+
+
+def test_search_class_tool_is_named_search_class(tmp_path):
+    tool_def = make_search_class_tool(Path("."))
+    assert tool_def.name == "search_class"
+
+
+def test_search_method_tool_is_named_search_method(tmp_path):
+    tool_def = make_search_method_tool(Path("."))
+    assert tool_def.name == "search_method"
+
+
+def test_search_method_in_class_tool_is_named_search_method_in_class(tmp_path):
+    tool_def = make_search_method_in_class_tool(Path("."))
+    assert tool_def.name == "search_method_in_class"
