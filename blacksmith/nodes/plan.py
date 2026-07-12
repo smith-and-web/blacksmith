@@ -32,6 +32,8 @@ time. This keeps the deterministic graph tests independent of any model call.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -323,3 +325,65 @@ def _system_prompt(
             f"{repo_map}"
         )
     return prompt
+
+
+# --- plan critic (WU-PLAN-CRITIC-CORE) ---------------------------------------
+#
+# ADVISORY and OFF by default (a [critic].enabled flag, wired elsewhere): these are pure
+# helpers only -- no loop, no re-plan, no wiring into ``plan()`` in this unit. The critic
+# is a cheap one-shot call on the EXISTING plan model tier (``run_plan_critique``, which
+# mirrors ``run_summary`` -- no new model tier). Its verdict is parsed with the stdlib,
+# fail-open, mirroring ``nodes.review._parse_findings``.
+
+_CRITIQUE_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def _plan_critique_prompt(unit: WorkUnit, plan: str) -> str:
+    """Ask the critic whether ``plan`` actually satisfies ``unit``'s contract.
+
+    Names the unit id and its test_contract explicitly, and asks the critic to check the
+    plan stays within ``target_modules``, respects the untouchables, and covers the
+    required work -- then answer with a single fenced ```json block.
+    """
+    return (
+        "You are reviewing a proposed implementation plan for a work unit BEFORE any "
+        "code is written. Judge whether the plan actually satisfies this unit's "
+        "contract: does it satisfy the test contract, stay within the declared target "
+        "modules, respect the untouchables, and cover the required work?\n\n"
+        f"Unit {unit.id}: {unit.title}\n"
+        f"Target modules: {', '.join(unit.target_modules)}\n"
+        f"Test contract (must be satisfied): {unit.test_contract}\n\n"
+        "Proposed plan:\n"
+        f"{plan}\n\n"
+        "Respond with a single fenced json block and nothing else, in this exact shape:\n"
+        '```json\n{"approved": true|false, "critique": "..."}\n```'
+    )
+
+
+def _parse_critique(text: str) -> dict:
+    """Parse the critic's fenced JSON verdict into ``{"approved": bool, "critique": str}``.
+
+    Fail-open (mirroring ``nodes.review._parse_findings``): any unparseable, absent, or
+    wrong-shape input -- no fenced block, invalid JSON, non-dict, missing/non-bool
+    ``approved`` -- is treated as approved with no critique, so a broken critic can never
+    stall or halt planning.
+    """
+    fallback = {"approved": True, "critique": ""}
+    if not text or not text.strip():
+        return fallback
+    match = _CRITIQUE_FENCE_RE.search(text)
+    if match is None:
+        return fallback
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return fallback
+    if not isinstance(parsed, dict):
+        return fallback
+    approved = parsed.get("approved")
+    if not isinstance(approved, bool):
+        return fallback
+    critique = parsed.get("critique", "")
+    if not isinstance(critique, str):
+        critique = ""
+    return {"approved": approved, "critique": critique}

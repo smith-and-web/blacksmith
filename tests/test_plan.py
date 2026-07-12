@@ -15,6 +15,8 @@ from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
 from blacksmith.nodes.plan import (
     _PLAN_BLOCKED,
     _PLAN_READ_ONLY,
+    _parse_critique,
+    _plan_critique_prompt,
     plan,
     select_unit,
 )
@@ -469,3 +471,55 @@ def test_plan_node_structural_tools_absent_when_index_disabled(tmp_path):
             assert name not in call["allowed_tools"]
         assert "search_class" not in call["system_prompt"]
         assert "search_method" not in call["system_prompt"]
+
+
+# --- plan critic prompt + verdict parsing (WU-PLAN-CRITIC-CORE) ---------------
+#
+# Pure helpers only: no loop, no re-plan, no wiring into plan() here.
+
+
+def test_plan_critique_prompt_names_unit_id_and_test_contract():
+    unit = _contract().work_unit_by_id("WU-01")
+    prompt = _plan_critique_prompt(unit, "1. do the thing\n2. test the thing")
+    assert unit.id in prompt
+    assert unit.test_contract in prompt
+
+
+def test_parse_critique_well_formed_disapproving_verdict():
+    text = (
+        "Here is my verdict:\n"
+        '```json\n{"approved": false, "critique": "misses the untouchables check"}\n```'
+    )
+    result = _parse_critique(text)
+    assert result == {"approved": False, "critique": "misses the untouchables check"}
+
+
+def test_parse_critique_well_formed_approving_verdict():
+    text = '```json\n{"approved": true, "critique": "covers the test contract"}\n```'
+    result = _parse_critique(text)
+    assert result == {"approved": True, "critique": "covers the test contract"}
+
+
+def test_parse_critique_fails_open_on_garbage():
+    assert _parse_critique("not json at all, just prose") == {
+        "approved": True,
+        "critique": "",
+    }
+
+
+def test_parse_critique_fails_open_on_no_fenced_block():
+    assert _parse_critique('{"approved": false, "critique": "no fence"}') == {
+        "approved": True,
+        "critique": "",
+    }
+
+
+def test_parse_critique_fails_open_on_wrong_shape():
+    assert _parse_critique('```json\n{"critique": "missing approved key"}\n```') == {
+        "approved": True,
+        "critique": "",
+    }
+
+
+def test_parse_critique_fails_open_on_empty_text():
+    assert _parse_critique("") == {"approved": True, "critique": ""}

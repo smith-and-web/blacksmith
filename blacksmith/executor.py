@@ -219,6 +219,15 @@ class Executor:
         """
         return self.run(prompt, model=self._config.models.plan, **kwargs)
 
+    def run_plan_critique(self, prompt: str, **kwargs: Any) -> ExecutorResult:
+        """Run the (advisory, OFF by default) plan critic on the existing plan model tier
+        (WU-PLAN-CRITIC-CORE).
+
+        Reuses ``config.models.plan`` rather than a dedicated tier -- like ``run_summary``,
+        this is a cheap, fail-open one-shot call, not a new cost center or model provider.
+        """
+        return self.run(prompt, model=self._config.models.plan, **kwargs)
+
     def run_implement(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the first-attempt (cheaper) implement model tier (PRD §8)."""
         return self.run(prompt, model=self._config.models.implement, **kwargs)
