@@ -328,6 +328,25 @@ class SBFLConfig(_Strict):
     max_locations: int = Field(default=5, gt=0)
 
 
+class CriticConfig(_Strict):
+    """Additive, opt-in plan critic settings (WU-CRITIC-CONFIG).
+
+    ADVISORY and OFF by default (``enabled=false``): with the default config, the
+    plan node is byte-for-byte unchanged — no critic call, no re-plan. When
+    enabled, the critic can only trigger a bounded RE-PLAN of a unit before the
+    plan is surfaced; it never blocks the run and never changes the
+    ``approve_plan`` gate's semantics. This unit only adds the config surface; no
+    plan/graph/executor behaviour changes here.
+
+    * ``enabled`` — plain on/off toggle, default ``False``.
+    * ``max_plan_revisions`` — how many times a flagged plan may be re-planned
+      before proceeding, an int >= 0, default 1.
+    """
+
+    enabled: bool = False
+    max_plan_revisions: int = Field(default=1, ge=0)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth (PRD §8 / §12 decision 3).
 
@@ -361,6 +380,7 @@ class BlacksmithConfig(_Strict):
     index: IndexConfig = Field(default_factory=IndexConfig)
     respond: RespondConfig = Field(default_factory=RespondConfig)
     sbfl: SBFLConfig = Field(default_factory=SBFLConfig)
+    critic: CriticConfig = Field(default_factory=CriticConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:
@@ -434,6 +454,17 @@ class BlacksmithConfig(_Strict):
         call this resolver rather than reaching into ``self.sbfl`` directly.
         """
         return self.sbfl
+
+    def resolve_critic_config(self) -> CriticConfig:
+        """Return the ``[critic]`` settings (WU-CRITIC-CONFIG).
+
+        The critic is ADVISORY and OFF by default: with ``enabled=false`` (the
+        default) the plan node is byte-for-byte unchanged — no critic call, no
+        re-plan. This unit adds only the config surface — no plan/graph/executor
+        behaviour reads ``[critic]`` yet; a later unit will call this resolver
+        rather than reaching into ``self.critic`` directly.
+        """
+        return self.critic
 
     def resolve_repo_path(self, start: str | Path | None = None) -> Path:
         """Return the effective target repo path (WU-INSTALL).
