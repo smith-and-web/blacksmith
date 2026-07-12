@@ -33,7 +33,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
-from blacksmith.config import IndexConfig, LimitsConfig, ReviewConfig
+from blacksmith.config import IndexConfig, LimitsConfig, ReviewConfig, SBFLConfig
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
@@ -45,6 +45,7 @@ from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
 from blacksmith.planner import execution_levels
 from blacksmith.sandbox import SandboxError, SandboxManager
+from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import (
     Clone,
@@ -481,7 +482,7 @@ def prepare_escalation(state: BlacksmithState) -> dict:
     return {"escalated": True, "resume_partial_implement": False, "status": Status.IMPLEMENTING}
 
 
-def prepare_fix_retry(state: BlacksmithState) -> dict:
+def prepare_fix_retry(state: BlacksmithState, *, sbfl: SBFLConfig | None = None) -> dict:
     """A gate failure with same-model retries left: discard the failed attempt and
     re-implement the SAME unit on the cheap first-attempt model with the gate output fed
     back (WU-GATE-SELF-HEAL).
@@ -491,15 +492,36 @@ def prepare_fix_retry(state: BlacksmithState) -> dict:
     preserved), but leaves ``escalated`` unset so the cheap model is used again and the
     single escalation stays available once the retries are spent. Records the gate output as
     ``last_gate_output`` (the next implement prompt feeds it back) and bumps the per-unit
-    ``fix_attempts`` counter so the loop is bounded."""
+    ``fix_attempts`` counter so the loop is bounded.
+
+    ``sbfl`` is the additive, opt-in fault-localization channel (WU-SBFL-WIRE): when
+    provided AND ``sbfl.enabled``, the failing worktree is spectrum-analysed BEFORE it is
+    reset and the ranked suspicious ``file:line`` locations are APPENDED to the same
+    ``last_gate_output`` the raw gate text already travels on, so the next implement attempt
+    sees them alongside the failure. Left unset (the default, every existing test) or
+    disabled, no collection runs and ``last_gate_output`` is byte-for-byte the gate output.
+    Best-effort: empty locations append nothing."""
     worktree_path = state.get("worktree_path")
     ref = state.get("pre_implement_ref")
+    gate_output = (state.get("test_results") or {}).get("output", "")
+    # SBFL runs against the FAILING worktree, before the reset below throws the attempt away.
+    if sbfl is not None and sbfl.enabled and worktree_path:
+        locations = collect_suspicious_locations(
+            worktree_path,
+            coverage_cmd=sbfl.coverage_cmd,
+            coverage_json=sbfl.coverage_json,
+            junit_xml=sbfl.junit_xml,
+            limit=sbfl.max_locations,
+        )
+        block = format_suspicious_locations(locations)
+        if block:
+            gate_output = f"{gate_output}\n\n{block}" if gate_output else block
     if worktree_path and ref:
         _git_run(worktree_path, "reset", "--hard", ref)
         _git_run(worktree_path, "clean", "-fd")
     return {
         "fix_attempts": state.get("fix_attempts", 0) + 1,
-        "last_gate_output": (state.get("test_results") or {}).get("output", ""),
+        "last_gate_output": gate_output,
         # Worktree was reset — a fresh re-implement, not a partial continuation.
         "resume_partial_implement": False,
         "status": Status.IMPLEMENTING,
@@ -1281,6 +1303,7 @@ def build_graph(
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
     index: IndexConfig | None = None,
+    sbfl: SBFLConfig | None = None,
     default_branch: str | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
@@ -1308,6 +1331,14 @@ def build_graph(
     read straight off ``worktree_manager`` (the same repo the run's isolation is cloned
     from) — the index is read-only over it and never writes it. Left unset (the default,
     every existing test) or disabled, the plan system prompt is byte-for-byte unchanged.
+
+    ``sbfl`` wires the additive, opt-in fault-localization channel (WU-SBFL-WIRE) into the
+    ``fix_retry`` node the SAME opt-in-forwarding way as review/index/sandbox: when provided
+    AND ``sbfl.enabled``, ``prepare_fix_retry`` spectrum-analyses the failing worktree before
+    it resets and appends the ranked suspicious locations to the gate output fed back to the
+    next implement attempt. Left unset (the default, every existing test) or disabled, the
+    fix-retry feedback is byte-for-byte unchanged — no collection runs and the gate's
+    pass/fail decision is never touched.
 
     ``default_branch`` is the target repo's default branch (``[target].default_branch``):
     when provided, ``prepare_worktree`` seeds it into state so the PR node opens the combined
@@ -1361,7 +1392,7 @@ def build_graph(
     graph.add_node("join_level", join_level)
     graph.add_node("next_unit", next_unit)
     graph.add_node("escalate", prepare_escalation)
-    graph.add_node("fix_retry", prepare_fix_retry)
+    graph.add_node("fix_retry", _node_with(prepare_fix_retry, sbfl=sbfl))
     graph.add_node("continue_implement", prepare_implement_continuation)
     graph.add_node("review", _node_with(review_node, executor=executor, index_config=index))
     graph.add_node("prepare_review_revision", prepare_review_revision)
@@ -1531,6 +1562,7 @@ def compile_graph(
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
     index: IndexConfig | None = None,
+    sbfl: SBFLConfig | None = None,
     default_branch: str | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
@@ -1561,6 +1593,10 @@ def compile_graph(
     leaves the plan system prompt byte-for-byte unchanged -- the same switch that gates the
     implementer's indexing.
 
+    ``sbfl`` wires the additive, opt-in fault-localization channel (WU-SBFL-WIRE) into the
+    ``fix_retry`` node; ``None`` (the default) or one with ``enabled=False`` leaves the
+    fix-retry feedback byte-for-byte unchanged and never touches the gate's decision.
+
     ``default_branch`` (``[target].default_branch``) is seeded into state by
     ``prepare_worktree`` so the PR node opens the combined PR against it; ``None`` (the
     default) leaves the PR base unset and gh falls back to the repo's own default.
@@ -1575,6 +1611,7 @@ def compile_graph(
         review=review,
         sandbox=sandbox,
         index=index,
+        sbfl=sbfl,
         default_branch=default_branch,
     ).compile(
         checkpointer=checkpointer,
