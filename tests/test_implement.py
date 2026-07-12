@@ -667,16 +667,11 @@ def test_implement_index_prompt_names_both_tools_and_worktree_path(tmp_path):
 
 def test_implement_grants_structural_tools_when_index_enabled(tmp_path):
     # WU-STRUCT-WIRE: search_class/search_method/search_method_in_class are exposed on the
-    # same in-process MCP server as search_code/read_symbol (create_index_mcp_server), but a
-    # tool the agent can't name in allowed_tools is dead weight (the PR #70 lesson) — so the
-    # index enable switch must ALSO grant these three tool names, alongside search_code.
+    # same in-process MCP server as search_code/read_symbol (create_index_mcp_server) and
+    # granted together as the single QUALIFIED_INDEX_TOOL_NAMES set — the index enable switch
+    # grants the WHOLE set, including read_symbol (the implement tier used to omit it).
     from blacksmith.config import IndexConfig
-    from blacksmith.nodes.implement import (
-        _SEARCH_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_TOOL_NAME,
-        _SEARCH_TOOL_NAME,
-    )
+    from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
 
     wt = _scratch_worktree(tmp_path)
     _commit_helper_module(wt)
@@ -691,10 +686,7 @@ def test_implement_grants_structural_tools_when_index_enabled(tmp_path):
     )
 
     allowed = fake.calls[0]["allowed_tools"]
-    assert _SEARCH_TOOL_NAME in allowed
-    assert _SEARCH_CLASS_TOOL_NAME in allowed
-    assert _SEARCH_METHOD_TOOL_NAME in allowed
-    assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME in allowed
+    assert set(QUALIFIED_INDEX_TOOL_NAMES) <= set(allowed)
 
 
 def test_implement_index_prompt_names_structural_tools_when_index_enabled(tmp_path):
@@ -720,11 +712,7 @@ def test_implement_index_prompt_names_structural_tools_when_index_enabled(tmp_pa
 
 def test_implement_structural_tools_absent_when_index_disabled(tmp_path):
     from blacksmith.config import IndexConfig
-    from blacksmith.nodes.implement import (
-        _SEARCH_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_IN_CLASS_TOOL_NAME,
-        _SEARCH_METHOD_TOOL_NAME,
-    )
+    from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
 
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
@@ -751,9 +739,8 @@ def test_implement_structural_tools_absent_when_index_disabled(tmp_path):
     )
 
     for call in (fake_baseline.calls[0], fake_disabled.calls[0]):
-        assert _SEARCH_CLASS_TOOL_NAME not in call["allowed_tools"]
-        assert _SEARCH_METHOD_TOOL_NAME not in call["allowed_tools"]
-        assert _SEARCH_METHOD_IN_CLASS_TOOL_NAME not in call["allowed_tools"]
+        for name in QUALIFIED_INDEX_TOOL_NAMES:
+            assert name not in call["allowed_tools"]
         assert "search_class" not in call["system_prompt"]
         assert "search_method" not in call["system_prompt"]
 
@@ -885,6 +872,20 @@ def test_system_prompt_appends_repo_map_after_project_context():
     assert with_map.index("CONSTITUTION") < with_map.index("PROJECT CONTEXT") < with_map.index(
         "REPO MAP"
     )
+
+
+def test_system_prompt_advertises_index_tools_when_enabled_even_without_repo_map():
+    # Regression (the wiring-cleanup fix): the tool advertisement tracks the index being
+    # WIRED (index_enabled), NOT whether a repo map happened to build. A git hiccup / empty
+    # repo yields repo_map=None, but the tools are still granted and callable — so they must
+    # still be advertised, or they are the "granted-but-unmentioned dead weight" the PR #70
+    # lesson warns about. Advertisement and repo-map are now independent prompt blocks.
+    contract = parse_prd(VENDORED_PRD).contract
+    prompt = _system_prompt(contract, None, None, index_enabled=True)
+    assert "USE THE INDEX FIRST" in prompt
+    assert "search_code" in prompt
+    assert "search_class" in prompt  # structural tools too
+    assert "REPO MAP" not in prompt  # ...even though no map block is present
 
 
 def test_build_repo_map_disabled_returns_none(tmp_path):

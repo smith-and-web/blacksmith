@@ -56,7 +56,12 @@ from typing import Any
 from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.index import READ_SYMBOL_TOOL_NAME, SEARCH_CODE_TOOL_NAME, create_index_mcp_server
+from blacksmith.index import (
+    INDEX_MCP_SERVER_NAME,
+    QUALIFIED_INDEX_TOOL_NAMES,
+    create_index_mcp_server,
+    index_tools_prompt_section,
+)
 from blacksmith.nodes.plan import cost_event
 from blacksmith.state import BlacksmithState
 
@@ -75,16 +80,14 @@ _REVIEW_MAX_TURNS = 20
 # A single fenced ```json ... ``` (or bare ```` ``` ````) block containing the verdict object.
 _FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
-# Index tools (WU-REVIEW-INDEX): ADDITIVE and off by default, mirroring the implement
-# node's search_code/read_symbol wiring (WU-SEARCH-TOOL). Only when an ``IndexConfig``
-# with ``enabled=True`` is passed in is the reviewer granted the SAME in-process
-# ``blacksmith-index`` MCP server, bound read-only to the run's worktree. With no
-# ``index_config`` (or ``enabled=False``, the default) none of this is wired in and the
-# tool surface/prompt are byte-for-byte unchanged from before this unit -- the reviewer
-# stays read-only either way (no write/edit/shell tools are ever added).
-_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
-_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
-_READ_SYMBOL_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{READ_SYMBOL_TOOL_NAME}"
+# Index tools (WU-REVIEW-INDEX): ADDITIVE and off by default, sharing the SAME wiring as
+# the implement/plan tiers -- the server name, the qualified tool-name list, and the
+# advertisement text all come from ``blacksmith.index`` (single source of truth), so the
+# three tiers can't grant different tool sets or drift their guidance. Only when an
+# ``IndexConfig`` with ``enabled=True`` is passed in is the reviewer wired the in-process
+# ``blacksmith-index`` MCP server (read-only over the run's worktree), granted its tools,
+# and told about them. With the index disabled the reviewer's tool surface/prompt are
+# byte-for-byte unchanged -- it stays read-only either way (no write/edit/shell tool added).
 
 # Built-in emphasis rotation for a panel of reviewers (WU-REVIEW-PANEL-NODE). Cycled by
 # call index so a panel_size > len(_PANEL_EMPHASES) just repeats the rotation.
@@ -120,9 +123,8 @@ def review(
     allowed_tools = list(_REVIEW_READ_ONLY)
     mcp_servers: dict = {}
     if index_enabled:
-        allowed_tools.append(_SEARCH_TOOL_NAME)
-        allowed_tools.append(_READ_SYMBOL_TOOL_NAME)
-        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+        allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
+        mcp_servers[INDEX_MCP_SERVER_NAME] = create_index_mcp_server(
             worktree_path, exclude=index_config.exclude
         )
 
@@ -323,13 +325,10 @@ def _system_prompt(
     # with the index disabled this prompt is byte-for-byte unchanged.
     if index_enabled:
         prompt += (
-            "\n\nUSE THE INDEX FIRST. You have two read-only index tools: `search_code` to "
-            "find where something is defined or mentioned in ONE call (query is "
-            "space-separated terms matched with OR semantics, case-insensitive, and matched "
-            "literally — not as a regex; pass `path` to scope the search to one file, glob, "
-            "or directory), and `read_symbol` to fetch the source of one named top-level "
-            "function/class. Prefer them over Read/Glob/Grep — reach for Read only when the "
-            "index cannot answer your question, and read a slice (offset/limit), not the "
+            "\n\n"
+            + index_tools_prompt_section()
+            + " These tools are read-only, which is all you need. Reach for Read only when "
+            "the index cannot answer your question, and read a slice (offset/limit), not the "
             "whole file, when you do."
         )
         if worktree_path:

@@ -40,13 +40,11 @@ from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
-    READ_SYMBOL_TOOL_NAME,
-    SEARCH_CLASS_TOOL_NAME,
-    SEARCH_CODE_TOOL_NAME,
-    SEARCH_METHOD_IN_CLASS_TOOL_NAME,
-    SEARCH_METHOD_TOOL_NAME,
+    INDEX_MCP_SERVER_NAME,
+    QUALIFIED_INDEX_TOOL_NAMES,
     build_repo_map,
     create_index_mcp_server,
+    index_tools_prompt_section,
 )
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.state import BlacksmithState, Status
@@ -116,29 +114,15 @@ _PLAN_BLOCKED = [
     "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
 ]
 
-# search_code/read_symbol tools (WU-PLAN-SEARCH-TOOL): ADDITIVE and off by default, gated on
+# Index tools (WU-PLAN-SEARCH-TOOL / WU-STRUCT-WIRE): ADDITIVE and off by default, gated on
 # the SAME [index].enabled switch as the implementer indexing (blacksmith.nodes.implement) --
 # no separate toggle. Only when the index is enabled AND a repo_path is given (the target
-# repo -- no worktree exists yet at plan time) is the planner granted both search_code and
-# read_symbol alongside its existing read-only Read/Glob/Grep; no write/shell tool is ever
-# added, and with the index disabled the tool surface is byte-for-byte unchanged from before
-# this unit.
-_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
-_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
-_READ_SYMBOL_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{READ_SYMBOL_TOOL_NAME}"
-
-# Structural tool grants (WU-STRUCT-WIRE): ADDITIVE and gated on the SAME [index].enabled
-# switch as search_code/read_symbol above -- no separate toggle. create_index_mcp_server
-# already exposes these three Python-only structural tools (WU-AST-EXTRACT / WU-STRUCT-TOOLS)
-# on the same in-process MCP server search_code/read_symbol use, but a tool exposed by the
-# server is only callable if it is also named in allowed_tools -- granting the server without
-# naming the tool here left it dead weight (the PR #70 lesson). With the index disabled none
-# of this is wired in and the tool surface is byte-for-byte unchanged from before this unit.
-_SEARCH_CLASS_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CLASS_TOOL_NAME}"
-_SEARCH_METHOD_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_METHOD_TOOL_NAME}"
-_SEARCH_METHOD_IN_CLASS_TOOL_NAME = (
-    f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_METHOD_IN_CLASS_TOOL_NAME}"
-)
+# repo -- no worktree exists yet at plan time) is the planner wired the index server, granted
+# its tools, and told about them alongside its read-only Read/Glob/Grep; no write/shell tool is
+# ever added, and with the index disabled the tool surface + prompt are byte-for-byte unchanged.
+#
+# The server name, the qualified tool-name list, and the advertisement text all come from
+# ``blacksmith.index`` (single source of truth) so this tier and the implement tier can't drift.
 
 
 def select_unit(contract: PRDContract, completed: Sequence[str] = ()) -> WorkUnit | None:
@@ -176,23 +160,24 @@ def plan(
     # Plan EVERY auto-gated unit, in declaration (topological) order. Human-gated units are
     # skipped — they build for manual QA behind a draft PR, no implementation plan needed.
     auto_units = [u for u in contract.work_units if contract.gate_for(u) != "human"]
+    # Index tool wiring (WU-PLAN-SEARCH-TOOL / WU-STRUCT-WIRE): built ONCE and reused across the
+    # per-unit calls below, exactly like system_prompt -- not once per unit. Computed BEFORE the
+    # system prompt so the prompt can advertise the tools whenever they're wired (index_enabled),
+    # never merely when a repo map happened to build.
+    index_enabled = bool(index_config is not None and index_config.enabled and repo_path)
     # Built ONCE and reused across the per-unit calls so the static constitution/lessons/repo-map
     # context caches across them (AC-8) instead of being re-sent (or rebuilt) for each unit.
     system_prompt = _system_prompt(
-        contract, _prior_lessons(contract), _build_repo_map(repo_path, index_config)
+        contract,
+        _prior_lessons(contract),
+        _build_repo_map(repo_path, index_config),
+        index_enabled=index_enabled,
     )
-    # search_code tool wiring (WU-PLAN-SEARCH-TOOL): built ONCE and reused across the
-    # per-unit calls below, exactly like system_prompt above -- not once per unit.
-    index_enabled = bool(index_config is not None and index_config.enabled and repo_path)
     allowed_tools = list(_PLAN_READ_ONLY)
     mcp_servers: dict = {}
     if index_enabled:
-        allowed_tools.append(_SEARCH_TOOL_NAME)
-        allowed_tools.append(_READ_SYMBOL_TOOL_NAME)
-        allowed_tools.append(_SEARCH_CLASS_TOOL_NAME)
-        allowed_tools.append(_SEARCH_METHOD_TOOL_NAME)
-        allowed_tools.append(_SEARCH_METHOD_IN_CLASS_TOOL_NAME)
-        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+        allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
+        mcp_servers[INDEX_MCP_SERVER_NAME] = create_index_mcp_server(
             repo_path, exclude=index_config.exclude
         )
     plans: list[dict] = []
@@ -302,6 +287,8 @@ def _system_prompt(
     contract: PRDContract,
     lessons: list[dict] | None = None,
     repo_map: str | None = None,
+    *,
+    index_enabled: bool = False,
 ) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
     prompt = (
@@ -317,27 +304,22 @@ def _system_prompt(
             "this repo; learn from them and avoid repeating these mistakes:\n"
             f"{rendered}"
         )
+    # Advertise the index tools whenever the index is WIRED (index_enabled), independent of
+    # whether a repo map built -- an empty/failed map must not silently un-advertise working
+    # tools. The repo map, when present, is a separate block below.
+    if index_enabled:
+        prompt += (
+            "\n\n"
+            + index_tools_prompt_section()
+            + " Reach for Read only when the index cannot answer your question. This is "
+            "exactly what the index exists to replace: scanning the repo with dozens of "
+            "greps is slow and expensive."
+        )
     if repo_map:
         prompt += (
             "\n\nREPO MAP — a structural outline of the target repository (tracked files "
             "and their top-level symbols, WU-CODE-INDEX), given up front as static context "
             "so you can orient before exploring:\n"
-            f"{repo_map}\n\n"
-            "USE THE INDEX FIRST. You have two tools: `search_code` to find where something "
-            "is defined or mentioned in this repo in ONE call (query is space-separated terms "
-            "matched with OR semantics, case-insensitive, and matched literally — not as a "
-            "regex; pass `path` to scope the search to one file, glob, or directory instead "
-            "of a path-scoped Grep), and `read_symbol` to fetch the source of one named top-level "
-            "function/class once you know which file it's in. You also have three structural "
-            "tools, scoped to Python (`.py`) files only: `search_class` to find a class "
-            "definition by its EXACT name, `search_method` to find a method or top-level "
-            "function by its EXACT name, and `search_method_in_class` to find a method by its "
-            "EXACT name within a specific class by its EXACT name. For a where-is-this-class-"
-            "or-method question, prefer `search_class`/`search_method`/`search_method_in_class` "
-            "over `search_code` or a blind Grep — they match the exact identifier instead of "
-            "ranking text mentions. Prefer the map above and these tools over Read/Glob/Grep "
-            "— reach for Read only for a file you are actually about to edit, or when the "
-            "index cannot answer your question. This is exactly what the index exists to "
-            "replace: scanning the repo with dozens of greps is slow and expensive."
+            f"{repo_map}"
         )
     return prompt

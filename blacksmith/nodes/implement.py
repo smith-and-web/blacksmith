@@ -27,12 +27,11 @@ from blacksmith.config import IndexConfig
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
-    SEARCH_CLASS_TOOL_NAME,
-    SEARCH_CODE_TOOL_NAME,
-    SEARCH_METHOD_IN_CLASS_TOOL_NAME,
-    SEARCH_METHOD_TOOL_NAME,
+    INDEX_MCP_SERVER_NAME,
+    QUALIFIED_INDEX_TOOL_NAMES,
     build_repo_map,
     create_index_mcp_server,
+    index_tools_prompt_section,
 )
 from blacksmith.nodes.plan import cost_event, usage_breakdown
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
@@ -67,28 +66,15 @@ _SANDBOX_TOOL_NAME = f"mcp__{_SANDBOX_SERVER_NAME}__{RUN_COMMAND_TOOL_NAME}"
 # wiring may pass the configured value through explicitly; this is the fallback.
 _DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
 
-# search_code tool (WU-SEARCH-TOOL): ADDITIVE and off by default, mirroring the sandbox
-# tool wiring above. Only when an ``IndexConfig`` with ``enabled=True`` is passed in is the
-# implementer granted the ``search_code`` tool (WU-CODE-INDEX, ``blacksmith.index``) via its
-# own in-process MCP server, read-only over the run's worktree. With no ``index_config`` (or
-# ``enabled=False``, the default) none of this is wired in and the tool surface is
-# byte-for-byte unchanged from before this unit -- raw Read/Glob/Grep stay available either
-# way.
-_INDEX_SERVER_NAME = "blacksmith-index"  # must match blacksmith.index's server name
-_SEARCH_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CODE_TOOL_NAME}"
-
-# Structural tool grants (WU-STRUCT-WIRE): ADDITIVE and gated on the SAME [index].enabled
-# switch as search_code above -- no separate toggle. create_index_mcp_server already exposes
-# these three Python-only structural tools (WU-AST-EXTRACT / WU-STRUCT-TOOLS) on the same
-# in-process MCP server search_code uses, but a tool exposed by the server is only callable if
-# it is also named in allowed_tools -- granting the server without naming the tool here left
-# it dead weight (the PR #70 lesson). With the index disabled none of this is wired in and the
-# tool surface is byte-for-byte unchanged from before this unit.
-_SEARCH_CLASS_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_CLASS_TOOL_NAME}"
-_SEARCH_METHOD_TOOL_NAME = f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_METHOD_TOOL_NAME}"
-_SEARCH_METHOD_IN_CLASS_TOOL_NAME = (
-    f"mcp__{_INDEX_SERVER_NAME}__{SEARCH_METHOD_IN_CLASS_TOOL_NAME}"
-)
+# Index tools (WU-SEARCH-TOOL / WU-STRUCT-WIRE): ADDITIVE and off by default, mirroring the
+# sandbox tool wiring above. Only when an ``IndexConfig`` with ``enabled=True`` is passed in
+# is the implementer wired the index MCP server (WU-CODE-INDEX, ``blacksmith.index``),
+# read-only over the run's worktree, and granted its tools + told about them. With no
+# ``index_config`` (or ``enabled=False``, the default) none of this is wired in and the tool
+# surface + prompt are byte-for-byte unchanged -- raw Read/Glob/Grep stay available either way.
+#
+# The server name, the qualified tool-name list, and the advertisement text all come from
+# ``blacksmith.index`` (single source of truth) so the plan tier and this tier can't drift.
 
 # Conventional-Commits header so the unit's commit is never rejected by a target repo's
 # commit-msg hook (commitlint / config-conventional) AFTER its expensive implementation
@@ -263,21 +249,24 @@ def implement(
     # mirroring the same ``sandbox is not None and sandbox.config.enabled`` check used by the
     # run-level lifecycle wiring (WU-SANDBOX-LIFECYCLE) in graph.py.
     sandbox_enabled = bool(sandbox is not None and sandbox.config.enabled)
-    # search_code tool (WU-SEARCH-TOOL): same additive gating as the sandbox tool above --
-    # only an explicitly enabled IndexConfig grants it.
+    # Index tools (WU-SEARCH-TOOL / WU-STRUCT-WIRE): same additive gating as the sandbox tool
+    # above -- only an explicitly enabled IndexConfig wires the server, grants the tools, and
+    # advertises them. The grant, the server, and the prompt advertisement all key off this one
+    # ``index_enabled`` flag so they can never diverge.
     index_enabled = bool(index_config is not None and index_config.enabled)
     allowed_tools = list(_ALLOWED_TOOLS)
     if sandbox_enabled:
         allowed_tools.append(_SANDBOX_TOOL_NAME)
     if index_enabled:
-        allowed_tools.append(_SEARCH_TOOL_NAME)
-        allowed_tools.append(_SEARCH_CLASS_TOOL_NAME)
-        allowed_tools.append(_SEARCH_METHOD_TOOL_NAME)
-        allowed_tools.append(_SEARCH_METHOD_IN_CLASS_TOOL_NAME)
+        allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
     repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
         "system_prompt": _system_prompt(
-            prd.contract, _read_project_context(worktree_path), repo_map, worktree_path
+            prd.contract,
+            _read_project_context(worktree_path),
+            repo_map,
+            worktree_path,
+            index_enabled=index_enabled,
         ),
         "cwd": worktree_path,
         # Read tools auto-approve; Write/Edit are NOT auto-approved, so under the
@@ -298,7 +287,7 @@ def implement(
             sandbox, exec_timeout_s=sandbox_exec_timeout_s
         )
     if index_enabled:
-        mcp_servers[_INDEX_SERVER_NAME] = create_index_mcp_server(
+        mcp_servers[INDEX_MCP_SERVER_NAME] = create_index_mcp_server(
             worktree_path, exclude=index_config.exclude
         )
     if mcp_servers:
@@ -564,6 +553,8 @@ def _system_prompt(
     project_context: str | None = None,
     repo_map: str | None = None,
     worktree_path: str | Path | None = None,
+    *,
+    index_enabled: bool = False,
 ) -> str:
     untouchables = "\n".join(f"- {item}" for item in contract.untouchables)
     prompt = (
@@ -579,26 +570,14 @@ def _system_prompt(
             "conventions and guidance). Follow it, but the CONSTITUTION above wins on any "
             f"conflict:\n{project_context}"
         )
-    if repo_map:
+    # Advertise the index tools whenever the index is WIRED (index_enabled), independent of
+    # whether a repo map built -- an empty/failed map must not silently un-advertise working
+    # tools. The repo map, when present, is a separate block below.
+    if index_enabled:
         prompt += (
-            "\n\nREPO MAP — a structural outline of this repository (tracked files and their "
-            "top-level symbols, WU-CODE-INDEX), given up front as static context so you can "
-            "orient before exploring, rather than spending turns on blind Read/Glob/Grep:\n"
-            f"{repo_map}\n\n"
-            "USE THE INDEX FIRST. You have two tools: `search_code` to find where something "
-            "is defined or mentioned in this repo in ONE call (query is space-separated terms "
-            "matched with OR semantics, case-insensitive, and matched literally — not as a "
-            "regex; pass `path` to scope the search to one file, glob, or directory instead "
-            "of a path-scoped Grep), and `read_symbol` to fetch the source of one named top-level "
-            "function/class once you know which file it's in. You also have three structural "
-            "tools, scoped to Python (`.py`) files only: `search_class` to find a class "
-            "definition by its EXACT name, `search_method` to find a method or top-level "
-            "function by its EXACT name, and `search_method_in_class` to find a method by its "
-            "EXACT name within a specific class by its EXACT name. For a where-is-this-class-"
-            "or-method question, prefer `search_class`/`search_method`/`search_method_in_class` "
-            "over `search_code` or a blind Grep — they match the exact identifier instead of "
-            "ranking text mentions. Prefer the map above and these tools over Read/Glob/Grep "
-            "— reach for Read only for a file you are actually about to edit, or when the "
+            "\n\n"
+            + index_tools_prompt_section()
+            + " Reach for Read only for a file you are actually about to edit, or when the "
             "index cannot answer your question."
         )
         if worktree_path:
@@ -609,4 +588,11 @@ def _system_prompt(
                 "absolute path under that worktree path — never a relative path. A relative "
                 "Read has been observed to fail against the wrong working directory."
             )
+    if repo_map:
+        prompt += (
+            "\n\nREPO MAP — a structural outline of this repository (tracked files and their "
+            "top-level symbols, WU-CODE-INDEX), given up front as static context so you can "
+            "orient before exploring, rather than spending turns on blind Read/Glob/Grep:\n"
+            f"{repo_map}"
+        )
     return prompt

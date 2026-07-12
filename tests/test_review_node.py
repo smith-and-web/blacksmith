@@ -12,7 +12,8 @@ from typing import Annotated, get_type_hints
 from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
-from blacksmith.nodes.review import _READ_SYMBOL_TOOL_NAME, _SEARCH_TOOL_NAME, review
+from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
+from blacksmith.nodes.review import review
 from blacksmith.state import BlacksmithState, ReviewFinding
 
 VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
@@ -290,8 +291,9 @@ def test_review_index_enabled_grants_search_and_read_symbol_tools():
     fake = FakeExecutor(_result(CLEAN_VERDICT))
     review(_state(), executor=fake, index_config=IndexConfig(enabled=True))
     call = fake.calls[0]
-    assert _SEARCH_TOOL_NAME in call["allowed_tools"]
-    assert _READ_SYMBOL_TOOL_NAME in call["allowed_tools"]
+    # The reviewer now grants the SAME full index tool set as plan/implement (shared
+    # QUALIFIED_INDEX_TOOL_NAMES) -- it used to grant only search_code + read_symbol.
+    assert set(QUALIFIED_INDEX_TOOL_NAMES) <= set(call["allowed_tools"])
     assert "blacksmith-index" in call["mcp_servers"]
 
 
@@ -355,5 +357,5 @@ def test_review_index_disabled_matches_baseline_tool_surface():
     assert disabled_call["allowed_tools"] == expected
     assert "mcp_servers" not in baseline_call
     assert "mcp_servers" not in disabled_call
-    assert _SEARCH_TOOL_NAME not in baseline_call["allowed_tools"]
-    assert _READ_SYMBOL_TOOL_NAME not in baseline_call["allowed_tools"]
+    for name in QUALIFIED_INDEX_TOOL_NAMES:
+        assert name not in baseline_call["allowed_tools"]

@@ -722,6 +722,27 @@ def test_create_index_mcp_server_carries_both_tools(tmp_path):
     }
 
 
+def test_qualified_index_tool_names_match_server_tools(tmp_path):
+    """The grant list both node tiers use MUST name exactly the tools the server exposes.
+
+    This is the anti-dead-weight invariant: a tool on the server that isn't in the grant
+    list (or a grant-list name with no backing tool) is the exact drift that had implement
+    silently omitting read_symbol. Deriving both from this test pins them together.
+    """
+    import asyncio
+
+    from mcp import types as mcp_types
+
+    from blacksmith.index import INDEX_MCP_SERVER_NAME, QUALIFIED_INDEX_TOOL_NAMES
+
+    server = create_index_mcp_server(_symbol_repo(tmp_path))["instance"]
+    handler = server.request_handlers[mcp_types.ListToolsRequest]
+    result = asyncio.run(handler(None))
+
+    server_qualified = {f"mcp__{INDEX_MCP_SERVER_NAME}__{t.name}" for t in result.root.tools}
+    assert server_qualified == set(QUALIFIED_INDEX_TOOL_NAMES)
+
+
 # --- reference graph + PageRank (WU-DEP-GRAPH) ------------------------------------
 
 

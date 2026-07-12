@@ -22,12 +22,13 @@ from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.index import (
     NO_MATCHES_MESSAGE,
+    QUALIFIED_INDEX_TOOL_NAMES,
     SEARCH_CODE_TOOL_NAME,
     create_index_mcp_server,
     format_search_results,
     make_search_code_tool,
 )
-from blacksmith.nodes.implement import _ALLOWED_TOOLS, _SEARCH_TOOL_NAME, implement
+from blacksmith.nodes.implement import _ALLOWED_TOOLS, implement
 from blacksmith.state import Status
 from blacksmith.worktree import WorktreeManager
 
@@ -181,8 +182,8 @@ def test_implement_grants_search_code_tool_when_index_enabled(tmp_path):
 
     assert out["status"] == Status.TESTING
     call = fake.calls[0]
-    assert SEARCH_CODE_TOOL_NAME in _SEARCH_TOOL_NAME
-    assert _SEARCH_TOOL_NAME in call["allowed_tools"]
+    assert any(SEARCH_CODE_TOOL_NAME in name for name in QUALIFIED_INDEX_TOOL_NAMES)
+    assert set(QUALIFIED_INDEX_TOOL_NAMES) <= set(call["allowed_tools"])
     assert "blacksmith-index" in call["mcp_servers"]
     # raw Read/Glob/Grep stay available alongside the new tool
     for raw_tool in ("Read", "Glob", "Grep"):
@@ -220,7 +221,8 @@ def test_implement_search_code_tool_absent_when_index_disabled(tmp_path):
     assert baseline_call["allowed_tools"] == disabled_call["allowed_tools"] == _ALLOWED_TOOLS
     assert "mcp_servers" not in baseline_call
     assert "mcp_servers" not in disabled_call
-    assert _SEARCH_TOOL_NAME not in baseline_call["allowed_tools"]
-    assert _SEARCH_TOOL_NAME not in disabled_call["allowed_tools"]
+    for name in QUALIFIED_INDEX_TOOL_NAMES:
+        assert name not in baseline_call["allowed_tools"]
+        assert name not in disabled_call["allowed_tools"]
     assert baseline_call["system_prompt"] == disabled_call["system_prompt"]
     assert baseline_call["prompt"] == disabled_call["prompt"]
