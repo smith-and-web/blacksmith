@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "workspace": "./blacksmith/remote/workspace_graph.py:graph"
+  }
+}
