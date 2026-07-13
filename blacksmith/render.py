@@ -249,6 +249,10 @@ class Renderer:
             results = payload.get("test_results") or {}
             print("\nDiff summary:", file=out)
             print(impl.get("diff_summary") or "(none)", file=out)
+            diff_text = payload.get("diff_text")
+            if diff_text:
+                print("\nFull diff:", file=out)
+                print(diff_text, file=out)
             marker = "PASS" if results.get("passed") else "FAIL"
             print(f"\nTests: {marker}  ({results.get('command', '')})", file=out)
             print(results.get("output") or "", file=out)
@@ -303,6 +307,9 @@ class Renderer:
             results = payload.get("test_results") or {}
             diff = Text(impl.get("diff_summary") or "(none)")
             console.print(Panel(diff, title="diff summary", expand=False))
+            diff_text = payload.get("diff_text")
+            if diff_text:
+                console.print(Panel(Text(diff_text), title="full diff", expand=False))
             passed = results.get("passed")
             marker, style = ("PASS", "bold green") if passed else ("FAIL", "bold red")
             body = Text()
