@@ -347,6 +347,24 @@ class CriticConfig(_Strict):
     max_plan_revisions: int = Field(default=1, ge=0)
 
 
+class HitlConfig(_Strict):
+    """Additive, read-only combined-diff display settings for the approve_pr gate
+    (WU-PR-DIFF-CONFIG).
+
+    This is the diff-INSPECTION slice only: the approver CONTRACT and graph ROUTING
+    are unchanged — ``approve_pr`` stays a bool y/n gate. This section only bounds an
+    OPTIONAL combined diff shown alongside today's diffstat at the interactive
+    ``approve_pr`` gate; it never changes a run's outcome. This unit only adds the
+    config surface; no graph/hitl/render behaviour reads ``[hitl]`` yet.
+
+    * ``pr_diff_max_bytes`` — the byte ceiling for the combined diff shown at the
+      approve_pr gate, an int >= 0, default 60000. ``0`` disables the full-diff
+      display entirely, leaving today's diffstat-only gate byte-for-byte unchanged.
+    """
+
+    pr_diff_max_bytes: int = Field(default=60000, ge=0)
+
+
 class ApiConfig(_Strict):
     """Anthropic auth (PRD §8 / §12 decision 3).
 
@@ -381,6 +399,7 @@ class BlacksmithConfig(_Strict):
     respond: RespondConfig = Field(default_factory=RespondConfig)
     sbfl: SBFLConfig = Field(default_factory=SBFLConfig)
     critic: CriticConfig = Field(default_factory=CriticConfig)
+    hitl: HitlConfig = Field(default_factory=HitlConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:
@@ -465,6 +484,17 @@ class BlacksmithConfig(_Strict):
         rather than reaching into ``self.critic`` directly.
         """
         return self.critic
+
+    def resolve_hitl_config(self) -> HitlConfig:
+        """Return the ``[hitl]`` settings (WU-PR-DIFF-CONFIG).
+
+        This is the diff-inspection slice only: the approver contract and graph
+        routing are unchanged, and this section never gates a run's outcome. This
+        unit adds only the config surface — no graph/hitl/render behaviour reads
+        ``[hitl]`` yet; a later unit will call this resolver rather than reaching
+        into ``self.hitl`` directly.
+        """
+        return self.hitl
 
     def resolve_repo_path(self, start: str | Path | None = None) -> Path:
         """Return the effective target repo path (WU-INSTALL).

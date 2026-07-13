@@ -33,7 +33,14 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
-from blacksmith.config import CriticConfig, IndexConfig, LimitsConfig, ReviewConfig, SBFLConfig
+from blacksmith.config import (
+    CriticConfig,
+    HitlConfig,
+    IndexConfig,
+    LimitsConfig,
+    ReviewConfig,
+    SBFLConfig,
+)
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
@@ -140,6 +147,7 @@ def prepare_worktree(
     review: ReviewConfig | None = None,
     sandbox: SandboxManager | None = None,
     default_branch: str | None = None,
+    hitl: HitlConfig | None = None,
 ) -> dict:
     """Create the run's ONE shared clone/branch and seed the level execution plan.
 
@@ -220,6 +228,17 @@ def prepare_worktree(
     # PR node passes no ``--base`` and gh falls back to the repo default exactly as before.
     if default_branch is not None:
         update["default_branch"] = default_branch
+    # Capture the shared worktree's HEAD right after creation, i.e. before any unit's
+    # commits land on it (WU-PR-DIFF-CAPTURE) -- the run base ref the approve_pr gate diffs
+    # the combined branch against. Only when the graph is wired with a HitlConfig
+    # (production via build_graph_for), the SAME opt-in-forwarding pattern as
+    # limits/review/default_branch above; a graph compiled without one leaves
+    # ``pr_base_ref`` unset, so the gate's payload carries no diff_text exactly as before.
+    # Best-effort: a git failure here just leaves the ref unset (no diff, never a halt).
+    if hitl is not None:
+        ref_result = _git_run(str(worktree.path), "rev-parse", "HEAD")
+        if ref_result.returncode == 0:
+            update["pr_base_ref"] = ref_result.stdout.strip()
     # Start the run's ONE sandbox container over this clone (WU-SANDBOX-LIFECYCLE), reused
     # across every unit built on it. Additive and opt-in: a graph compiled without a sandbox
     # (``sandbox=None``, every existing test) or one wired with ``enabled=False`` is a
@@ -1306,6 +1325,7 @@ def build_graph(
     sbfl: SBFLConfig | None = None,
     critic: CriticConfig | None = None,
     default_branch: str | None = None,
+    hitl: HitlConfig | None = None,
 ) -> StateGraph:
     """Construct (but do not compile) the v0 graph topology.
 
@@ -1352,7 +1372,15 @@ def build_graph(
     ``default_branch`` is the target repo's default branch (``[target].default_branch``):
     when provided, ``prepare_worktree`` seeds it into state so the PR node opens the combined
     PR against it (``gh pr create --base``). Left unset (the default, every existing test)
-    the PR node passes no ``--base`` and gh falls back to the repo's own default."""
+    the PR node passes no ``--base`` and gh falls back to the repo's own default.
+
+    ``hitl`` wires the additive, opt-in combined-diff display (WU-PR-DIFF-CAPTURE) into
+    ``prepare_worktree`` (to capture ``pr_base_ref``) and the ``approve_pr`` gate (to compute
+    and surface the bounded ``diff_text``) the SAME opt-in-forwarding way as
+    review/index/sandbox/sbfl/critic: when provided AND ``hitl.pr_diff_max_bytes > 0``, the
+    gate's interrupt payload gains a ``diff_text`` key. Left unset (the default, every
+    existing test) or with a zero byte ceiling, the payload is byte-for-byte unchanged --
+    the approver's bool contract and routing are never touched either way."""
     graph = StateGraph(BlacksmithState)
 
     plan_repo_path = str(worktree_manager.repo_path) if worktree_manager is not None else None
@@ -1377,6 +1405,7 @@ def build_graph(
             review=review,
             sandbox=sandbox,
             default_branch=default_branch,
+            hitl=hitl,
         ),
     )
     # ONE dependency bundle for BOTH unit-build paths (the sequential ``implement`` node and
@@ -1412,7 +1441,7 @@ def build_graph(
     graph.add_node("review", _node_with(review_node, executor=executor, index_config=index))
     graph.add_node("prepare_review_revision", prepare_review_revision)
     graph.add_node("finalize_review", finalize_review)
-    graph.add_node("approve_pr", approve_pr)
+    graph.add_node("approve_pr", _node_with(approve_pr, hitl=hitl))
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner, executor))
     graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner, executor))
     graph.add_node("human_halt", human_halt)
@@ -1580,6 +1609,7 @@ def compile_graph(
     sbfl: SBFLConfig | None = None,
     critic: CriticConfig | None = None,
     default_branch: str | None = None,
+    hitl: HitlConfig | None = None,
 ) -> CompiledStateGraph:
     """Compile the graph with a checkpointer.
 
@@ -1621,6 +1651,11 @@ def compile_graph(
     ``default_branch`` (``[target].default_branch``) is seeded into state by
     ``prepare_worktree`` so the PR node opens the combined PR against it; ``None`` (the
     default) leaves the PR base unset and gh falls back to the repo's own default.
+
+    ``hitl`` wires the additive, opt-in combined-diff display (WU-PR-DIFF-CAPTURE) into
+    ``prepare_worktree``/``approve_pr``; ``None`` (the default) or one with
+    ``pr_diff_max_bytes == 0`` leaves the gate's interrupt payload byte-for-byte unchanged
+    -- the approver's bool contract and routing are never touched either way.
     """
     return build_graph(
         pr_runner=pr_runner,
@@ -1635,6 +1670,7 @@ def compile_graph(
         sbfl=sbfl,
         critic=critic,
         default_branch=default_branch,
+        hitl=hitl,
     ).compile(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),

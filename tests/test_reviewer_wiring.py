@@ -71,6 +71,11 @@ def test_build_graph_for_forwards_every_opt_in_feature(monkeypatch):
     assert captured["sandbox"].config.enabled == config.sandbox.enabled
     assert captured["sandbox"].config.image == config.sandbox.image
     assert captured["sandbox"].config.exec_timeout_s == config.sandbox.exec_timeout_s
+    # The combined-diff display at the approve_pr gate (WU-PR-DIFF-CAPTURE) is forwarded
+    # straight from config too, so [hitl] can't become a wired-but-dark feature: a nonzero
+    # pr_diff_max_bytes in config yet the gate never actually computing a diff.
+    assert captured["hitl"] is config.hitl
+    assert captured["hitl"].pr_diff_max_bytes > 0
 
 
 def test_unit_deps_covers_every_injectable_implement_param():

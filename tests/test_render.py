@@ -132,6 +132,73 @@ def test_gate_render_rendered_mode_shows_unresolved_findings():
     assert "resolved via revision: 2" in text
 
 
+# --- WU-PR-DIFF-RENDER: the full combined diff, after the diffstat -------------------
+
+
+def test_gate_render_pr_with_diff_text_shows_full_diff_section_after_diffstat_plain():
+    payload = {
+        **PR_PAYLOAD,
+        "diff_text": "diff --git a/render.py b/render.py\n+added line",
+    }
+    renderer, out = _plain_renderer()
+    renderer.gate(payload)
+    text = out.getvalue()
+    assert "diff --git a/render.py b/render.py" in text
+    assert "+added line" in text
+    diffstat_idx = text.index("Diff summary:")
+    full_diff_idx = text.index("Full diff:")
+    assert diffstat_idx < full_diff_idx
+    assert text.index("diff --git a/render.py b/render.py") > full_diff_idx
+
+
+def test_gate_render_pr_without_diff_text_is_byte_for_byte_unchanged_plain():
+    renderer, out = _plain_renderer()
+    renderer.gate(PR_PAYLOAD)  # no diff_text key at all
+    text = out.getvalue()
+    assert "Full diff:" not in text
+
+    other_renderer, other_out = _plain_renderer()
+    other_renderer.gate({**PR_PAYLOAD})
+    assert other_out.getvalue() == text
+
+
+def test_gate_render_pr_with_diff_text_shows_full_diff_section_rendered_mode():
+    payload = {
+        **PR_PAYLOAD,
+        "diff_text": "diff --git a/render.py b/render.py\n+added line",
+    }
+    out = _TTYStringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    renderer.gate(payload)
+    text = out.getvalue()
+    assert "diff --git a/render.py b/render.py" in text
+    assert "full diff" in text
+
+
+def test_gate_render_pr_without_diff_text_omits_full_diff_panel_rendered_mode():
+    out = _TTYStringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    renderer.gate(PR_PAYLOAD)  # no diff_text key at all
+    text = out.getvalue()
+    assert "full diff" not in text
+
+
+def test_gate_render_pr_sections_still_ordered_diffstat_tests_files_review():
+    payload = {
+        **PR_PAYLOAD,
+        "diff_text": "diff --git a/render.py b/render.py\n+added line",
+    }
+    renderer, out = _plain_renderer()
+    renderer.gate(payload)
+    text = out.getvalue()
+    idx_diffstat = text.index("Diff summary:")
+    idx_full_diff = text.index("Full diff:")
+    idx_tests = text.index("Tests:")
+    idx_files = text.index("Files touched:")
+    idx_review = text.index("review: clean")
+    assert idx_diffstat < idx_full_diff < idx_tests < idx_files < idx_review
+
+
 # --- (c) the PR body renders a units table, in declaration order --------------------
 
 

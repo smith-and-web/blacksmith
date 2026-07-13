@@ -17,6 +17,7 @@ from blacksmith.config import (
     CheckpointerConfig,
     ConfigError,
     CriticConfig,
+    HitlConfig,
     IndexConfig,
     LimitsConfig,
     ModelTiers,
@@ -426,6 +427,52 @@ def test_explicit_critic_config_loads(tmp_path):
     cfg = BlacksmithConfig.load(cfg_file)
     assert cfg.critic.enabled is True
     assert cfg.critic.max_plan_revisions == 3
+
+
+def test_hitl_section_defaults():
+    # WU-PR-DIFF-CONFIG: [hitl] is on by default (a nonzero byte ceiling), so the
+    # combined diff is shown at the approve_pr gate out of the box.
+    hitl = HitlConfig()
+    assert hitl.pr_diff_max_bytes == 60000
+    assert isinstance(hitl.pr_diff_max_bytes, int)
+
+
+def test_hitl_pr_diff_max_bytes_rejects_negative():
+    with pytest.raises(ValidationError):
+        HitlConfig(pr_diff_max_bytes=-1)
+
+
+def test_hitl_pr_diff_max_bytes_accepts_zero_to_disable():
+    # 0 = off switch: disables the full-diff display, leaving today's
+    # diffstat-only gate.
+    hitl = HitlConfig(pr_diff_max_bytes=0)
+    assert hitl.pr_diff_max_bytes == 0
+
+
+def test_hitl_defaults_when_config_omits_section():
+    # A config that omits [hitl] entirely still loads, with the default byte
+    # ceiling — behaving exactly as described (backward compatible).
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
+    assert cfg.hitl == HitlConfig()
+    assert cfg.hitl.pr_diff_max_bytes == 60000
+
+
+def test_hitl_defaults_when_optional_sections_omitted():
+    cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
+    assert cfg.hitl == HitlConfig()
+
+
+def test_explicit_hitl_config_loads(tmp_path):
+    cfg_file = tmp_path / "blacksmith.config.toml"
+    cfg_file.write_text(
+        "[target]\n"
+        'repo_path = "/tmp/kindling"\n'
+        "\n"
+        "[hitl]\n"
+        "pr_diff_max_bytes = 0\n"
+    )
+    cfg = BlacksmithConfig.load(cfg_file)
+    assert cfg.hitl.pr_diff_max_bytes == 0
 
 
 def test_omitted_repo_path_loads_and_resolves_to_git_root(tmp_path, monkeypatch):
