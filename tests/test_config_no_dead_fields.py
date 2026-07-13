@@ -37,6 +37,7 @@ _RESOLVER_CONSUMED = {
     "junit_xml": "resolve_sbfl_config",
     "max_locations": "resolve_sbfl_config",
     "max_plan_revisions": "resolve_critic_config",
+    "pr_diff_max_bytes": "resolve_hitl_config",
 }
 
 
