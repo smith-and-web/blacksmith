@@ -122,6 +122,12 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         # gh to guess the repo default. Without this the field was declared and documented
         # but read nowhere, so a repo whose default isn't ``main`` worked only by luck.
         default_branch=config.target.default_branch,
+        # Wire the combined-diff display at the approve_pr gate (WU-PR-DIFF-CAPTURE) into
+        # production. Without this [hitl] never reaches the graph and the feature stays dark
+        # on real runs regardless of its config -- the gate's payload always falls back to
+        # today's diffstat-only view. HitlConfig.pr_diff_max_bytes (default 60000, nonzero) is
+        # the on/off switch; 0 disables it.
+        hitl=config.hitl,
     )
 
 

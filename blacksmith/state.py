@@ -139,6 +139,13 @@ class BlacksmithState(TypedDict, total=False):
     # compiled without it, in which case the PR node passes no ``--base`` and gh falls back
     # to the repo's own default, exactly as before.
     default_branch: str
+    # The shared worktree's HEAD, captured ONCE by ``prepare_worktree`` right after it
+    # creates the run's clone (WU-PR-DIFF-CAPTURE) -- i.e. before any unit's commits land.
+    # The run base ref for the ``approve_pr`` gate's combined diff (every unit's commits vs
+    # this ref, not just the last unit's). Seeded only when the graph is wired with a
+    # HitlConfig (production via build_graph_for); absent on a graph compiled without one,
+    # in which case the gate's payload carries no diff_text exactly as before.
+    pr_base_ref: str
     implementation: dict[str, Any]
     # Escalation (WU-ESCALATE-ON-FAIL): a gate failure discards the failed attempt and
     # re-implements the SAME unit once with the stronger model. ``pre_implement_ref`` is the
