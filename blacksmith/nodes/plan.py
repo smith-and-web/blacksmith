@@ -114,7 +114,12 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
 # large files (cli.py + state.py + resume/checkpointer reading) — the planner ran out
 # mid-exploration and the SDK raised "Reached maximum number of turns". Read-only
 # Sonnet turns are cheap, so the budget is generous.
-_PLAN_MAX_TURNS = 20
+#
+# 20 was in turn too tight for a unit whose test_contract demands VERIFY-AT-BUILD
+# research (v3-subgraph-spike's WU-SUBGRAPH-INTERRUPT: read the INSTALLED langgraph
+# package's actual interrupt()/Command(resume=)/add_node surface rather than guess it)
+# — that exploration alone exhausted the budget before the planner produced a plan.
+_PLAN_MAX_TURNS = 40
 _PLAN_READ_ONLY = ["Read", "Glob", "Grep"]
 # The planner is read-only. Block writes/exec AND sub-agent spawning: an unblocked ``Agent``
 # let the planner delegate to sub-agents that re-explore the repo on their own — blind to the

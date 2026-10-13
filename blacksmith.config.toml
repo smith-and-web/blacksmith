@@ -59,5 +59,17 @@ key_env_var = "BLACKSMITH_ANTHROPIC_API_KEY"
 # agent stops re-discovering the codebase with dozens of Read/Grep/Glob calls every node.
 # Turned ON here to measure the read/turn reduction vs the ~116-turn-plan baseline.
 enabled = true
+# v3 item 1 (PR #91): PageRank-rank the repo-map drop order so the byte budget is spent on the
+# most-referenced (central) files instead of the tests/docs directory heuristic. Additive; only
+# changes which files' symbols survive truncation when the map is over max_map_bytes.
+graph_rank = true
 # max_map_bytes = 65536   # size ceiling for the injected map (default 65536)
 # exclude = []            # extra path globs to omit, on top of git ls-files
+
+[critic]
+# Plan critic loop (WU-PLAN-CRITIC-LOOP): a second, separate LLM call judges each
+# auto-gated unit's plan against its test contract, target modules, and untouchables
+# before implementation starts. Disapproved + revisions left -> re-plan with the
+# critique fed back; revisions exhausted -> proceeds with the latest plan (never halts).
+# Off by default (enabled=false); turned on here for the hackathon demo run.
+enabled = true
