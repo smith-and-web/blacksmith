@@ -5,7 +5,7 @@ description = "Agentic development orchestrator — LangGraph state machine + Cl
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "langgraph>=1.2.9",
+    "langgraph>=1.2.11",
     "langgraph-checkpoint-sqlite>=3.1",
     "claude-agent-sdk>=0.2.115",
     "pydantic>=2.11",
