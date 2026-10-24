@@ -20,6 +20,7 @@
 - S11 foundation commit: `68a80c3` (local only; partial at turn 11).
 - S11 controller commit: `03d4308` (local only; partial at turn 12).
 - S11 completion commit: `2e97459` (local only; turn 13 full proof passed).
+- S12 completion commit: `5f483e7` (local only; turn 14 full proof passed).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
@@ -57,7 +58,7 @@ See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results,
 
 ## Current handoff: turn 14 closeout
 
-S01-S12 are complete under the scoped offline acceptance audit in `heavy-prd-evidence.md`. Full S01-S19 goal stays **active at 14/30**, with S13-S19 and all live gates outstanding. Do not increment on compaction. No subagents. Original spec/probe remain unchanged/untracked. All turn-14 source changes were verified against the pre-run source hashes; local commit/brain proof will be recorded below.
+S01-S12 are complete under the scoped offline acceptance audit in `heavy-prd-evidence.md`. Full S01-S19 goal stays **active at 14/30**, with S13-S19 and all live gates outstanding. Do not increment on compaction. No subagents. Original spec/probe remain unchanged/untracked. All turn-14 source changes were verified against the pre-run source hashes; local commit/brain proof is recorded below.
 
 S12 production wiring: `review_patch.py` captures full cumulative unit-base/candidate binary/rename patches through Git --output, independent of native command-log caps; <=128 KiB inline, larger explicit manifest plus bounded read-only read_diff MCP. `review_receipts.py` strictly validates one complete JSON verdict, finding fields/severities and typed panel/receipt evidence, with critical intent/seal/artifact/outcome and primary-key model-cost references. Any panel blocker blocks; unavailable halts without automatic retry; disabled has a typed disabled receipt and no reviewer call. Shared child graph halts exhausted blockers. Receipts cross keyed outcomes/joins/final/publication entry and validate before CLI executor on resume. Saved enablement/panel size and review_version=1 are enforced; old active metadata refuses without inventing hashes or changing checkpoints. Explicit unavailable recovery replaces only bad/unknown seat identities under remaining allowance, preserving valid seats, original candidate/gate/counters/costs/failure receipts. An unchanged blocked candidate cannot seek another vote; a budget addition can permit a real remaining code revision. Latest typed receipts drive current status while historical findings remain; revision attempts never count resolved findings.
 
@@ -70,6 +71,12 @@ S12 production wiring: `review_patch.py` captures full cumulative unit-base/cand
 - Review-regression-01: 62 passed/2 failed/104.07 s (late obsolete pass assertion and disabled no-PRD library seam); corrected regression-02: 13/44.82 s. Optional writer, consumed state/counters and source assertions preserved.
 - Recovery-01: 10/52.48 s, including real process exits before seal/after seal-before artifact/after receipt-before checkpoint, no completed-SDK replay, valid-seat reuse and unchanged-blocker refusal. Integrity/recovery-02: 56/190.37 s. Render-regression-01: 62 passed/10 failed/38.41 s (old false-clean/resolved/publication assertions); corrected render-regression-02: 81/38.11 s. Blocker-budget-01: 1/7.37 s, actual revision/new SHA/latest clean reporting without erasing old blockers. All failed receipts retained.
 - All test/lint handles are terminal. Current local verification is not general readiness, exactly-once provider billing, live cancellation, global admission or successful publication evidence. No paid canary/merge/successful publication/Docker smoke ran in turn 14.
+
+## Turn 14 durable closeout
+
+- S12 implementation committed locally as `5f483e71af1f02106875d5385b24715a4f90fea4`; host pre-commit checks passed. Post-commit Python-source set/hashes and full/ruff receipt hashes match final proof. `git show --check` passed excluding only verbatim raw `.log` receipts. Only the two original unchanged untracked inputs remained.
+- Existing `Projects/blacksmith.md` updated through MCP with S12 completion, turn 14/30, exact 1138-test proof, S13 approval/display handoff, S13-S19/live boundaries and preserved turn-13 failed-push disclosure. Targeted lint: 0 errors/0 warnings. After 83 seconds, index lastRun.errors=0 and invalidFrontmatter.count=0. Semantic retrieval and exact full-note readback verified every scope/counter/proof item (`b3344637-d931-4b46-8865-c452caae5251`); positive feedback recorded once.
+- All test/lint/implementation-commit handles are terminal. No push/merge/publication/paid canary/Docker smoke performed in turn 14. The full native goal stays active; next automatic continuation is turn 15, S13. A user status question during closeout did not cancel or replace the objective.
 
 ## Historical boundary exception (retain through final goal report)
 
