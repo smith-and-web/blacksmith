@@ -53,12 +53,14 @@ from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
 from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
 from blacksmith.planner import execution_levels
+from blacksmith.run_context import RunContextError, context_from_state
 from blacksmith.sandbox import SandboxError, SandboxManager
 from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import (
     Clone,
     CloneManager,
+    RunCloneManager,
     Worktree,
     WorktreeError,
     WorktreeManager,
@@ -185,7 +187,15 @@ def prepare_worktree(
             "status": Status.HALTED,
             "errors": [{"node": "prepare_worktree", "message": "no selected_unit"}],
         }
-    worktree = worktree_manager.create(unit.id)
+    try:
+        if state.get("run_context"):
+            context = context_from_state(state)
+            context.verify(selected_repo=worktree_manager.repo_path)
+            worktree_manager = RunCloneManager(context)
+        worktree = worktree_manager.create(unit.id)
+    except (WorktreeError, RunContextError) as exc:
+        return {"status": Status.HALTED,
+                "errors": [{"node": "prepare_worktree", "message": str(exc)}]}
     update: dict = {
         "worktree_path": str(worktree.path),
         "branch": worktree.branch,
@@ -755,8 +765,10 @@ def build_unit(
     # run ledger the cost report/metrics sum — otherwise a fan-out level's spend is lost.
     cost_events: list[dict] = []
     try:
+        if state.get("run_context"):
+            worktree_manager = RunCloneManager(context_from_state(state))
         clone = worktree_manager.create_from(shared, unit.id)
-    except WorktreeError as exc:
+    except (WorktreeError, RunContextError) as exc:
         record.update(ok=False, error=f"unit {unit.id}: could not create build clone: {exc}")
         return {"level_builds": [record], "cost_events": cost_events}
 
@@ -778,6 +790,9 @@ def build_unit(
 
     sub: dict = {
         "prd": state["prd"],
+        "state_version": state.get("state_version"),
+        "run_id": state.get("run_id"),
+        "run_context": state.get("run_context"),
         "selected_plan": selected_plan(state, unit),
         "unit_results": state.get("unit_results") or [],
         "planning_path": state.get("planning_path"),
@@ -1246,6 +1261,9 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
             "build_unit",
             {
                 "prd": state.get("prd"),
+                "state_version": state.get("state_version"),
+                "run_id": state.get("run_id"),
+                "run_context": state.get("run_context"),
                 "selected_unit": unit,
                 "selected_plan": selected_plan(state, unit),
                 "unit_results": state.get("unit_results") or [],

@@ -54,7 +54,7 @@ from pathlib import Path
 from typing import Any
 
 from blacksmith.config import IndexConfig
-from blacksmith.context import render_context
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -104,7 +104,7 @@ def review(
     if executor is None:
         return {}  # skeleton pass-through: no executor wired, nothing to review yet
 
-    prd = state.get("prd")
+    prd = requirements_prd(state)
     unit = state.get("selected_unit")
     if prd is None or unit is None:
         return {"errors": [{"node": "review", "message": "missing prd/selected_unit"}]}

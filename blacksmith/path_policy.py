@@ -165,6 +165,17 @@ class PathPolicy:
 
 
 def policy_for_state(state: dict, root: str | Path | None = None) -> PathPolicy:
-    prd = state.get("prd")
+    from blacksmith.context import requirements_prd
+    prd = requirements_prd(state)
     rules = compile_path_rules(prd.contract.untouchables if prd else ())
+    if state.get("run_context"):
+        from blacksmith.run_context import context_from_state
+        context = context_from_state(state)
+        if context.runtime_config_path:
+            try:
+                relative = Path(context.runtime_config_path).relative_to(context.repo_path)
+            except ValueError:
+                pass  # Config outside the source checkout is outside every clone already.
+            else:
+                rules += compile_path_rules(["path: " + relative.as_posix()])
     return PathPolicy(Path(root or state["worktree_path"]), rules)

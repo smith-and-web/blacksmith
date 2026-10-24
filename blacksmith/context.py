@@ -14,6 +14,13 @@ from typing import Any
 from blacksmith.contract import WorkUnit
 
 
+def requirements_prd(state: Mapping[str, Any]):
+    if state.get("run_context") is not None:
+        from blacksmith.run_context import context_from_state
+        return context_from_state(dict(state)).prd()
+    return state.get("prd")
+
+
 def selected_plan(state: Mapping[str, Any], unit: WorkUnit) -> dict | None:
     explicit = state.get("selected_plan")
     if explicit and explicit.get("unit_id") == unit.id:
@@ -31,7 +38,7 @@ def render_context(
     state: Mapping[str, Any], unit: WorkUnit | None = None, *, include_plan: bool = False,
 ) -> str:
     """Render exact prose and full contract; add this unit's plan and completed deps."""
-    prd = state.get("prd")
+    prd = requirements_prd(state)
     if prd is None:
         raise ValueError("missing PRD requirements context")
     prompt = (

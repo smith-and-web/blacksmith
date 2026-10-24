@@ -17,7 +17,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 # Current model IDs only (PRD §8). The legacy ``claude-*-4-20250514`` IDs are
 # retired and will error — do not reintroduce date-suffixed IDs here.
@@ -402,6 +402,35 @@ class BlacksmithConfig(_Strict):
     sbfl: SBFLConfig = Field(default_factory=SBFLConfig)
     critic: CriticConfig = Field(default_factory=CriticConfig)
     hitl: HitlConfig = Field(default_factory=HitlConfig)
+    _source_path: Path | None = PrivateAttr(default=None)
+
+    @property
+    def config_path(self) -> Path | None:
+        return self._source_path
+
+    @property
+    def config_dir(self) -> Path:
+        return self._source_path.parent if self._source_path else Path.cwd().resolve()
+
+    def resolved(self, base: Path | None = None) -> BlacksmithConfig:
+        """Normalize storage and explicit target paths against one stable config directory."""
+        base = (base or self.config_dir).resolve()
+
+        def absolute(path: Path) -> Path:
+            return (path if path.is_absolute() else base / path).resolve()
+
+        updates = {}
+        for name in ("checkpointer", "store", "metrics", "live"):
+            section = getattr(self, name)
+            updates[name] = section.model_copy(update={"db_path": absolute(section.db_path)})
+        updates["transcripts"] = self.transcripts.model_copy(
+            update={"dir": absolute(self.transcripts.dir)}
+        )
+        if self.target.repo_path is not None:
+            updates["target"] = self.target.model_copy(
+                update={"repo_path": absolute(self.target.repo_path)}
+            )
+        return self.model_copy(update=updates)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:
@@ -411,7 +440,7 @@ class BlacksmithConfig(_Strict):
         not conform to the schema (missing required keys, wrong types, or unknown
         keys). The error message names the offending field(s).
         """
-        path = Path(path)
+        path = Path(path).resolve()
         if not path.is_file():
             raise ConfigError(f"blacksmith config not found: {path}")
         try:
@@ -419,7 +448,9 @@ class BlacksmithConfig(_Strict):
         except tomllib.TOMLDecodeError as exc:
             raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
         try:
-            return cls.model_validate(raw)
+            config = cls.model_validate(raw)
+            config._source_path = path
+            return config.resolved(path.parent)
         except ValidationError as exc:
             raise ConfigError(_format_validation_error(path, exc)) from exc
 
@@ -509,7 +540,7 @@ class BlacksmithConfig(_Strict):
         """
         if self.target.repo_path is not None:
             return self.target.repo_path
-        root = find_git_root(start)
+        root = find_git_root(start if start is not None else self.config_dir)
         if root is None:
             raise ConfigError(
                 "[target].repo_path is not set and the current directory is not "

@@ -23,7 +23,7 @@ from pathlib import Path
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.config import IndexConfig
-from blacksmith.context import render_context
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -183,7 +183,7 @@ def implement(
     if executor is None:
         return {"status": Status.IMPLEMENTING}  # skeleton pass-through
 
-    prd = state.get("prd")
+    prd = requirements_prd(state)
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
     if prd is None or unit is None or not worktree_path:

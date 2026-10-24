@@ -46,29 +46,29 @@ Implementation is incomplete. No live release gate has passed.
 
 ## Final required local verification
 
-- Latest full suite (S01-S02): `uv run pytest -q`, **783 passed in 103.81 s**, no failures/skips/xfails. Final S19 full suite remains required after later slices.
-- Latest `uv run ruff check`: **passed** after S01-S02. Final S19 lint remains required after later slices.
+- Latest full suite (S01-S03): `uv run pytest -q`, **833 passed in 120.36 s**, no failures/skips/xfails. Final S19 full suite remains required after later slices.
+- Latest `uv run ruff check`: **passed** after S01-S03. Final S19 lint remains required after later slices.
 - Requirement-by-requirement acceptance matrix, crash/recovery evidence, dependency versions and revision: pending.
 
 ## Acceptance matrix tracking
 
 | Specification invariant | Current evidence / next proof |
 |---|---|
-| Prose and approved-plan sentinel, index on/off, other target | `test_requirements_context.py` covers both graph shapes; immutable snapshot and hash enforcement pending S03/S09 |
+| Prose and approved-plan sentinel, index on/off, other target | `test_requirements_context.py` covers both graph shapes; immutable CLI snapshots proven in `test_run_context.py`; approved-plan hashes pending S09 |
 | Traversal/symlink/notebook/metadata/PRD rules/unknown tools | `test_path_policy.py`; fail-closed callback, real changed-path audit, no commit/publication effect |
 | Parallel individually green, combined red | Pending S10; require real integration gate and retained siblings |
 | Multiple auto layers, later layer failing | Pending S06; all-layer receipt required |
 | Gate exception after previous passing result | HALTED-first routing added; full fresh receipt regression pending S06/S07 |
 | Sequential escalated → parallel → sequential state reset | Pending S07/S08; factory plus real graph sequence |
 | Add/amend/reset/squash failure, fixer/gate source edits | Checked add/diff/commit added; full fault matrix pending S05/S06/S08 |
-| Agent toolchain replacement or sandbox protected edit | Implement/formatter/publication path audit covered; trusted toolchain S03/S06; sandbox disabled/rejected S17 |
+| Agent toolchain replacement or sandbox protected edit | Implement/formatter/publication path audit covered; trusted text snapshot S03 proven; gate consumption S06 pending; sandbox disabled/rejected S17 |
 | Terminal human plus plan-only approval | Pending S13 exact-SHA guard; no paid/live publication allowed |
-| Invalid human topology before spend | Pending S03/S13 semantic validation |
+| Invalid human topology before spend | S03 offline semantic validation proves all prohibited layouts stop before calls; final publication routing remains S13 |
 | Malformed/error/missing-result review and minority blocking | Pending S12 strict unavailable/blocking policy |
 | Deletion-only and cumulative revision patch review | Pending S12 real cumulative patch/read_diff |
 | Restart after plan/commit/gate/join/push/create | Pending S04/S09–S11/S14; new-process crash evidence required |
-| Corrupt/missing/wrong manifest and concurrent resume | Pending S03/S11; reject before spend/mutation |
-| Distinct run/worker/branch identities | Pending S03 |
+| Corrupt/missing/wrong manifest and concurrent resume | S03 integrity and process-lock checks stop before executor construction; stage recovery remains S11 |
+| Distinct run/worker/branch identities | S03 real clone/path/branch tests pass |
 | 100-unit chain and 20 roots, max active 2 | Pending S16; measured deterministic concurrency |
 | Exhaustion across all paid call classes, concurrent reservations | Pending S15; missing cost consumes reservation; resume cannot reset |
 | Hanging command/children/large output and model timeout | Pending S05/S15; capped file logs plus process cleanup proof |
@@ -76,7 +76,7 @@ Implementation is incomplete. No live release gate has passed.
 | Respond preserved feedback, synthetic unit, remote race/push failure | Deferred option requires explicit unsupported-until-hardened error in S18 |
 | Optional observability/memory failure, critical journal failure | Offline live-SDK/network suite prevention added; production failure injection pending S04/S19 |
 
-Contract schema edits require explicit human review before merge (spec §3.2). No merge is authorized or attempted. Legacy state-v1 execution must be refused without rewriting checkpoints; migration proof pending S03/S11.
+Contract schema edits require explicit human review before merge (spec §3.2). No merge is authorized or attempted. Legacy state-v1 execution must be refused without rewriting checkpoints; S03 legacy refusal/readability/no-rewrite proof passes; explicit terminal-stage recovery remains S11.
 
 ## Turn 2 closeout
 
@@ -89,3 +89,28 @@ Contract schema edits require explicit human review before merge (spec §3.2). N
 - Brain capture: existing `Projects/blacksmith.md` updated through MCP with partial status and fixture gotcha; targeted lint returned 0 errors/0 warnings. After >70 seconds, MCP index status showed lastRun.errors=0 and invalidFrontmatter.count=0; semantic retrieval returned the new remediation section as rank 1 (`327e1bcc-0af6-4af0-943d-61cd4b1a88fd`).
 
 - Implementation checkpoint committed locally as `88070ac` (`fix: enforce write policy and preserve PRD plan context`). Only requested implementation/tests/docs/evidence were staged; original untracked spec and probe remain untouched. Host pre-commit checks passed. No push.
+
+## Turn 3: S03 run context and preflight
+
+- Persisted version-2 `RunContext` contains UUID/thread, canonical source/full origin identity/base SHA, exact original PRD bytes/hash, normalized nonsecret execution config/hash, committed trusted toolchain text/hash and canonical artifact paths. Critical artifacts use atomic replace plus file/directory fsync.
+- Runtime config loading resolves target and checkpoint/store/metrics/live/transcript paths relative to its own directory. Absolute paths retain meaning through canonicalization; invocation cwd no longer redirects storage.
+- Before executor construction: semantic QA/DAG/target/path-rule validation, required tool availability, Git identity, selected commit, clean tracked source, committed verifier/config and command strings, and artifact writability. Credential-bearing origins are rejected without echoing credentials. Ignored local PRDs are allowed.
+- Planning clone uses no hard links and is read-only, including metadata; source permissions remain unchanged. All prompt roles take the persisted PRD. Implementation and worker clones use the pinned planning base; worker paths and branches hash raw IDs and include run identity. Custom runtime config files are protected and displayed at approval.
+- Full CLI drive/resume holds POSIX thread/run locks across approval waiting. A real child Python process proves competing lock ownership is refused and OS release permits reacquisition. A callback inside the actual CLI approval verifies the run lock is still held.
+- Resume verifies manifests/hashes/source/planning/workspace before executor construction and restores saved execution settings. Only actual interrupts get Command(resume=...); ordinary-node drive uses None. Detailed side-effect reconciliation remains S04-S11, not proved by this slice.
+- Legacy completed checkpoints remain readable and byte-for-byte checkpoint-equivalent after execution-resume rejection. Existing thread IDs are refused for fresh runs; no checkpoint deletion/reset. Structural parsing keeps historical PRDs readable; current execution semantics reject their invalid human layouts.
+- `tests/test_run_context.py` covers real Git/CLI/graph/gate/checkpointer, sequential and fan-out resume after source advancement and original PRD removal, model/limit config changes, index and critic on/off, raw-ID collisions, corrupt/missing artifacts, wrong repository, no-model lock/integrity rejection, migration, UTF-8 diagnostics and CRLF hashes. SDK transport alone is replaced; no paid or publication transport runs.
+- Targeted receipts: `heavy-prd-turn-03-targeted-01.log`: 36 passed / 11.05 s; `targeted-02`: 136 passed / 11.96 s (includes existing config/contract/CLI groups); `targeted-03`: 43 passed / 13.40 s; `targeted-04`: 49 passed / 16.40 s; `targeted-05`: 50 passed / 19.85 s before the last added approval-display/lock assertions.
+- Full receipts: `heavy-prd-turn-03-pytest-01.log`: 826 passed / 115.58 s; `pytest-02`: 832 passed / 119.48 s. Final `heavy-prd-turn-03-pytest-03.log`: **833 passed in 120.36 s**, exit 0, including the fan-out proof and final approval assertions; no xfails/skips/failures.
+- Transitional existing assertions were kept exact and updated to canonical config-directory paths, retained-thread semantics and exclusively human terminal QA fixtures. The fresh-refusal test now uses a real persisted checkpoint and forbids graph construction instead of bypassing validation with a nonexistent PRD.
+- Runtime/migration docs: `docs/heavy-prd-run-context.md`; authoring semantics and README hold notice updated. No dependency changes, push, merge, paid canary, PR publication or Docker execution.
+
+### Turn 3 closeout
+
+- `uv run pytest -q > docs/reviews/heavy-prd-turn-03-pytest-03.log 2>&1`: exit 0, **833 passed in 120.36 s**. `uv run ruff check > docs/reviews/heavy-prd-turn-03-ruff.log 2>&1`: exit 0, **All checks passed!**
+- `git diff --check` on tracked edits: passed. No regression-hiding skips or xfails. All model/network prevention fixtures remained active.
+- S03 run-context regressions include version-2 **fan-out** resume after source advancement: workers executed under distinct `units/<raw-ID-hash>/workspace` paths, preserved exact prose/plan and used the frozen base; final PR gate was denied, so no publication transport ran. Successful worker retention is not claimed here and is still S11.
+- Original specification and probe SHA-256 verified unchanged; metadata/dependency versions recorded in `heavy-prd-turn-03-environment.json`. No lockfile/dependency update.
+- `Projects/blacksmith.md` updated through MCP with S03 status, migration and scoped proof. Targeted brain lint: 0 errors/0 warnings. After >70 seconds, index status reported lastRun.errors=0 and invalidFrontmatter.count=0; semantic retrieval returned the updated remediation section at rank 1 (`095869bc-3534-46e9-807b-967fd68e00a1`).
+
+- Environment metadata was collected with `uv run python` (Python 3.12.13). An initial host `python3` metadata attempt failed because that interpreter did not have the project packages; it was not used as dependency/version evidence.

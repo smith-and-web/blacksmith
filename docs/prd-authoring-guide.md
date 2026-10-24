@@ -15,6 +15,12 @@ implementation and review call, and implementation/review also receive the
 selected plan. `[limits].max_prd_bytes` defaults to 262144; split larger PRDs.
 Requirements and approved plan text are never reduced to a log tail.
 
+Execution validation permits at most one manual QA unit. It must have exclusively
+human layers, be the sole terminal unit, and transitively depend on every auto
+unit. Human-only, mixed-layer, sibling and mid-DAG human arrangements are rejected
+by `blacksmith validate` before model spend. Archived Contract-v1 documents remain
+structurally readable even when they no longer satisfy execution semantics.
+
 > **Use this as project context.** Drop this file into a Claude Project (as project
 > knowledge or instructions). When asked to write or revise a PRD for a build that
 > blacksmith will execute, follow this contract exactly. A PRD that violates any

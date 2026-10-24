@@ -35,6 +35,7 @@ STALE_PR = "https://github.com/smith-and-web/old/pull/1"
 
 
 class FakeState(TypedDict, total=False):
+    state_version: int
     prd_path: str
     errors: Annotated[list, operator.add]  # same accumulator as BlacksmithState
     pr_url: str | None
@@ -53,10 +54,11 @@ def _build_graph(saver):
     def seed(state: FakeState) -> dict:
         if state.get("prd_path") == "stale":
             return {
+                "state_version": 2,
                 "errors": [{"node": "seed", "message": "stale"}],
                 "pr_url": STALE_PR,
             }
-        return {}
+        return {"state_version": 2}
 
     def gate(state: FakeState) -> dict:
         decision = interrupt({"gate": "plan"})
@@ -83,8 +85,8 @@ def _approver(decision=True):
     return approve
 
 
-def test_fresh_run_on_terminal_thread_starts_clean(tmp_path):
-    """A prior run that reached a terminal state leaves no errors/pr_url to the next."""
+def test_fresh_run_retains_terminal_thread_and_new_thread_starts_clean(tmp_path):
+    """Version-2 runs must preserve completed checkpoints; a new ID starts clean."""
     saver = build_checkpointer(tmp_path / "ckpt.sqlite")
     g = _build_graph(saver)
 
@@ -95,8 +97,11 @@ def test_fresh_run_on_terminal_thread_starts_clean(tmp_path):
     assert first.values["errors"] == [{"node": "seed", "message": "stale"}]
     assert first.values["pr_url"] == STALE_PR
 
-    # Second run on the SAME thread T: must start from a clean slate.
-    second = drive(g, "clean", approver=_approver(True), thread_id="T")
+    # Reusing T must retain its evidence instead of deleting the old checkpoint.
+    with pytest.raises(FreshRunError, match="retained"):
+        drive(g, "clean", approver=_approver(True), thread_id="T")
+    assert g.get_state({"configurable": {"thread_id": "T"}}).values == first.values
+    second = drive(g, "clean", approver=_approver(True), thread_id="T-new")
     saver.conn.close()
 
     assert second.next == ()
@@ -171,17 +176,18 @@ def test_main_translates_fresh_run_refusal_to_nonzero_exit(tmp_path, monkeypatch
         f"[checkpointer]\ndb_path = {str(db)!r}\n"
     )
 
-    def _raise(*args, **kwargs):
-        raise FreshRunError(
-            "thread-id 'P' has a run paused at a gate; starting a fresh run would "
-            "clobber it. Continue it with `blacksmith resume --thread-id P`."
-        )
+    saver = build_checkpointer(db)
+    graph = _build_graph(saver)
+    graph.invoke({"prd_path": "stale"}, {"configurable": {"thread_id": "P"}})
+    saver.conn.close()
 
-    monkeypatch.setattr(cli, "build_graph_for", lambda *a, **k: None)
-    monkeypatch.setattr(cli, "drive", _raise)
+    def forbidden(*args, **kwargs):
+        pytest.fail("retained-thread refusal must precede graph construction and drive")
 
-    # A non-PRD path parses to a ContractError, so the repo-consistency preflight is
-    # skipped and the run reaches drive (where the guard refuses).
+    monkeypatch.setattr(cli, "build_graph_for", forbidden)
+    monkeypatch.setattr(cli, "drive", forbidden)
+
+    # Refusal uses the actual persisted checkpoint and occurs before input/preflight tools.
     not_a_prd = tmp_path / "missing.md"
     code = main([str(not_a_prd), "--config", str(cfg), "--thread-id", "P", "--auto-approve"])
     captured = capsys.readouterr()

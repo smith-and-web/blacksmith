@@ -94,8 +94,14 @@ def load_toolchain(repo_path: str | Path) -> TargetToolchain:
     path = Path(repo_path) / CONFIG_FILENAME
     if not path.is_file():
         raise GateError(f"no {CONFIG_FILENAME} found in target repo: {path}")
+    return parse_toolchain(path.read_text(encoding="utf-8"), source=path)
+
+
+def parse_toolchain(text: str, *, source: str | Path = CONFIG_FILENAME) -> TargetToolchain:
+    """Validate committed toolchain text without reloading an agent-editable clone."""
+    path = Path(source)
     try:
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        raw = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise GateError(f"invalid TOML in {path}: {exc}") from exc
     try:

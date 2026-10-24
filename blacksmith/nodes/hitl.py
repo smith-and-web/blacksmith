@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from langgraph.types import interrupt
 
-from blacksmith.path_policy import PolicyViolation, compile_path_rules
+from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
 from blacksmith.state import BlacksmithState, Status
 
 if TYPE_CHECKING:
@@ -31,6 +31,8 @@ def approve_plan(state: BlacksmithState) -> dict:
     try:
         prd = state.get("prd")
         hard_rules = compile_path_rules(prd.contract.untouchables if prd else ())
+        if state.get("run_context"):
+            hard_rules = policy_for_state(state, root=state["planning_path"]).rules
     except PolicyViolation as exc:
         return {"status": Status.HALTED,
                 "errors": [{"node": "approve_plan", "message": str(exc)}]}

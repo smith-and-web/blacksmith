@@ -19,13 +19,14 @@ import os
 import sqlite3
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 from langgraph.types import Command
 
 from blacksmith import __version__
 from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, find_config
-from blacksmith.contract import ContractError, PRDContract, parse_prd
+from blacksmith.contract import ContractError, PRDContract, parse_prd, validate_execution_contract
 from blacksmith.costs import run_costs
 from blacksmith.dashboard import serve as serve_dashboard
 from blacksmith.events import (
@@ -39,7 +40,7 @@ from blacksmith.events import (
     unit_result_payloads,
 )
 from blacksmith.executor import Executor
-from blacksmith.gate import run_fix, run_gate
+from blacksmith.gate import GateError, run_fix, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
@@ -47,6 +48,14 @@ from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_r
 from blacksmith.nodes.pr import Runner, subprocess_runner
 from blacksmith.render import Renderer
 from blacksmith.respond import RespondError, RespondResult, respond_to_pr
+from blacksmith.run_context import (
+    STATE_VERSION,
+    RunContext,
+    RunContextError,
+    context_from_state,
+    create_run_context,
+    thread_lock,
+)
 from blacksmith.sandbox import SandboxConfig as SandboxSettings
 from blacksmith.sandbox import SandboxManager
 from blacksmith.state import Status
@@ -308,6 +317,9 @@ def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None,
         if not snapshot.next:  # reached END
             return snapshot
         payload = _gate_payload(result, snapshot)
+        if not payload:
+            result = _step(graph, None, config, on_node=on_node, on_event=on_event)
+            continue
         wait_start = time.monotonic()
         approved = approver(payload, snapshot.values)
         if on_wait is not None:
@@ -342,8 +354,10 @@ def _isolate_fresh_run(graph, config, thread_id: str) -> None:
             f"would clobber it. Continue it with `blacksmith resume --thread-id "
             f"{thread_id}`, or start the fresh run on a different --thread-id."
         )
-    # The prior run reached a terminal state: drop its checkpoint so this run starts clean.
-    graph.checkpointer.delete_thread(thread_id)
+    raise FreshRunError(
+        f"thread-id {thread_id!r} has a retained run; use a fresh --thread-id or inspect/continue "
+        f"it with `blacksmith resume --thread-id {thread_id}`. No checkpoint was deleted."
+    )
 
 
 def _safe_event_emitter(sink: LiveSink, thread_id: str):
@@ -395,7 +409,7 @@ def _emit_run_summary(on_event, values) -> None:
 
 def drive(
     graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None,
-    on_wait=None, on_event=None,
+    on_wait=None, on_event=None, run_context: RunContext | None = None,
 ):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
@@ -413,6 +427,10 @@ def drive(
     config = {"configurable": {"thread_id": thread_id}}
     _isolate_fresh_run(graph, config, thread_id)
     payload = {"prd_path": str(prd_path)}
+    if run_context is not None:
+        if run_context.thread_id != thread_id:
+            raise FreshRunError("run context thread ID differs from invocation")
+        payload.update(run_context.initial_state())
     if issue_number is not None:
         payload["issue_number"] = issue_number
     result = _step(graph, payload, config, on_node=on_node, on_event=on_event)
@@ -440,6 +458,8 @@ def resume(graph, thread_id: str, *, approver, on_node=None, on_wait=None, on_ev
             f"no checkpoint found for thread-id {thread_id!r}; nothing to resume "
             "(start a run with `blacksmith <prd>` first)"
         )
+    if snapshot.values.get("state_version") != STATE_VERSION:
+        raise ResumeError("legacy_checkpoint_requires_manual_recovery")
     final = _drive_gates(
         graph, config, approver=approver, on_node=on_node, on_wait=on_wait,
         on_event=on_event,
@@ -863,6 +883,7 @@ def _validate(argv: list[str] | None = None) -> int:
     try:
         prd = parse_prd(args.prd_path)
         from blacksmith.path_policy import compile_path_rules
+        validate_execution_contract(prd.contract)
         hard_rules = compile_path_rules(prd.contract.untouchables)
     except (ContractError, ValueError) as exc:
         print(f"validate: {exc}", file=sys.stderr)
@@ -926,43 +947,51 @@ def _resume(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    load_dotenv(Path.cwd() / ".env")
-    config = _load_config(args.config)
-    checkpointer = build_checkpointer(config.checkpointer.db_path)
-    graph = build_graph_for(config, checkpointer)
-    renderer = _build_renderer(args)
-
-    approval_wait = 0.0
-
-    def _track_wait(seconds: float) -> None:
-        nonlocal approval_wait
-        approval_wait += seconds
-
-    started_at = time.time()
     try:
-        final = resume(
-            graph,
-            args.thread_id,
-            approver=_resolve_approver(args, renderer),
-            on_node=_progress_emitter(args.quiet, renderer),
-            on_wait=_track_wait,
-            on_event=_live_emitter(config, args.thread_id),
-        )
-    except ResumeError as exc:
+        load_dotenv(Path.cwd() / ".env")
+        selected = _load_config(args.config)
+        with ExitStack() as stack:
+            stack.enter_context(thread_lock(selected, args.thread_id))
+            checkpointer = build_checkpointer(selected.checkpointer.db_path)
+            stack.callback(checkpointer.conn.close)
+            saved = checkpointer.get_tuple({"configurable": {"thread_id": args.thread_id}})
+            if saved is None:
+                raise ResumeError(f"no checkpoint found for thread-id {args.thread_id!r}")
+            values = saved.checkpoint["channel_values"]
+            context = context_from_state(values)
+            stack.enter_context(context.lock())
+            context.verify(
+                selected_repo=selected.resolve_repo_path(),
+                require_workspace=bool(values.get("worktree_path")),
+            )
+            # Saved models, limits and target survive local config changes.
+            config = context.execution_config()
+            graph = build_graph_for(config, checkpointer)
+            renderer = _build_renderer(args)
+            approval_wait = 0.0
+
+            def _track_wait(seconds: float) -> None:
+                nonlocal approval_wait
+                approval_wait += seconds
+
+            print(f"Resuming run {context.run_id}, base {context.base_commit}, saved configuration")
+            started_at = time.time()
+            final = resume(
+                graph, args.thread_id, approver=_resolve_approver(args, renderer),
+                on_node=_progress_emitter(args.quiet, renderer), on_wait=_track_wait,
+                on_event=_live_emitter(config, args.thread_id),
+            )
+            ended_at = time.time()
+            _report(final, renderer)
+            _record_metrics(
+                config, final, thread_id=args.thread_id,
+                prd_path=final.values.get("prd_path") or "", started_at=started_at,
+                ended_at=ended_at, approval_wait_s=approval_wait,
+            )
+            return 0 if final.values.get("status") == Status.DONE else 1
+    except (ResumeError, RunContextError, ConfigError, ContractError, GateError, OSError) as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
-    ended_at = time.time()
-    _report(final, renderer)
-    _record_metrics(
-        config,
-        final,
-        thread_id=args.thread_id,
-        prd_path=final.values.get("prd_path") or "",
-        started_at=started_at,
-        ended_at=ended_at,
-        approval_wait_s=approval_wait,
-    )
-    return 0 if final.values.get("status") == Status.DONE else 1
 
 
 def _pr_branch(pr_number: int, *, repo: str | None, runner: Runner, cwd: Path | None) -> str:
@@ -1271,66 +1300,50 @@ def main(argv: list[str] | None = None) -> int:
     if args.prd_path is None and args.issue is None:
         parser.error("a PRD path is required (or pass --issue N to scaffold one)")
 
-    load_dotenv(Path.cwd() / ".env")
-    config = _load_config(args.config)
-
-    if args.prd_path is None:
-        return _scaffold_issue(args.issue, config)
-
-    # Preflight (runs before any worktree creation or model spend): a conforming PRD must
-    # target the repo blacksmith is pointed at. A non-conforming PRD is left for the graph's
-    # ingest node to reject with its field-level error (unchanged behaviour).
     try:
-        prd = parse_prd(args.prd_path)
-    except ContractError:
-        prd = None
-    if prd is not None:
-        try:
-            check_repo_consistency(
-                WorktreeManager(config.resolve_repo_path()),
-                prd.contract.primary_target_repo,
+        load_dotenv(Path.cwd() / ".env")
+        config = _load_config(args.config)
+        if args.prd_path is None:
+            return _scaffold_issue(args.issue, config)
+        with ExitStack() as stack:
+            stack.enter_context(thread_lock(config, args.thread_id))
+            checkpointer = build_checkpointer(config.checkpointer.db_path)
+            stack.callback(checkpointer.conn.close)
+            if checkpointer.get_tuple({"configurable": {"thread_id": args.thread_id}}):
+                raise FreshRunError(
+                    f"thread-id {args.thread_id!r} already has a retained run; use a fresh "
+                    f"--thread-id or `blacksmith resume --thread-id {args.thread_id}`"
+                )
+            prd = parse_prd(args.prd_path)
+            context = create_run_context(config, prd, args.thread_id)
+            stack.enter_context(context.lock())
+            graph = build_graph_for(context.execution_config(), checkpointer)
+            renderer = _build_renderer(args)
+            approval_wait = 0.0
+
+            def _track_wait(seconds: float) -> None:
+                nonlocal approval_wait
+                approval_wait += seconds
+
+            print(f"Run {context.run_id}: selected committed HEAD {context.base_commit}")
+            print(f"Run artifacts: {context.directory}")
+            started_at = time.time()
+            final = drive(
+                graph, args.prd_path, approver=_resolve_approver(args, renderer),
+                thread_id=args.thread_id, on_node=_progress_emitter(args.quiet, renderer),
+                issue_number=args.issue, on_wait=_track_wait,
+                on_event=_live_emitter(config, args.thread_id), run_context=context,
             )
-        except RepoConsistencyError as exc:
-            print(f"blacksmith: {exc}", file=sys.stderr)
-            return 1
-
-    checkpointer = build_checkpointer(config.checkpointer.db_path)
-    graph = build_graph_for(config, checkpointer)
-    renderer = _build_renderer(args)
-
-    approval_wait = 0.0
-
-    def _track_wait(seconds: float) -> None:
-        nonlocal approval_wait
-        approval_wait += seconds
-
-    started_at = time.time()
-    try:
-        final = drive(
-            graph,
-            args.prd_path,
-            approver=_resolve_approver(args, renderer),
-            thread_id=args.thread_id,
-            on_node=_progress_emitter(args.quiet, renderer),
-            issue_number=args.issue,
-            on_wait=_track_wait,
-            on_event=_live_emitter(config, args.thread_id),
-        )
-    except FreshRunError as exc:
+            ended_at = time.time()
+            _report(final, renderer)
+            _record_metrics(
+                config, final, thread_id=args.thread_id, prd_path=args.prd_path,
+                started_at=started_at, ended_at=ended_at, approval_wait_s=approval_wait,
+            )
+            return 0 if final.values.get("status") == Status.DONE else 1
+    except (FreshRunError, RunContextError, ConfigError, ContractError, GateError, OSError) as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1
-    ended_at = time.time()
-    _report(final, renderer)
-    _record_metrics(
-        config,
-        final,
-        thread_id=args.thread_id,
-        prd_path=args.prd_path,
-        started_at=started_at,
-        ended_at=ended_at,
-        approval_wait_s=approval_wait,
-    )
-    return 0 if final.values.get("status") == Status.DONE else 1
 
 
 if __name__ == "__main__":

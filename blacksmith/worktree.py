@@ -13,6 +13,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from blacksmith.run_context import git_read, run_branch
+
+if TYPE_CHECKING:
+    from blacksmith.run_context import RunContext
 
 BRANCH_PREFIX = "blacksmith"
 
@@ -245,3 +251,46 @@ class CloneManager:
                 f"git {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}"
             )
         return result.stdout
+
+
+class RunCloneManager(CloneManager):
+    """Version-2 clone ownership: unique run paths and a frozen planning source."""
+
+    def __init__(self, context: RunContext):
+        super().__init__(context.repo_path, base_dir=context.directory)
+        self.context = context
+
+    def _create_at(self, source: Path, path: Path, branch: str, base: str) -> Clone:
+        if path.exists():
+            # Re-entry may reuse only an untouched prepared clone; an attempted
+            # implementation requires the operation-journal reconciliation service.
+            head = self._git(path, "rev-parse", "HEAD").strip()
+            actual = self._git(path, "branch", "--show-current").strip()
+            dirty = self._git(path, "status", "--porcelain", "--untracked-files=all").strip()
+            if head != base or actual != branch or dirty:
+                raise WorktreeError(f"existing workspace requires recovery inspection: {path}")
+            return Clone(path, branch, self.repo_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._git(path.parent, "clone", "--local", "--no-hardlinks", "--no-checkout",
+                  str(source), str(path))
+        self._git(path, "checkout", "-B", branch, base)
+        self._git(path, "remote", "set-url", "origin", self.context.origin_url)
+        for key in ("user.name", "user.email"):
+            value = git_read(self.context.planning_path, "config", "--get", key).strip()
+            self._git(path, "config", key, value)
+        return Clone(path, branch, self.repo_path)
+
+    def create(self, unit_id: str) -> Clone:
+        return self._create_at(
+            self.context.planning_path, self.context.workspace_path,
+            run_branch(self.context.run_id, unit_id), self.context.base_commit,
+        )
+
+    def create_from(self, source_path: str | Path, unit_id: str) -> Clone:
+        source = Path(source_path).resolve()
+        if source != self.context.workspace_path:
+            raise WorktreeError("worker source does not belong to this run")
+        base = self._git(source, "rev-parse", "HEAD").strip()
+        return self._create_at(
+            source, self.context.unit_path(unit_id), run_branch(self.context.run_id, unit_id), base,
+        )

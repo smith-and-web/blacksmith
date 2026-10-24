@@ -100,6 +100,9 @@ class BlacksmithState(TypedDict, total=False):
     fills them in as it advances."""
 
     prd_path: str
+    state_version: int
+    run_id: str
+    run_context: dict[str, Any]
     prd: PRD
     work_units: list[WorkUnit]
     # Dependency levels (frontiers) from blacksmith.planner.execution_levels: the level

@@ -39,13 +39,13 @@ def _git_init(path: Path) -> None:
 
 def test_valid_config_parses():
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
-    assert cfg.target.repo_path == Path("/tmp/kindling")
+    assert cfg.target.repo_path == Path("/tmp/kindling").resolve()
     assert cfg.target.default_branch == "main"
     # An explicit [models].implement still works — it just sets the first-attempt model.
     assert cfg.models.implement == "claude-opus-4-8"
     assert cfg.models.implement_escalate == "claude-opus-4-8"  # default escalation model
     assert cfg.models.plan == "claude-sonnet-4-6"
-    assert cfg.checkpointer.db_path == Path(".blacksmith/checkpoints.sqlite")
+    assert cfg.checkpointer.db_path == (FIXTURES / ".blacksmith/checkpoints.sqlite").resolve()
     assert cfg.api.key_env_var == "BLACKSMITH_ANTHROPIC_API_KEY"
 
 
@@ -61,7 +61,9 @@ def test_defaults_applied_when_optional_sections_omitted():
     # Only [target] is provided; everything else must default.
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
     assert cfg.models == ModelTiers()
-    assert cfg.checkpointer == CheckpointerConfig()
+    assert cfg.checkpointer == CheckpointerConfig(
+        db_path=(FIXTURES / ".blacksmith/checkpoints.sqlite").resolve()
+    )
     assert cfg.api == ApiConfig()
     assert cfg.target.default_branch == "main"  # field default within [target]
 
@@ -511,8 +513,8 @@ def test_omitted_target_section_entirely_loads(tmp_path, monkeypatch):
 def test_explicit_repo_path_used_unchanged():
     # (2) An explicit [target].repo_path still loads and is used unchanged.
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
-    assert cfg.target.repo_path == Path("/tmp/kindling")
-    assert cfg.resolve_repo_path() == Path("/tmp/kindling")
+    assert cfg.target.repo_path == Path("/tmp/kindling").resolve()
+    assert cfg.resolve_repo_path() == Path("/tmp/kindling").resolve()
 
 
 def test_resolve_repo_path_raises_outside_git_repo(tmp_path, monkeypatch):

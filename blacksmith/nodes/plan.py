@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from blacksmith.config import CriticConfig, IndexConfig
-from blacksmith.context import render_context
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -165,7 +165,7 @@ def plan(
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
 
-    prd = state.get("prd")
+    prd = requirements_prd(state)
     if prd is None:
         return {"status": Status.HALTED, "errors": [{"node": "plan", "message": "no prd in state"}]}
 
