@@ -41,6 +41,7 @@ from blacksmith.config import (
     ReviewConfig,
     SBFLConfig,
 )
+from blacksmith.context import selected_plan
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
@@ -50,6 +51,7 @@ from blacksmith.nodes.implement import conventional_commit_message, implement
 from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
+from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
 from blacksmith.planner import execution_levels
 from blacksmith.sandbox import SandboxError, SandboxManager
 from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
@@ -134,7 +136,8 @@ def ingest_prd(state: BlacksmithState) -> dict:
         return {"status": Status.PENDING}
     try:
         prd = parse_prd(prd_path)
-    except ContractError as exc:
+        compile_path_rules(prd.contract.untouchables)
+    except (ContractError, PolicyViolation) as exc:
         return {"status": Status.HALTED, "errors": [{"node": "ingest_prd", "message": str(exc)}]}
     return {"prd": prd, "status": Status.PENDING}
 
@@ -271,7 +274,21 @@ def auto_fix(state: BlacksmithState, *, fix: FixFn | None = None) -> dict:
         return {}
     layer = unit.layers[0] if unit.layers else None
     try:
+        base = None
+        if state.get("prd") is not None:
+            head = _git_run(worktree_path, "rev-parse", "HEAD")
+            if head.returncode:
+                raise PolicyViolation(f"cannot audit formatter: {head.stderr}")
+            base = state.get("pre_implement_ref") or head.stdout.strip()
         fix(worktree_path, layer)
+        if base:
+            policy_for_state(state).audit(base)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
+            "errors": [{"node": "auto_fix", "message": str(exc)}],
+        }
     except GateError:
         # A missing/invalid toolchain is surfaced by the gate, not here — don't double-halt.
         pass
@@ -279,6 +296,9 @@ def auto_fix(state: BlacksmithState, *, fix: FixFn | None = None) -> dict:
 
 
 def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
+    if state.get("status") == Status.HALTED:
+        return {"status": Status.HALTED,
+                "test_results": {"passed": False, "output": "attempt halted", "command": ""}}
     if gate is None:
         return {"status": Status.TESTING}  # skeleton pass-through
     worktree_path = state.get("worktree_path")
@@ -469,6 +489,7 @@ def next_unit(state: BlacksmithState) -> dict:
         "escalated": False,
         "fix_attempts": 0,
         "last_gate_output": "",
+        "review_feedback": "",
         # The post-gate review loop is likewise per-unit (WU-REVIEW-LOOP): the new unit has
         # not been reviewed yet and gets its own fresh revision budget.
         "review_clean": False,
@@ -601,8 +622,7 @@ def review_node(
 
 def _format_review_feedback(findings: list[dict]) -> str:
     """Render this call's BLOCKING findings as feedback text for the next implement
-    prompt -- fed back via ``last_gate_output``, the exact same channel a fix-retry uses
-    to feed back the gate's output, so no implement-prompt change is needed."""
+    prompt, kept separate from deterministic gate output."""
     blocking = [f for f in findings if f.get("severity") == "blocking"]
     lines = [f"- {f.get('file', '(unknown file)')}: {f.get('detail', '')}" for f in blocking]
     return (
@@ -614,8 +634,7 @@ def _format_review_feedback(findings: list[dict]) -> str:
 
 def prepare_review_revision(state: BlacksmithState) -> dict:
     """A blocking review finding, with revisions remaining and within budget: feed the
-    findings into the next implement prompt (via ``last_gate_output``, exactly as
-    ``prepare_fix_retry`` feeds back the gate output), bump ``review_revisions``, and
+    findings into the next implement prompt via ``review_feedback``, bump ``review_revisions``, and
     reset this unit's review verdict so the loop re-reviews after the next gate pass.
 
     Unlike ``prepare_fix_retry``/``prepare_escalation``, this does NOT reset the shared
@@ -628,10 +647,9 @@ def prepare_review_revision(state: BlacksmithState) -> dict:
         # per-unit review_revisions above is reset each unit, so it can't total the run).
         "review_revisions_total": 1,
         "review_clean": False,
-        "last_gate_output": _format_review_feedback(findings),
-        # A review revision feeds back via last_gate_output, not the partial-continuation
-        # channel — clear the resume flag so implement uses the review feedback, not the
-        # "finish your partial work" nudge.
+        "last_gate_output": "",
+        "review_feedback": _format_review_feedback(findings),
+        # A review revision retains its complete request in a separate channel.
         "resume_partial_implement": False,
         "status": Status.IMPLEMENTING,
     }
@@ -760,6 +778,9 @@ def build_unit(
 
     sub: dict = {
         "prd": state["prd"],
+        "selected_plan": selected_plan(state, unit),
+        "unit_results": state.get("unit_results") or [],
+        "planning_path": state.get("planning_path"),
         "selected_unit": unit,
         "worktree_path": str(clone.path),
         "branch": clone.branch,
@@ -775,6 +796,7 @@ def build_unit(
     review_revisions = 0
     continuations = 0
     last_gate_output = ""
+    review_feedback = ""
     # A gate-fail retry resets HARD to here. It starts at the clone's base tip and advances to
     # each passing commit, so a gate failure DURING a review revision rewinds to the last
     # PASSING commit (not the whole unit), mirroring the sequential pre_implement_ref update.
@@ -788,6 +810,7 @@ def build_unit(
         # so it runs blind); ``implement`` routes it through ``_implement_prompt``'s prior_failure
         # path and commits with ``conventional_commit_message``.
         sub["last_gate_output"] = last_gate_output
+        sub["review_feedback"] = review_feedback
         # SAME kwargs the sequential implement node is bound with (index/sandbox included),
         # so a feature can never be live sequentially yet dark on fan-out (review finding #2).
         impl = implement(sub, **deps.implement_kwargs())
@@ -824,11 +847,10 @@ def build_unit(
         # Deterministic auto-fix in this unit's own clone before gating it (WU-FIX-CMD): the same
         # fix-then-verify order as the sequential auto_fix -> test_gate, run on EVERY attempt so a
         # self-heal retry re-fixes too. Best-effort; never halts the unit.
-        if deps.fix is not None:
-            try:
-                deps.fix(str(clone.path), unit.layers[0] if unit.layers else None)
-            except GateError:
-                pass
+        fixed = auto_fix(sub, fix=deps.fix)
+        if fixed.get("status") == Status.HALTED:
+            record.update(ok=False, error=fixed["errors"][0]["message"])
+            return {"level_builds": [record], "cost_events": cost_events}
         gate_update = test_gate(sub, gate=deps.gate)
         results = gate_update.get("test_results") or {}
         record["test_command"] = results.get("command", "")
@@ -855,7 +877,8 @@ def build_unit(
             # (limits/review off) never enters here, so it stays surface-only/no-review.
             if unresolved and review_revisions < max_review_revisions and within_budget:
                 review_revisions += 1
-                last_gate_output = _format_review_feedback(findings)
+                last_gate_output = ""
+                review_feedback = _format_review_feedback(findings)
                 sub["resume_partial_implement"] = False
                 continue
             # Clean, revisions exhausted, or over budget: this unit is done — leave the loop and
@@ -1167,6 +1190,8 @@ def route_after_test_gate(state: BlacksmithState) -> str:
 
     This FAILURE branch (and its counters) is untouched by the review loop — the review
     loop is a separate bounded loop on the PASS branch only."""
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
     results = state.get("test_results") or {}
     if not results.get("passed"):
         if _can_fix_retry(state):
@@ -1222,6 +1247,9 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
             {
                 "prd": state.get("prd"),
                 "selected_unit": unit,
+                "selected_plan": selected_plan(state, unit),
+                "unit_results": state.get("unit_results") or [],
+                "planning_path": state.get("planning_path"),
                 "level_cursor": level,
                 "shared_clone_path": state.get("worktree_path"),
                 "limits": state.get("limits"),
@@ -1393,6 +1421,7 @@ def build_graph(
             index_config=index,
             repo_path=plan_repo_path,
             critic=critic,
+            max_prd_bytes=limits.max_prd_bytes if limits is not None else 262144,
         ),
     )
     graph.add_node("approve_plan", approve_plan)

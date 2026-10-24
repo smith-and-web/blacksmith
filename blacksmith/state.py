@@ -129,6 +129,9 @@ class BlacksmithState(TypedDict, total=False):
     # the single approve_plan gate so a multi-unit PRD's later units are no longer built with no
     # plan and no approval. Human-gated units are absent (they get manual QA via a draft PR).
     plans: list[dict[str, Any]]
+    plans_by_unit_id: dict[str, dict[str, Any]]
+    selected_plan: dict[str, Any] | None
+    planning_path: str
     worktree_path: str
     # The single shared branch every unit's commits land on, so one combined PR can be
     # opened against it. Set once when the run's lone worktree is created.
@@ -174,6 +177,7 @@ class BlacksmithState(TypedDict, total=False):
     # retry (and the escalation) can actually FIX the error instead of re-running blind. Set
     # by the fix-retry/escalation prep, cleared when the level engine advances to a new unit.
     last_gate_output: str
+    review_feedback: str
     # Recoverable implement-continuation loop. When an implement attempt hits its turn budget
     # (``error_kind == "max_turns"``) it HALTs, but unlike a gate failure the partial work is
     # kept and the attempt is continued rather than discarded.

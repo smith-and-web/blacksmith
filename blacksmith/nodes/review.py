@@ -54,6 +54,7 @@ from pathlib import Path
 from typing import Any
 
 from blacksmith.config import IndexConfig
+from blacksmith.context import render_context
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -143,7 +144,8 @@ def review(
         if mcp_servers:
             call_kwargs["mcp_servers"] = mcp_servers
         result = executor.run_review(
-            _review_prompt(unit, implementation, emphasis=emphasis),
+            _review_prompt(unit, implementation, emphasis=emphasis)
+            + render_context(state, unit, include_plan=True),
             **call_kwargs,
         )
         # Ledgered on every call (including a fail-open empty/unparseable verdict), same

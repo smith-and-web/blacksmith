@@ -208,6 +208,8 @@ class LimitsConfig(_Strict):
     max_review_revisions: int = Field(default=1, ge=0)
     max_implement_turns: int = Field(default=40, ge=1)
     max_implement_continuations: int = Field(default=1, ge=0)
+    # Input bytes are rejected before model admission; requirements are never truncated.
+    max_prd_bytes: int = Field(default=262144, ge=1)
 
 
 class ReviewConfig(_Strict):

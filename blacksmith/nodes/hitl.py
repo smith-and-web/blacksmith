@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from langgraph.types import interrupt
 
+from blacksmith.path_policy import PolicyViolation, compile_path_rules
 from blacksmith.state import BlacksmithState, Status
 
 if TYPE_CHECKING:
@@ -27,10 +28,21 @@ if TYPE_CHECKING:
 def approve_plan(state: BlacksmithState) -> dict:
     # Surface a plan for EVERY auto-gated unit (WU-PLAN-ALL-UNITS), not just the first, so the
     # human approves the whole multi-unit PRD at this one gate.
+    try:
+        prd = state.get("prd")
+        hard_rules = compile_path_rules(prd.contract.untouchables if prd else ())
+    except PolicyViolation as exc:
+        return {"status": Status.HALTED,
+                "errors": [{"node": "approve_plan", "message": str(exc)}]}
     decision = _decide(
         {
             "gate": "plan",
             "plans": state.get("plans") or [],
+            "hard_path_rules": list(hard_rules),
+            "always_protected": [
+                ".git and descendants", ".gitmodules", ".mcp.json", ".claude/settings*.json",
+                "blacksmith.toml", "blacksmith.config.toml",
+            ],
         }
     )
     approvals = {**state.get("approvals", {}), "plan": decision}

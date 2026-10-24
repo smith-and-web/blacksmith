@@ -182,6 +182,9 @@ class Executor:
             # accept and forward them or a live tool-enabled call raises TypeError here — the
             # gap caught by the reviewer that FakeExecutor's **kwargs swallow hid from tests.
             mcp_servers=dict(mcp_servers or {}),
+            # Never inherit permission auto-allow rules, hooks or unowned MCP servers.
+            setting_sources=[],
+            strict_mcp_config=True,
             env=env,
         )
 

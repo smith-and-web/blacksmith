@@ -16,14 +16,14 @@ wired (skeleton/tests), it is a status-only pass-through.
 
 from __future__ import annotations
 
-import fnmatch
 import subprocess
 from collections.abc import Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
 from blacksmith.config import IndexConfig
+from blacksmith.context import render_context
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -34,6 +34,17 @@ from blacksmith.index import (
     index_tools_prompt_section,
 )
 from blacksmith.nodes.plan import cost_event, usage_breakdown
+from blacksmith.path_policy import (
+    DEFAULT_PROTECTED_GLOBS,
+    READ_TOOLS,
+    WRITE_TARGETS,
+    PathPolicy,
+    PolicyViolation,
+    policy_for_state,
+)
+from blacksmith.path_policy import (
+    is_protected as is_protected,  # re-export the legacy helper
+)
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
 
@@ -41,8 +52,8 @@ from blacksmith.state import BlacksmithState, Status
 _WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 _ALLOWED_TOOLS = ["Read", "Glob", "Grep"]  # auto-allowed read-only tools
 # The implementer writes code; it must not reach for a shell or escape its tool surface.
-# The can_use_tool guard only gates Write/Edit and allows everything else, so any tool that
-# could run commands or spawn a shell-capable helper is denied here explicitly: Bash (+ its
+# The guard allows only known file tools and explicitly wired MCP tools. Tools that
+# could run commands or spawn a shell-capable helper are also denied here explicitly: Bash (+ its
 # helpers), sub-agent spawning (Agent/Task), tool discovery (ToolSearch — it was observed
 # searching for a Bash tool), and web tools. A run that exhausts its turns hunting for a way
 # to run tests is exactly the failure this prevents — the test gate runs the suite, not the agent.
@@ -116,56 +127,33 @@ _PROJECT_CONTEXT_FILE = "CLAUDE.md"
 # ``index_config`` (or ``enabled=False``, the default), none of this runs and the system
 # prompt is byte-for-byte unchanged from before this unit.
 
-# Path-like untouchables (PRD §7). Matched against the file's POSIX path with fnmatch
-# (so `*` spans separators). The behavioral untouchables are NOT path-matchable.
-DEFAULT_PROTECTED_GLOBS: tuple[str, ...] = (
-    "*Cargo.lock",
-    "*.kindling.yaml",
-    "*/migrations/*",
-    "*blacksmith/contract.py",
-)
-
-
-def is_protected(path: str, protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS) -> bool:
-    """True if a (relative or absolute) path matches an untouchable glob."""
-    posix = PurePosixPath(path).as_posix()
-    return any(fnmatch.fnmatch(posix, glob) for glob in protected_globs)
-
-
 def make_pre_edit_guard(
     protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS,
     *,
     worktree_root: str | Path | None = None,
+    allowed_mcp_tools: Sequence[str] = (),
 ):
-    """Build a ``can_use_tool`` callback that denies dangerous writes.
-
-    It blocks two things and records each in ``.blocked`` (so the node can surface them
-    for human sign-off, AC-7): (1) writes whose path is outside ``worktree_root`` — the
-    isolation boundary (§4/§5), so the agent can never edit the real checkout; and
-    (2) writes to untouchable paths (§7).
-    """
+    """Gate every write target; permit only known reads and explicitly wired MCP tools."""
     blocked: list[dict] = []
-    root = Path(worktree_root).resolve() if worktree_root is not None else None
+    policy = PathPolicy(Path(worktree_root or Path.cwd()), tuple(protected_globs))
+    reads = READ_TOOLS | frozenset(allowed_mcp_tools)
 
     async def can_use_tool(tool_name, tool_input, context):
-        if tool_name in _WRITE_TOOLS:
-            path = tool_input.get("file_path") or tool_input.get("path") or ""
-            if path and root is not None and not _within_worktree(root, path):
-                blocked.append({"tool": tool_name, "path": path, "reason": "outside_worktree"})
-                return PermissionResultDeny(
-                    message=(
-                        f"BLOCKED: {path} is outside the worktree ({root}). Every edit must "
-                        "stay inside the worktree — use a path within it."
-                    )
-                )
-            if path and is_protected(path, protected_globs):
-                blocked.append({"tool": tool_name, "path": path, "reason": "untouchable"})
-                return PermissionResultDeny(
-                    message=(
-                        f"BLOCKED: {path} is an untouchable path (PRD §7). "
-                        "It may not be edited without explicit human sign-off."
-                    )
-                )
+        if tool_name in reads:
+            return PermissionResultAllow()
+        fields = WRITE_TARGETS.get(tool_name)
+        path = None
+        if fields is None:
+            reason = "unknown_tool"
+        elif not isinstance(tool_input, dict):
+            reason = "missing_or_malformed_target"
+        else:
+            values = [tool_input[f] for f in fields if f in tool_input]
+            path = values[0] if len(values) == 1 else None
+            reason = policy.violation(path)
+        if reason:
+            blocked.append({"tool": tool_name, "path": path, "reason": reason})
+            return PermissionResultDeny(message=f"BLOCKED: {reason}: {path!r}")
         return PermissionResultAllow()
 
     can_use_tool.blocked = blocked
@@ -173,15 +161,14 @@ def make_pre_edit_guard(
 
 
 def _within_worktree(root: Path, path: str) -> bool:
-    """A relative path resolves against the agent's cwd (the worktree); an absolute path
-    must resolve to somewhere under the worktree root."""
-    candidate = Path(path)
-    if not candidate.is_absolute():
-        return True
+    """Compatibility helper; relative candidates also resolve against the clone root."""
     try:
-        candidate.resolve().relative_to(root)
+        candidate = Path(path)
+        (candidate if candidate.is_absolute() else root / candidate).resolve().relative_to(
+            root.resolve()
+        )
         return True
-    except ValueError:
+    except (ValueError, OSError, RuntimeError):
         return False
 
 
@@ -225,7 +212,13 @@ def implement(
             "status": Status.IMPLEMENTING,
         }
 
-    guard = make_pre_edit_guard(worktree_root=worktree_path)
+    try:
+        policy = policy_for_state(state)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED, "implement_error_kind": "policy_violation",
+            "errors": [{"node": "implement", "message": str(exc)}],
+        }
     # Escalation (WU-ESCALATE-ON-FAIL): the first attempt runs the cheaper first-attempt
     # model (config.models.implement, default Sonnet). After a gate failure the run resets the
     # worktree and re-enters here with ``escalated`` set, so this attempt instead uses the
@@ -259,6 +252,10 @@ def implement(
         allowed_tools.append(_SANDBOX_TOOL_NAME)
     if index_enabled:
         allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
+    guard = make_pre_edit_guard(
+        policy.rules, worktree_root=worktree_path,
+        allowed_mcp_tools=[t for t in allowed_tools if t.startswith("mcp__")],
+    )
     repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
         "system_prompt": _system_prompt(
@@ -296,17 +293,32 @@ def implement(
         _implement_prompt(
             unit,
             prior_failure=state.get("last_gate_output"),
+            review_feedback=state.get("review_feedback"),
             resuming=resuming,
             sandbox_enabled=sandbox_enabled,
             index_enabled=index_enabled,
             worktree_path=worktree_path,
-        ),
+        ) + render_context(state, unit, include_plan=True),
         **call_kwargs,
     )
     # Ledger event for THIS attempt (WU-COST-EVENTS), built once and emitted on EVERY return
     # below — including the failure halts — so a run that halts inside implement still counts
     # this attempt's spend and the unit still appears in the per-unit metrics.
     event = cost_event("implement", unit.id, result)
+    # Denial is terminal even if the model subsequently wrote unrelated valid files
+    # or exhausted its turns. Audit before staging so disallowed changes stay recoverable.
+    try:
+        if guard.blocked:
+            raise PolicyViolation(f"policy_violation: denied edit attempts: {guard.blocked}")
+        policy.audit(pre_implement_ref)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
+            "cost_events": [event],
+            "implementation": {"blocked": list(guard.blocked)},
+            "errors": [{"node": "implement", "message": str(exc)}],
+        }
     if result.is_error:
         # A turn-cap is a RECOVERABLE, budget-shaped failure: report it legibly (never the
         # agent's reasoning dump) and tag ``implement_error_kind`` so routing can continue the
@@ -330,6 +342,14 @@ def implement(
         files, diff_summary = _stage_and_commit(
             worktree_path, conventional_commit_message(unit)
         )
+        policy.audit(pre_implement_ref)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
+            "cost_events": [event],
+            "errors": [{"node": "implement", "message": str(exc)}],
+        }
     except CommitError as exc:
         return {
             "status": Status.HALTED,
@@ -370,14 +390,6 @@ def implement(
     # failure routes straight to human_halt as before.
     if can_escalate and not escalating and pre_implement_ref:
         update["pre_implement_ref"] = pre_implement_ref
-    # Only untouchable blocks (§7) are run errors that need human sign-off. Out-of-worktree
-    # blocks are the isolation boundary doing its job — benign audit info, recorded under
-    # implementation["blocked"] above but never surfaced as an implement error.
-    untouchable = [b["path"] for b in guard.blocked if b.get("reason") == "untouchable"]
-    if untouchable:
-        update["errors"] = [
-            {"node": "implement", "message": f"blocked untouchable edit(s): {untouchable}"}
-        ]
     return update
 
 
@@ -393,6 +405,7 @@ def _stage_and_commit(worktree_path: str, message: str) -> tuple[list[str], str]
     Raises ``CommitError`` if the commit fails. Previously the commit's exit code was
     ignored, so a failed commit (e.g. a fresh clone with no author identity) looked like
     success and surfaced only at PR time as "No commits between main and <branch>"."""
+    # All staging/diff failures are infrastructure failures, not an empty diff.
     _git(worktree_path, "add", "-A")
     files = [
         line for line in _git(worktree_path, "diff", "--cached", "--name-only").splitlines() if line
@@ -413,6 +426,8 @@ def _git(worktree_path: str, *args: str) -> str:
     result = subprocess.run(
         ["git", "-C", str(worktree_path), *args], capture_output=True, text=True
     )
+    if result.returncode:
+        raise CommitError(result.stderr.strip() or result.stdout.strip() or "git command failed")
     return result.stdout
 
 
@@ -446,6 +461,7 @@ def _implement_prompt(
     unit: WorkUnit,
     *,
     prior_failure: str | None = None,
+    review_feedback: str | None = None,
     resuming: bool = False,
     sandbox_enabled: bool = False,
     index_enabled: bool = False,
@@ -509,6 +525,8 @@ def _implement_prompt(
             "green — fix the implementation. Gate output (tail):\n"
             f"{tail}"
         )
+    if review_feedback:
+        prompt += "\n\nREVIEW FEEDBACK (full reviewer request):\n" + review_feedback
     return prompt
 
 

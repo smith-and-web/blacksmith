@@ -862,13 +862,17 @@ def _validate(argv: list[str] | None = None) -> int:
 
     try:
         prd = parse_prd(args.prd_path)
-    except ContractError as exc:
+        from blacksmith.path_policy import compile_path_rules
+        hard_rules = compile_path_rules(prd.contract.untouchables)
+    except (ContractError, ValueError) as exc:
         print(f"validate: {exc}", file=sys.stderr)
         return 1
 
     contract = prd.contract
     count = len(contract.work_units)
     print(f"OK: {contract.component} — {count} work unit(s) — contract valid")
+    print("Hard path rules: " + ", ".join(hard_rules))
+    print("Always protected: Git metadata, MCP/settings, runtime config, blacksmith.toml")
     return 0
 
 

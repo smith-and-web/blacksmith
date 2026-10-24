@@ -1,5 +1,20 @@
 # Authoring blacksmith-ready PRDs
 
+Hard path untouchables use `path: relative/path` or `glob: **/pattern`. Explicit
+directory paths cover their descendants. For existing PRDs, a bare entry with no
+whitespace containing `/`, `.`, `*`, `?` or `[` is also a hard path rule; other
+English prose remains guidance in model prompts. Absolute/traversing paths and
+malformed explicit patterns are rejected. Validation and plan approval display the
+compiled rules. Git metadata, `.gitmodules`, `.mcp.json`, `.claude/settings*.json`,
+`blacksmith.toml` and `blacksmith.config.toml` are always protected, in addition to
+the existing built-in rules. Denied edit attempts halt before committing unrelated
+work; actual changed paths (including deleted and renamed paths) are audited too.
+
+The full prose and full contract are passed to every planning, critique,
+implementation and review call, and implementation/review also receive the
+selected plan. `[limits].max_prd_bytes` defaults to 262144; split larger PRDs.
+Requirements and approved plan text are never reduced to a log tail.
+
 > **Use this as project context.** Drop this file into a Claude Project (as project
 > knowledge or instructions). When asked to write or revise a PRD for a build that
 > blacksmith will execute, follow this contract exactly. A PRD that violates any

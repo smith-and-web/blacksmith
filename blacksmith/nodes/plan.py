@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from blacksmith.config import CriticConfig, IndexConfig
+from blacksmith.context import render_context
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -59,6 +60,7 @@ from blacksmith.index import (
     index_tools_prompt_section,
 )
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
+from blacksmith.path_policy import PolicyViolation, compile_path_rules
 from blacksmith.state import BlacksmithState, Status
 
 # How many prior gate-failure lessons to surface to the planner (most recent first).
@@ -158,6 +160,7 @@ def plan(
     index_config: IndexConfig | None = None,
     repo_path: str | Path | None = None,
     critic: CriticConfig | None = None,
+    max_prd_bytes: int = 262144,
 ) -> dict:
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
@@ -167,6 +170,19 @@ def plan(
         return {"status": Status.HALTED, "errors": [{"node": "plan", "message": "no prd in state"}]}
 
     contract = prd.contract
+    input_bytes = len((prd.text or (contract.model_dump_json() + prd.body)).encode("utf-8"))
+    if input_bytes > max_prd_bytes:
+        return {
+            "status": Status.HALTED,
+            "errors": [{"node": "plan", "message": (
+                f"PRD is {input_bytes} bytes; exceeds max_prd_bytes={max_prd_bytes}; "
+                "split the PRD before running"
+            )}],
+        }
+    try:
+        compile_path_rules(contract.untouchables)
+    except PolicyViolation as exc:
+        return {"status": Status.HALTED, "errors": [{"node": "plan", "message": str(exc)}]}
     # Cycle / unsatisfiable-DAG guard (preserved from the single-unit selector): if no unit is
     # ever buildable, halt here rather than producing plans for an unexecutable PRD.
     if select_unit(contract) is None:
@@ -182,7 +198,11 @@ def plan(
     # per-unit calls below, exactly like system_prompt -- not once per unit. Computed BEFORE the
     # system prompt so the prompt can advertise the tools whenever they're wired (index_enabled),
     # never merely when a repo map happened to build.
-    index_enabled = bool(index_config is not None and index_config.enabled and repo_path)
+    # Production supplies the immutable planning checkout. Always pass cwd even
+    # without indexing so SDK reads never depend on the caller's ambient directory.
+    repo_path = state.get("planning_path") or repo_path or Path.cwd()
+    repo_path = str(Path(repo_path).resolve())
+    index_enabled = bool(index_config is not None and index_config.enabled)
     # Built ONCE and reused across the per-unit calls so the static constitution/lessons/repo-map
     # context caches across them (AC-8) instead of being re-sent (or rebuilt) for each unit.
     system_prompt = _system_prompt(
@@ -190,7 +210,7 @@ def plan(
         _prior_lessons(contract),
         _build_repo_map(repo_path, index_config),
         index_enabled=index_enabled,
-    )
+    ) + render_context(state)
     allowed_tools = list(_PLAN_READ_ONLY)
     mcp_servers: dict = {}
     if index_enabled:
@@ -210,6 +230,7 @@ def plan(
     for unit in auto_units:
         call_kwargs: dict = {
             "system_prompt": system_prompt,
+            "cwd": repo_path,
             "allowed_tools": allowed_tools,
             "disallowed_tools": _PLAN_BLOCKED,
             "max_turns": _PLAN_MAX_TURNS,
@@ -474,7 +495,9 @@ def _critic_loop(
     """
     revisions_used = 0
     while True:
-        critique = _run_critique(executor, unit, result.text, cost_events)
+        critique = _run_critique(
+            executor, unit, result.text, cost_events, call_kwargs=call_kwargs,
+        )
         if critique["approved"] or revisions_used >= max_revisions:
             return result
         revisions_used += 1
@@ -485,7 +508,8 @@ def _critic_loop(
 
 
 def _run_critique(
-    executor: Executor, unit: WorkUnit, plan_text: str, cost_events: list[dict]
+    executor: Executor, unit: WorkUnit, plan_text: str, cost_events: list[dict],
+    *, call_kwargs: dict | None = None,
 ) -> dict:
     """One fail-open critique call: ``{"approved": bool, "critique": str}``.
 
@@ -495,7 +519,7 @@ def _run_critique(
     """
     try:
         critique_result = executor.run_plan_critique(
-            _plan_critique_prompt(unit, plan_text), raise_on_error=False
+            _plan_critique_prompt(unit, plan_text), **(call_kwargs or {"raise_on_error": False})
         )
     except Exception:
         return {"approved": True, "critique": ""}

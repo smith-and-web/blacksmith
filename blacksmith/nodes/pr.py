@@ -21,6 +21,7 @@ from typing import Any
 
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.plan import cost_event
+from blacksmith.path_policy import PolicyViolation, policy_for_state
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
@@ -132,6 +133,8 @@ def _open_pr(
     node: str,
     executor: Any = None,
 ) -> dict:
+    if state.get("status") == Status.HALTED:
+        return {"status": Status.HALTED}
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
     if unit is None or not worktree_path:
@@ -139,6 +142,13 @@ def _open_pr(
             "status": Status.HALTED,
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
+    if state.get("prd") is not None:
+        try:
+            policy_for_state(state).audit(
+                state.get("pr_base_ref") or state.get("pre_implement_ref") or "HEAD"
+            )
+        except PolicyViolation as exc:
+            return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
     units = _built_units(state)
     title = _pr_title(units)
     summary: str | None = None

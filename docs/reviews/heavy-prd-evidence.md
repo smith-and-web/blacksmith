@@ -1,0 +1,89 @@
+# Heavy-PRD acceptance evidence
+
+Implementation is incomplete. No live release gate has passed.
+
+## Baseline and inputs
+
+- Source review baseline from specification: 737 passed, 2 failed; not a green baseline. Two ambient Git fixture failures are known; isolate fixtures rather than changing user Git settings.
+- Turn 2 worktree: main tracking origin/main, no tracked changes; pre-existing untracked specification and readiness probe retained.
+- Repository `CLAUDE.md` read; explicit request and specification authorize direct remediation on a feature branch.
+- Brain context read: `Projects/blacksmith.md`; `Reference/blacksmith - running and operating.md`; `Reference/blacksmith - architecture and graph.md`; `Reference/blacksmith - configuration.md`; `Reference/blacksmith - failure classes and gotchas.md`; clone and no-host-shell decision notes. Notes are historical context; current source and specification govern.
+
+## Slice evidence
+
+### Turn 2: S01 path boundary
+
+- Added `blacksmith/path_policy.py`; permission schemas cover Write/Edit/MultiEdit/NotebookEdit; unknown tools and malformed/missing targets denied. Explicitly wired MCP read tools remain permitted.
+- Canonical containment includes relative paths; symlink write targets/ancestors denied; lexical/resolved protections cover mandatory metadata/config/verifier paths plus compiled PRD rules.
+- Actual Git diff audit includes staged/unstaged changes, untracked source, rename/deletion sides; applied before/after implementation commit, after formatter on sequential/parallel paths, before PR node publication. Gate routing prioritizes HALTED.
+- A denied edit halts with `policy_violation` before staging otherwise valid changes. SDK options explicitly disable settings inheritance and use strict MCP configuration; support verified against installed `ClaudeAgentOptions` signature (0.2.115).
+- Git fixture isolation removed the two baseline identity/hook failures without changing any user Git setting.
+- Targeted command: `uv run pytest -q tests/test_path_policy.py tests/test_implement.py tests/test_executor.py tests/test_fix.py tests/test_hitl.py tests/test_cli_validate.py`: **119 passed in 17.33 s** at the S01 checkpoint.
+- Ruff at the S01 checkpoint: passed.
+- Scope limits: trusted snapshot, exact gate receipt, lifecycle retention, hard publication approval and sandbox rejection still belong to later slices. These regressions do not prove live SDK containment or an OS sandbox.
+
+### Turn 2: S02 requirements context
+
+- Shared `blacksmith/context.py` renders full PRD prose and contract plus selected approved-plan text and dependency results for implementation/review.
+- Planner/critic receive full context and explicit cwd, with matching index root. Fan-out sends selected plan, PRD and relevant parent results explicitly.
+- `[limits].max_prd_bytes = 262144` parses and reaches the graph's planner node; oversized input halts before transport. Parsed PRD retains full original text.
+- Gate feedback, full original review feedback and continuation guidance use separate sections; requirements and plan have no tail truncation.
+- Exact sentinel tests cover sequential/fan-out, index on/off, explicit other target, unchanged source, real Git/gate/graph/checkpointer and actual `Executor.build_options`. Only paid transport replaced. Planning snapshot immutability is not claimed here; that is S03. Plan-hash approval enforcement is S09.
+- Targeted context command before follow-up additions: `uv run pytest -q tests/test_requirements_context.py tests/test_plan.py tests/test_path_policy.py tests/test_cli_validate.py`: **75 passed in 9.84 s**.
+
+### Preserved verification failures
+
+- `heavy-prd-turn-02-pytest-01.log`: suite collection failed due to an incorrect SDK internal transport import in the newly added offline guard; corrected to the installed `subprocess_cli` module. No tests ran, no model transport ran.
+- `heavy-prd-turn-02-pytest-02.log`: full suite **776 passed, 3 failed in 108.62 s**. Three old exact prompt assertions expected the missing-context behavior explicitly changed by R02. Equality assertions retained and expected full context added; superseded by the passing full rerun below.
+- New regression test development also exposed a nested-event-loop error in its mock transport; transport now invokes synchronous edit scripts on a thread while retaining real SDK option validation.
+
+
+## Remaining live release gates
+
+- Authorized disposable-target paid canary: fixed $10 budget, review enabled, two independent auto units plus terminal QA, plan-only approval initially; verify no publication, resume with PR approval, inspect draft and exact gated SHA. NOT RUN; explicitly prohibited in this task.
+- Real Docker ownership/sentinel/timeout/restart smoke before sandbox enablement. NOT RUN. S17 may instead reject enabled sandbox configuration and leave sandbox disabled.
+- S18 may instead explicitly disable respond with unsupported-until-hardened diagnostic.
+
+## Final required local verification
+
+- Latest full suite (S01-S02): `uv run pytest -q`, **783 passed in 103.81 s**, no failures/skips/xfails. Final S19 full suite remains required after later slices.
+- Latest `uv run ruff check`: **passed** after S01-S02. Final S19 lint remains required after later slices.
+- Requirement-by-requirement acceptance matrix, crash/recovery evidence, dependency versions and revision: pending.
+
+## Acceptance matrix tracking
+
+| Specification invariant | Current evidence / next proof |
+|---|---|
+| Prose and approved-plan sentinel, index on/off, other target | `test_requirements_context.py` covers both graph shapes; immutable snapshot and hash enforcement pending S03/S09 |
+| Traversal/symlink/notebook/metadata/PRD rules/unknown tools | `test_path_policy.py`; fail-closed callback, real changed-path audit, no commit/publication effect |
+| Parallel individually green, combined red | Pending S10; require real integration gate and retained siblings |
+| Multiple auto layers, later layer failing | Pending S06; all-layer receipt required |
+| Gate exception after previous passing result | HALTED-first routing added; full fresh receipt regression pending S06/S07 |
+| Sequential escalated → parallel → sequential state reset | Pending S07/S08; factory plus real graph sequence |
+| Add/amend/reset/squash failure, fixer/gate source edits | Checked add/diff/commit added; full fault matrix pending S05/S06/S08 |
+| Agent toolchain replacement or sandbox protected edit | Implement/formatter/publication path audit covered; trusted toolchain S03/S06; sandbox disabled/rejected S17 |
+| Terminal human plus plan-only approval | Pending S13 exact-SHA guard; no paid/live publication allowed |
+| Invalid human topology before spend | Pending S03/S13 semantic validation |
+| Malformed/error/missing-result review and minority blocking | Pending S12 strict unavailable/blocking policy |
+| Deletion-only and cumulative revision patch review | Pending S12 real cumulative patch/read_diff |
+| Restart after plan/commit/gate/join/push/create | Pending S04/S09–S11/S14; new-process crash evidence required |
+| Corrupt/missing/wrong manifest and concurrent resume | Pending S03/S11; reject before spend/mutation |
+| Distinct run/worker/branch identities | Pending S03 |
+| 100-unit chain and 20 roots, max active 2 | Pending S16; measured deterministic concurrency |
+| Exhaustion across all paid call classes, concurrent reservations | Pending S15; missing cost consumes reservation; resume cannot reset |
+| Hanging command/children/large output and model timeout | Pending S05/S15; capped file logs plus process cleanup proof |
+| Per-workspace sandbox sentinel, timeout, resume | Deferred option requires explicit enabled-config rejection in S17; real Docker gate remains unrun |
+| Respond preserved feedback, synthetic unit, remote race/push failure | Deferred option requires explicit unsupported-until-hardened error in S18 |
+| Optional observability/memory failure, critical journal failure | Offline live-SDK/network suite prevention added; production failure injection pending S04/S19 |
+
+Contract schema edits require explicit human review before merge (spec §3.2). No merge is authorized or attempted. Legacy state-v1 execution must be refused without rewriting checkpoints; migration proof pending S03/S11.
+
+## Turn 2 closeout
+
+- Final full command: `uv run pytest -q > docs/reviews/heavy-prd-turn-02-pytest-03.log 2>&1`, exit 0: **783 passed in 103.81 seconds**. The suite-wide transport guard blocked any accidental paid SDK or non-loopback network call; actual billed transport was never invoked.
+- `uv run ruff check > docs/reviews/heavy-prd-turn-02-ruff.log 2>&1`, exit 0: **All checks passed!**
+- `git diff --check`: passed. Dependency versions and input SHA-256 values retained in `heavy-prd-turn-02-environment.json`; no dependency bump or lockfile change.
+- Follow-up targeted recovery/context/parallel command: `uv run pytest -q tests/test_requirements_context.py tests/test_implement.py tests/test_memory_lessons.py tests/test_review_loop.py tests/test_parallel.py`: **78 passed in 27.38 s** before the final literal-path regression addition; final full run covers that addition.
+- Original spec SHA-256 and original probe SHA-256 unchanged; neither existing untracked file was edited.
+- S01 and S02 slice completion criteria are met. R01-R12 as a whole, general heavy-PRD readiness and the remaining S03-S19 work are not complete.
+- Brain capture: existing `Projects/blacksmith.md` updated through MCP with partial status and fixture gotcha; targeted lint returned 0 errors/0 warnings. After >70 seconds, MCP index status showed lastRun.errors=0 and invalidFrontmatter.count=0; semantic retrieval returned the new remediation section as rank 1 (`327e1bcc-0af6-4af0-943d-61cd4b1a88fd`).

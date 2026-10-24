@@ -126,6 +126,7 @@ class PRD:
     path: Path
     contract: PRDContract
     body: str
+    text: str = ""
 
 
 def parse_prd(path: str | Path) -> PRD:
@@ -167,7 +168,7 @@ def parse_prd(path: str | Path) -> PRD:
             f"(Contract v1 requires headings for: {', '.join(REQUIRED_SECTIONS)})"
         )
 
-    return PRD(path=path, contract=contract, body=body)
+    return PRD(path=path, contract=contract, body=body, text=text)
 
 
 def _missing_sections(body: str) -> list[str]:
