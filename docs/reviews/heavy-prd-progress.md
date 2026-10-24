@@ -16,6 +16,7 @@
 - S08 implementation commit: `b694e06` (local only).
 - S09 implementation commit: `adc56d2` (local only).
 - S10 implementation commit: `07965ca` (local only).
+- S11 foundation commit: `68a80c3` (local only; S11 incomplete).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
@@ -66,6 +67,8 @@ S12-S19 and every live release gate also remain open. Strict blocked/unavailable
 ## Turn 11 verification closeout
 
 Artifacts-01: 6/20.07 s. Reconcile-01: 42/58.62 s. Artifacts-02: 16/31.24 s; artifacts-03: 19/36.43 s; artifacts-04: 24/37.98 s. Foundation-01: 35/54.39 s. Final directory-link guard: 1/23.00 s. Receipt-wiring-01: 5 passed/4 failed in 17.78 s; wiring-02: 9/40.03 s. Four old assertions assumed SDK was the last/all journal record; replacements pin exact new capture/bootstrap rows plus original model/provider/cost behavior. Full-01: 1020 passed/4 failed, 603.81 s. Full-02: 1028/4, 655.99 s. Full-03: 1034/649.58 s before last guard. Final full-04: **1035/620.65 s**, exit 0. Ruff **passed**. Source/docs whitespace clean excluding verbatim failed logs. No dependencies/lockfile changes. Every handle terminal.
+
+Foundation committed locally as `68a80c3`; host pre-commit and source/docs `git show --check` passed. Brain hub `Projects/blacksmith.md` updated with exact proof, turn 11 and incomplete S11 boundary; targeted lint 0 errors/0 warnings. After more than 70 seconds, index errors=0/invalidFrontmatter=0 and semantic search/readback verified all three fields (request `525d6d4e-6c2b-4ef3-9eb5-202df91d0c93`). Only original spec/probe remain untracked.
 
 ## Next action (goal turn 12): finish S11 before S12
 
