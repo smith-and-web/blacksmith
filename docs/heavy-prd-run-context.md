@@ -156,6 +156,44 @@ for its owning stage to reconcile. Native commands are never automatically retri
 by this service. Failed add, amend, reset, clean, squash and other required Git
 operations stop execution rather than silently accepting incomplete work.
 
+## Unit attempt state and reset boundaries
+
+`UnitAttemptState` owns the flat channels used by existing nodes and the forthcoming
+common unit subgraph: current unit, unit/attempt base commits, last passing SHA,
+attempt ID/number, model tier, recovery counters, separate gate/review/continuation
+feedback, candidate/evidence, error/resume flags and current review findings.
+`BlacksmithState` inherits these fields; run-wide costs, historical findings, errors
+and completed-unit records remain separate ledgers.
+
+One pure `new_unit_attempt` factory initializes the first unit, sequential advances,
+parallel worker entries and the next unit after a join. It uses the current combined
+Git tip for a new unit, starts the initial model with zero counters, and clears all
+candidate/test/formatter/review evidence and transient feedback. It does not copy
+another unit's state or clear historical run ledgers.
+
+`next_attempt` advances only the same unit. It invalidates old candidate evidence,
+retains the unit base and relevant reviewer request, assigns a new deterministic
+call identity and forwards the latest gate output to escalation even when no cheap
+fix retry ran. Gate recovery after a failed review revision resets to that unit's
+last passing candidate. Continuation keeps partial work and passes its instructions
+in a separate feedback field; it does not reset the workspace.
+
+Attempt identities retain the existing `(fix count, escalated, revision count,
+continuation count)` encoding, so receipt keys and consumed counters are not reset
+by a metadata addition or an ordinary restart. Older projections lacking a known
+unit-base field retain `None`; no historical SHA is invented. Complete ambiguous
+stage/boundary reconciliation remains S11 work. The factory runs at actual new-unit
+transitions, not merely because `resume` was invoked.
+
+Real CLI/checkpointer tests cover an escalated and reviewed sequential unit, then
+parallel siblings, then a fresh sequential unit, including a stop after the join
+and resume before its model call. The final unit starts cheap with no stale flags,
+receives its own review, and resumes the same attempt identity. The graph still
+contains the old worker recovery loop; S08 replaces it with the common compiled
+unit subgraph. The review-receipt channel starts absent; strict actual-patch review
+receipts are S12 work. These state tests do not prove integration/publication or
+killed-SDK recovery/billing safety.
+
 ## Trusted exact-candidate unit gates
 
 Version-2 production uses the immutable preflight toolchain, including its exact text
@@ -198,7 +236,7 @@ without another amend; uncertain pending stages still require S11 recovery.
 
 This proves unit verifier integrity for the recorded commands. It does not prove
 the full natural-language test contract, merged/final integration coverage, honest
-patch review or publication approval. S07-S19 and live release gates remain open.
+patch review or publication approval. S08-S19 and live release gates remain open.
 
 ## Execution validation and archived PRDs
 

@@ -1,18 +1,16 @@
 """BlacksmithState — the typed state carried through the graph and persisted by the
 checkpointer (PRD §4).
 
-LangGraph reads the annotations here to wire reducers: ``errors`` accumulates across
-nodes (append), every other field is last-write-wins. The state is intentionally a
-plain ``TypedDict`` (not a pydantic model) because that is what LangGraph's reducer /
-serialization machinery expects; the rich types it references (PRD, WorkUnit) come
-from the contract module.
+LangGraph reads the explicit reducer annotations here. Run histories accumulate;
+unit-owned fields inherited from ``UnitAttemptState`` are last-write-wins. State is
+a plain ``TypedDict`` so existing node and checkpointer APIs retain their shape.
 """
 
 from __future__ import annotations
 
 import operator
 from enum import StrEnum
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from blacksmith.contract import PRD, WorkUnit
 from blacksmith.gate_receipts import FixReceipt, GateReceipt
@@ -99,7 +97,42 @@ class UnitResult(TypedDict, total=False):
     gate_receipt: GateReceipt | None
 
 
-class BlacksmithState(TypedDict, total=False):
+class UnitAttemptState(TypedDict, total=False):
+    """Flat unit-owned channels shared by existing nodes and the S08 subgraph.
+
+    Historical run ledgers are deliberately excluded. Initialize through
+    ``unit_state.new_unit_attempt``; recovery derives only this unit's next attempt.
+    Review receipt structure is hardened in S12; it starts absent for every unit.
+    """
+
+    current_unit_id: str
+    unit_base_commit: str | None
+    attempt_base_commit: str | None
+    last_passing_commit: str | None
+    attempt_id: str
+    attempt_number: int
+    model_tier: Literal["initial", "escalated"]
+    fix_attempts: int
+    implement_continuations: int
+    review_revisions: int
+    last_gate_output: str
+    review_feedback: str
+    continuation_feedback: str
+    gate_receipt: GateReceipt | None
+    fix_receipt: FixReceipt | None
+    review_receipt: dict[str, Any] | None
+    test_results: TestResults | None
+    implementation: dict[str, Any]
+    pre_implement_ref: str | None
+    escalated: bool
+    implement_error_kind: str
+    resume_partial_implement: bool
+    review_clean: bool
+    review_current_findings: list[ReviewFinding]
+    status: Status
+
+
+class BlacksmithState(UnitAttemptState, total=False):
     """State persisted per-run by the checkpointer. All keys optional — the graph
     fills them in as it advances."""
 
@@ -156,21 +189,6 @@ class BlacksmithState(TypedDict, total=False):
     # HitlConfig (production via build_graph_for); absent on a graph compiled without one,
     # in which case the gate's payload carries no diff_text exactly as before.
     pr_base_ref: str
-    implementation: dict[str, Any]
-    gate_receipt: GateReceipt | None
-    fix_receipt: FixReceipt | None
-    # Escalation (WU-ESCALATE-ON-FAIL): a gate failure discards the failed attempt and
-    # re-implements the SAME unit once with the stronger model. ``pre_implement_ref`` is the
-    # shared worktree's HEAD captured just before THIS unit's implement attempt, so resetting
-    # to it throws away only the failed attempt's commit while every prior unit's committed
-    # work is preserved. It is recorded only when the executor can actually escalate (exposes
-    # ``run_implement_escalate``); a plain test double leaves it unset, which keeps the prior
-    # "a gate failure halts" behaviour unchanged.
-    pre_implement_ref: str
-    # True once this unit has been re-implemented with the escalation model, so escalation
-    # happens at most once per unit (a second gate failure routes to human_halt). Reset by
-    # the level engine when it advances to the next unit.
-    escalated: bool
     # Self-heal loop (WU-GATE-SELF-HEAL). Seeded once by prepare_worktree from
     # ``config.limits`` ONLY when the graph is wired with limits (production); absent on a
     # graph compiled without them, which keeps the loop OFF and every existing test's
@@ -178,34 +196,8 @@ class BlacksmithState(TypedDict, total=False):
     # ``max_run_cost_usd`` (or None) is the optional hard spend ceiling. Routing reads these
     # from state because LangGraph edge functions are pure (state) -> str and get no config.
     limits: dict[str, Any]
-    # Same-model gate-failure retries already spent on the CURRENT unit (WU-GATE-SELF-HEAL).
-    # Reset to 0 by the level engine when it advances to the next unit, so the budget is
-    # per-unit, mirroring ``escalated``.
-    fix_attempts: int
-    # The failing gate's output, fed back into the next implement attempt's prompt so the
-    # retry (and the escalation) can actually FIX the error instead of re-running blind. Set
-    # by the fix-retry/escalation prep, cleared when the level engine advances to a new unit.
-    last_gate_output: str
-    review_feedback: str
-    # Recoverable implement-continuation loop. When an implement attempt hits its turn budget
-    # (``error_kind == "max_turns"``) it HALTs, but unlike a gate failure the partial work is
-    # kept and the attempt is continued rather than discarded.
-    #   ``implement_error_kind`` — why the last implement HALTED ("max_turns" | "other"), read
-    #     by routing to decide whether a continuation is possible; cleared by the continuation
-    #     prep so a fresh cap is classified anew.
-    #   ``implement_continuations`` — continuations already spent on the CURRENT unit, bounded
-    #     by ``limits.max_implement_continuations``; reset to 0 by the level engine per unit
-    #     (mirrors ``fix_attempts``).
-    #   ``resume_partial_implement`` — a TRANSIENT flag set only on the continue_implement ->
-    #     implement edge: tells implement to KEEP the partial worktree and finish it (rather
-    #     than reset + restart). Every other edge into implement clears it, so it never leaks.
-    implement_error_kind: str
-    implement_continuations: int
-    resume_partial_implement: bool
-    test_results: TestResults
     pr_url: str | None
     approvals: Approvals
-    status: Status
     errors: Annotated[list[ErrorRecord], operator.add]
     # Per-unit results, accumulated (one record appended when each unit's gate passes)
     # so a multi-unit PR body can attribute each unit's files/summary to that unit rather
@@ -220,14 +212,6 @@ class BlacksmithState(TypedDict, total=False):
     # escalation attempt's) spend instead of only plan + the final unit's
     # last-write-wins ``implementation`` slice.
     cost_events: Annotated[list[dict], merge_events]
-    # Additive post-gate review loop (WU-REVIEW-NODE). Set by the ``review`` node, which
-    # runs a stronger model over the CURRENT unit's diff after the gate has already
-    # passed. ``review_clean`` is last-write-wins (only the current unit's latest
-    # verdict matters for routing a future revision loop); ``review_findings`` is a
-    # reducer so every review call's findings (across units, and across any future
-    # revision retries) accumulate rather than being clobbered, mirroring
-    # ``cost_events``/``errors``.
-    review_clean: bool
     review_findings: Annotated[list[ReviewFinding], operator.add]
     # Review loop wiring (WU-REVIEW-LOOP). ``review_enabled`` is seeded once by
     # prepare_worktree from ``config.review.enabled`` ONLY when the graph is wired with a
@@ -249,7 +233,6 @@ class BlacksmithState(TypedDict, total=False):
     # built-in rotation, whose findings are aggregated (WU-REVIEW-PANEL-AGGREGATE) into
     # the same ``review_clean``/``review_findings`` keys the revise loop already consumes.
     review_panel_size: int
-    review_revisions: int
     # Report-only RUN-WIDE count of review-driven revisions (WU-REVIEW-RENDER), for the PR
     # body / gate view's "resolved via revision" line. A reducer (operator.add), UNLIKE the
     # per-unit ``review_revisions`` above: the sequential ``prepare_review_revision`` adds 1
@@ -259,11 +242,6 @@ class BlacksmithState(TypedDict, total=False):
     # or any loop bound; purely for display. Renderers fall back to ``review_revisions`` when
     # it is absent (old checkpoints / states with no fan-out revision).
     review_revisions_total: Annotated[int, operator.add]
-    # This unit's most recent review call's raw findings (WU-REVIEW-LOOP), last-write-wins
-    # -- unlike ``review_findings``, which accumulates every call across the whole run --
-    # so the revision-feedback and unresolved-findings-retention logic can read exactly the
-    # CURRENT verdict without wading through that cross-unit/cross-revision history.
-    review_current_findings: list[ReviewFinding]
     # Blocking findings the review loop gave up on -- revisions exhausted or over budget
     # (WU-REVIEW-LOOP) -- for a unit that still proceeds to next_unit/approve_pr rather
     # than halting. A reducer (like ``unit_results``) so a multi-unit run's carried-forward

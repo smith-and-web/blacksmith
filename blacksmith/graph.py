@@ -59,6 +59,7 @@ from blacksmith.run_context import RunContextError, context_from_state
 from blacksmith.sandbox import SandboxError, SandboxManager
 from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
 from blacksmith.state import BlacksmithState, Status
+from blacksmith.unit_state import new_unit_attempt, next_attempt
 from blacksmith.verification import fix_candidate, run_candidate_gate
 from blacksmith.worktree import (
     Clone,
@@ -200,6 +201,7 @@ def prepare_worktree(
         return {"status": Status.HALTED,
                 "errors": [{"node": "prepare_worktree", "message": str(exc)}]}
     update: dict = {
+        **_new_unit_state(state, unit, worktree.path),
         "worktree_path": str(worktree.path),
         "branch": worktree.branch,
         "selected_unit": unit,
@@ -386,6 +388,11 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
         if not _will_recover(state):
             _record_gate_lesson(state, unit, result, impl)
     else:
+        if result.receipt is not None:
+            update["last_passing_commit"] = result.receipt.candidate_commit
+        elif (Path(worktree_path) / ".git").exists():
+            update["last_passing_commit"] = _git_run(
+                worktree_path, "rev-parse", "HEAD").stdout.strip()
         # Retain this unit's own result so the combined PR body can summarize each unit's
         # changes. ``implementation`` is last-write-wins (only the latest unit), so capture
         # the per-unit record here and append it via the unit_results reducer.
@@ -530,26 +537,24 @@ def next_unit(state: BlacksmithState) -> dict:
         return {}
     level, index = nxt
     return {
+        **_new_unit_state(state, levels[level][index], state.get("worktree_path")),
         "level_cursor": level,
         "unit_in_level": index,
         "selected_unit": levels[level][index],
-        # Escalation AND the self-heal loop are per-unit: clear the previous unit's recovery
-        # state so the new unit gets its own (at most one) escalation and its own fresh
-        # fix-retry budget, and never inherits the previous unit's gate-output feedback.
-        "escalated": False,
-        "fix_attempts": 0,
-        "last_gate_output": "",
-        "review_feedback": "",
-        # The post-gate review loop is likewise per-unit (WU-REVIEW-LOOP): the new unit has
-        # not been reviewed yet and gets its own fresh revision budget.
-        "review_clean": False,
-        "review_revisions": 0,
-        # The implement-continuation loop is per-unit too: the new unit gets its own fresh
-        # continuation budget and starts NOT resuming a partial attempt.
-        "implement_continuations": 0,
-        "resume_partial_implement": False,
-        "status": Status.IMPLEMENTING,
     }
+
+
+def _new_unit_state(state, unit, path):
+    # Status-only legacy helpers use synthetic paths. Real/v2 Git failures stop.
+    base = None
+    if path and (state.get("run_context") or (Path(path) / ".git").exists()):
+        base = _git_run(path, "rev-parse", "HEAD").stdout.strip()
+    return new_unit_attempt(unit.id, base)
+
+
+def _recovery_base(state):
+    return (state.get("last_passing_commit") or state.get("attempt_base_commit")
+            or state.get("pre_implement_ref"))
 
 
 def prepare_escalation(state: BlacksmithState) -> dict:
@@ -563,13 +568,13 @@ def prepare_escalation(state: BlacksmithState) -> dict:
     routes back to ``implement``. The re-gated result then proceeds (pass) or halts (a second
     failure)."""
     worktree_path = state.get("worktree_path")
-    ref = state.get("pre_implement_ref")
+    ref = _recovery_base(state)
     if worktree_path and ref:
         _git_run(worktree_path, "reset", "--hard", ref)
         _git_run(worktree_path, "clean", "-fd")
     # This resets the worktree, so it is NOT a continuation of a partial attempt — clear the
     # transient resume flag so the escalated re-implement starts clean.
-    return {"escalated": True, "resume_partial_implement": False, "status": Status.IMPLEMENTING}
+    return next_attempt(state, "escalate", base_commit=ref)
 
 
 def prepare_fix_retry(state: BlacksmithState, *, sbfl: SBFLConfig | None = None) -> dict:
@@ -592,7 +597,7 @@ def prepare_fix_retry(state: BlacksmithState, *, sbfl: SBFLConfig | None = None)
     disabled, no collection runs and ``last_gate_output`` is byte-for-byte the gate output.
     Best-effort: empty locations append nothing."""
     worktree_path = state.get("worktree_path")
-    ref = state.get("pre_implement_ref")
+    ref = _recovery_base(state)
     gate_output = (state.get("test_results") or {}).get("output", "")
     # SBFL runs against the FAILING worktree, before the reset below throws the attempt away.
     if sbfl is not None and sbfl.enabled and worktree_path:
@@ -609,13 +614,7 @@ def prepare_fix_retry(state: BlacksmithState, *, sbfl: SBFLConfig | None = None)
     if worktree_path and ref:
         _git_run(worktree_path, "reset", "--hard", ref)
         _git_run(worktree_path, "clean", "-fd")
-    return {
-        "fix_attempts": state.get("fix_attempts", 0) + 1,
-        "last_gate_output": gate_output,
-        # Worktree was reset — a fresh re-implement, not a partial continuation.
-        "resume_partial_implement": False,
-        "status": Status.IMPLEMENTING,
-    }
+    return next_attempt(state, "fix", base_commit=ref, feedback=gate_output)
 
 
 def prepare_implement_continuation(state: BlacksmithState) -> dict:
@@ -629,12 +628,7 @@ def prepare_implement_continuation(state: BlacksmithState) -> dict:
     bounded, and clears ``implement_error_kind`` so the next attempt's outcome is classified
     afresh. Same model as the capped attempt — a turn cap is a budget problem, not a
     capability one, so it stays orthogonal to the gate-failure escalation."""
-    return {
-        "implement_continuations": state.get("implement_continuations", 0) + 1,
-        "resume_partial_implement": True,
-        "implement_error_kind": "",
-        "status": Status.IMPLEMENTING,
-    }
+    return next_attempt(state, "continuation")
 
 
 # --- post-gate review loop (WU-REVIEW-LOOP) -----------------------------------
@@ -692,16 +686,11 @@ def prepare_review_revision(state: BlacksmithState) -> dict:
     next implement attempt revises it in place, committing the fix as a further commit."""
     findings = state.get("review_current_findings") or []
     return {
-        "review_revisions": state.get("review_revisions", 0) + 1,
+        **next_attempt(state, "review", base_commit=_recovery_base(state),
+                       feedback=_format_review_feedback(findings)),
         # Run-wide report-only tally for the "resolved via revision" line (reducer; the
         # per-unit review_revisions above is reset each unit, so it can't total the run).
         "review_revisions_total": 1,
-        "review_clean": False,
-        "last_gate_output": "",
-        "review_feedback": _format_review_feedback(findings),
-        # A review revision retains its complete request in a separate channel.
-        "resume_partial_implement": False,
-        "status": Status.IMPLEMENTING,
     }
 
 
@@ -829,6 +818,7 @@ def build_unit(
     run_cost = float(state.get("level_cost_base") or 0.0)
 
     sub: dict = {
+        **new_unit_attempt(unit.id, base_ref),
         "prd": state["prd"],
         "state_version": state.get("state_version"),
         "run_id": state.get("run_id"),
@@ -871,6 +861,7 @@ def build_unit(
         # SAME kwargs the sequential implement node is bound with (index/sandbox included),
         # so a feature can never be live sequentially yet dark on fan-out (review finding #2).
         impl = implement(sub, **deps.implement_kwargs())
+        sub.update(impl)
         impl_data = impl.get("implementation") or {}
         record["files_touched"] = list(impl_data.get("files_touched") or [])
         record["diff_summary"] = impl_data.get("diff_summary", "")
@@ -894,7 +885,7 @@ def build_unit(
                 and within_budget
             ):
                 continuations += 1
-                sub["resume_partial_implement"] = True
+                sub.update(next_attempt(sub, "continuation"))
                 continue
             message = impl["errors"][0]["message"] if impl.get("errors") else "implement failed"
             record.update(ok=False, error=f"unit {unit.id}: {message}")
@@ -928,6 +919,7 @@ def build_unit(
             # Post-gate review on the build clone (review finding #1). Accumulate every pass's
             # findings; ``unresolved`` tracks the LATEST pass's blocking set.
             review_out = _fanout_review(state, sub, deps)
+            sub.update(review_out)
             events = review_out.get("cost_events") or []
             cost_events.extend(events)
             run_cost += _events_cost(events)
@@ -945,7 +937,8 @@ def build_unit(
                 review_revisions += 1
                 last_gate_output = ""
                 review_feedback = _format_review_feedback(findings)
-                sub["resume_partial_implement"] = False
+                sub.update(next_attempt(sub, "review", base_commit=reset_ref,
+                                        feedback=review_feedback))
                 continue
             # Clean, revisions exhausted, or over budget: this unit is done — leave the loop and
             # finalize below (retaining ``unresolved`` for the PR, never halting on it).
@@ -965,6 +958,7 @@ def build_unit(
             # The clone was reset — the next attempt is a fresh re-implement, not a
             # continuation of partial work, so clear the resume nudge.
             sub["resume_partial_implement"] = False
+            sub.update(next_attempt(sub, "fix", base_commit=reset_ref, feedback=last_gate_output))
             continue
         error = f"gate failed for unit {unit.id}"
         if cap is not None and not within_budget and fix_attempts < max_fix:
@@ -1119,6 +1113,7 @@ def join_level(state: BlacksmithState) -> dict:
     # Seed the next level's sequential state so a size-1 level after this fan-out runs its
     # implement step on the shared clone unchanged (the fan-out router ignores these).
     if level + 1 < len(levels):
+        update.update(_new_unit_state(state, levels[level + 1][0], shared))
         update["selected_unit"] = levels[level + 1][0]
         update["unit_in_level"] = 0
     return update
@@ -1531,7 +1526,7 @@ def build_graph(
         _node_with(build_unit, deps=unit_deps, worktree_manager=worktree_manager),
     )
     graph.add_node("join_level", _node_with(join_level))
-    graph.add_node("next_unit", next_unit)
+    graph.add_node("next_unit", _node_with(next_unit))
     graph.add_node("escalate", _node_with(prepare_escalation))
     graph.add_node("fix_retry", _node_with(prepare_fix_retry, sbfl=sbfl))
     graph.add_node("continue_implement", prepare_implement_continuation)

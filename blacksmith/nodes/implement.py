@@ -300,6 +300,7 @@ def implement(
             prior_failure=state.get("last_gate_output"),
             review_feedback=state.get("review_feedback"),
             resuming=resuming,
+            continuation_feedback=state.get("continuation_feedback"),
             sandbox_enabled=sandbox_enabled,
             index_enabled=index_enabled,
             worktree_path=worktree_path,
@@ -375,6 +376,7 @@ def implement(
             ],
         }
     update: dict = {
+        "attempt_base_commit": pre_implement_ref,
         "implementation": {
             "files_touched": files,
             "diff_summary": diff_summary,
@@ -513,6 +515,7 @@ def _implement_prompt(
     prior_failure: str | None = None,
     review_feedback: str | None = None,
     resuming: bool = False,
+    continuation_feedback: str | None = None,
     sandbox_enabled: bool = False,
     index_enabled: bool = False,
     worktree_path: str | Path | None = None,
@@ -562,6 +565,8 @@ def _implement_prompt(
             "work — do NOT restart from scratch or rewrite what is already correct. Be efficient: "
             "you have a fresh turn budget but the unit must be finished within it."
         )
+    if resuming and continuation_feedback:
+        prompt += "\n\nCONTINUATION FEEDBACK:\n" + continuation_feedback
     if prior_failure and prior_failure.strip():
         # Self-heal retry (WU-GATE-SELF-HEAL): a prior attempt at THIS unit failed the gate.
         # Feed the gate's output back so the retry fixes the real error instead of re-running
