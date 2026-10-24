@@ -11,6 +11,7 @@
 - S03 implementation commit: `e8650ba` (local only).
 - S04 implementation commit: `1b0d63f` (local only).
 - S05 implementation commit: `ec0aceb` (local only).
+- S06 implementation commit: `c13fc34` (local only).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
