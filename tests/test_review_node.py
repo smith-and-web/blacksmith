@@ -5,7 +5,6 @@ gate, using read-only tools only. This unit adds only the node + state keys — 
 wiring — so these tests call ``review()`` directly with a FAKE executor.
 """
 
-import operator
 from pathlib import Path
 from typing import Annotated, get_type_hints
 
@@ -14,6 +13,7 @@ from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.index import QUALIFIED_INDEX_TOOL_NAMES
 from blacksmith.nodes.review import review
+from blacksmith.receipts import merge_events
 from blacksmith.state import BlacksmithState, ReviewFinding
 
 VENDORED_PRD = Path(__file__).resolve().parent.parent / "blacksmith-v0-prd.md"
@@ -211,10 +211,12 @@ def test_review_node_missing_prd_records_error():
 # --- state shape -----------------------------------------------------------------
 
 
-def test_state_has_review_clean_and_appendonly_review_findings_field():
+def test_state_has_review_clean_and_keyed_review_findings_field():
     hints = get_type_hints(BlacksmithState, include_extras=True)
     assert hints["review_clean"] is bool
-    assert hints["review_findings"] == Annotated[list[ReviewFinding], operator.add]
+    assert hints["review_findings"] == Annotated[list[ReviewFinding], merge_events]
+    finding = {"event_id": "one-review-finding", "severity": "blocking", "detail": "bug"}
+    assert merge_events([finding], [finding]) == [finding]
 
 
 def test_state_has_review_panel_size_field():

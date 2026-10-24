@@ -476,6 +476,29 @@ def attempt_identity(state: Mapping[str, Any]) -> str:
     )
 
 
+def merge_unit_outcomes(left: dict, right: dict) -> dict:
+    """One immutable terminal outcome per unit; identical checkpoint replay is harmless."""
+    result = dict(left)
+    for unit_id, outcome in right.items():
+        if outcome.get("unit_id") != unit_id:
+            raise ReceiptError("unit outcome key/identity mismatch")
+        if unit_id in result and result[unit_id] != outcome:
+            raise ReceiptError("conflicting terminal unit outcome; explicit recovery required")
+        result[unit_id] = outcome
+    return result
+
+
+def merge_unit_results(left: list[dict], right: list[dict]) -> list[dict]:
+    """Compatibility list view, keyed by unit ID rather than append-only duplicates."""
+    result = {row["unit_id"]: row for row in left}
+    for row in right:
+        unit_id = row["unit_id"]
+        if unit_id in result and result[unit_id] != row:
+            raise ReceiptError("conflicting completed unit result")
+        result[unit_id] = row
+    return list(result.values())
+
+
 @dataclass(frozen=True)
 class CallContext:
     journal_path: str

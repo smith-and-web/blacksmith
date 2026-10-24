@@ -1,0 +1,36 @@
+.............F.......................................................... [ 78%]
+....................                                                     [100%]
+=================================== FAILURES ===================================
+______________ test_progress_streams_each_node_to_stderr_in_order ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-79/test_progress_streams_each_nod0')
+capsys = <_pytest.capture.CaptureFixture object at 0x10d81df10>
+
+    def test_progress_streams_each_node_to_stderr_in_order(tmp_path, capsys):
+        repo = _target_repo(tmp_path, gate_cmd="true")  # gate passes
+        graph, saver = _wire(tmp_path, repo)
+        approver = _recording_approver(decision=True)
+    
+        final = drive(
+            graph, _write_prd(tmp_path), approver=approver,
+            thread_id="pass", on_node=_progress_emitter(quiet=False),
+        )
+        _report(final)
+        captured = capsys.readouterr()
+        saver.conn.close()
+    
+        # (4) happy path: still ends DONE, gates flow through plan then pr.
+        assert final.values["status"] == Status.DONE
+        assert approver.gates == ["plan", "pr"]
+    
+        # (1) each node named on STDERR, in execution order.
+        nodes = _emitted_nodes(captured.err)
+>       assert _is_ordered_subsequence(nodes, HAPPY_PATH_NODES), nodes
+E       AssertionError: ['ingest_prd', 'plan', 'approve_plan', 'approve_plan', 'prepare_worktree', 'execute_unit', ...]
+E       assert False
+E        +  where False = _is_ordered_subsequence(['ingest_prd', 'plan', 'approve_plan', 'approve_plan', 'prepare_worktree', 'execute_unit', ...], ['ingest_prd', 'plan', 'implement', 'test_gate', 'open_pr', 'cleanup_worktree'])
+
+tests/test_cli_progress.py:164: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_cli_progress.py::test_progress_streams_each_node_to_stderr_in_order
+1 failed, 91 passed in 57.16s

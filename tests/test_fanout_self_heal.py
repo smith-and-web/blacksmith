@@ -254,9 +254,10 @@ def test_fanout_unit_exhausts_retries_then_level_halts(tmp_path):
 
     final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="fan-exhaust")
 
-    # WU-Y built base + exactly one same-model retry, then halts. No escalation in the fan-out.
+    # The common policy permits one stronger-model escalation after cheap retries,
+    # then halts with no downstream effects.
     assert executor.implement_calls.count("WU-Y") == 2
-    assert executor.escalate_calls == []
+    assert executor.escalate_calls == ["WU-Y"]
     assert final.values["status"] == Status.HALTED
     assert final.values.get("pr_url") is None
     assert _pr_creates(gh) == []  # no PR

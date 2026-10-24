@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from blacksmith.contract import PRD, WorkUnit
 from blacksmith.gate_receipts import FixReceipt, GateReceipt
-from blacksmith.receipts import merge_events
+from blacksmith.receipts import merge_events, merge_unit_outcomes, merge_unit_results
 
 
 class Status(StrEnum):
@@ -123,6 +123,7 @@ class UnitAttemptState(TypedDict, total=False):
     review_receipt: dict[str, Any] | None
     test_results: TestResults | None
     implementation: dict[str, Any]
+    pending_implementation: dict[str, Any] | None
     pre_implement_ref: str | None
     escalated: bool
     implement_error_kind: str
@@ -130,6 +131,31 @@ class UnitAttemptState(TypedDict, total=False):
     review_clean: bool
     review_current_findings: list[ReviewFinding]
     status: Status
+
+
+class UnitOutcome(TypedDict):
+    unit_id: str
+    title: str
+    ok: bool
+    human: bool
+    level: int
+    clone_path: str | None
+    branch: str | None
+    base_commit: str | None
+    source_commit: str | None
+    files_touched: list[str]
+    diff_summary: str
+    test_command: str
+    gate_receipt: GateReceipt | None
+    review_clean: bool
+    unit_namespace: str | None
+    attempt_id: str
+    attempt_number: int
+    model_tier: str
+    fix_attempts: int
+    implement_continuations: int
+    review_revisions: int
+    error: str
 
 
 class BlacksmithState(UnitAttemptState, total=False):
@@ -140,6 +166,19 @@ class BlacksmithState(UnitAttemptState, total=False):
     state_version: int
     run_id: str
     run_context: dict[str, Any]
+    unit_graph_version: int
+    unit_mode: str
+    unit_initialized: bool
+    unit_human: bool
+    unit_stage: str
+    recovery_action: str
+    run_cost_base: float
+    unit_namespace: str
+    shared_clone_path: str
+    level_cost_base: float
+    dependency_results: list[dict[str, Any]]
+    unit_outcome: UnitOutcome
+    unit_outcomes: Annotated[dict[str, UnitOutcome], merge_unit_outcomes]
     prd: PRD
     work_units: list[WorkUnit]
     # Dependency levels (frontiers) from blacksmith.planner.execution_levels: the level
@@ -198,11 +237,11 @@ class BlacksmithState(UnitAttemptState, total=False):
     limits: dict[str, Any]
     pr_url: str | None
     approvals: Approvals
-    errors: Annotated[list[ErrorRecord], operator.add]
+    errors: Annotated[list[ErrorRecord], merge_events]
     # Per-unit results, accumulated (one record appended when each unit's gate passes)
     # so a multi-unit PR body can attribute each unit's files/summary to that unit rather
     # than lumping everything under the last unit's last-write-wins ``implementation``.
-    unit_results: Annotated[list[UnitResult], operator.add]
+    unit_results: Annotated[list[UnitResult], merge_unit_results]
     # Per-call cost/usage ledger, idempotently keyed by receipt event ID. One event per model call —
     # the plan node and EVERY implement attempt (including the escalation retry) append
     # exactly one record. A reducer key (like ``errors``/``unit_results``) so the events
@@ -212,7 +251,7 @@ class BlacksmithState(UnitAttemptState, total=False):
     # escalation attempt's) spend instead of only plan + the final unit's
     # last-write-wins ``implementation`` slice.
     cost_events: Annotated[list[dict], merge_events]
-    review_findings: Annotated[list[ReviewFinding], operator.add]
+    review_findings: Annotated[list[ReviewFinding], merge_events]
     # Review loop wiring (WU-REVIEW-LOOP). ``review_enabled`` is seeded once by
     # prepare_worktree from ``config.review.enabled`` ONLY when the graph is wired with a
     # ReviewConfig (production); absent on a graph compiled without one, which keeps the
@@ -246,4 +285,4 @@ class BlacksmithState(UnitAttemptState, total=False):
     # (WU-REVIEW-LOOP) -- for a unit that still proceeds to next_unit/approve_pr rather
     # than halting. A reducer (like ``unit_results``) so a multi-unit run's carried-forward
     # findings from more than one unit all surface rather than being clobbered.
-    unresolved_review_findings: Annotated[list[ReviewFinding], operator.add]
+    unresolved_review_findings: Annotated[list[ReviewFinding], merge_events]

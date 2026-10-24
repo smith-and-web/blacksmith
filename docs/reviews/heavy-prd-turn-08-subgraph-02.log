@@ -1,0 +1,22 @@
+....F.                                                                   [100%]
+=================================== FAILURES ===================================
+______ test_completed_squash_reuses_exact_sha_after_lost_node_checkpoint _______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-76/test_completed_squ...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_completed_squash_reuses_exact_sha_after_lost_node_checkpoint(project):
+        from test_gate_integrity import prepare, owned_commit
+    
+        context, state = prepare(project)
+        state["review_revisions"] = 1
+        owned_commit(state, "revision.txt", "revision")
+        state["unit_mode"] = "parallel"
+        before = git(state["worktree_path"], "rev-parse", "HEAD")
+>       result = unit_graph.normalize_parallel_candidate(state)
+                 ^^^^^^^^^^
+E       NameError: name 'unit_graph' is not defined
+
+tests/test_unit_subgraph.py:283: NameError
+=========================== short test summary info ============================
+FAILED tests/test_unit_subgraph.py::test_completed_squash_reuses_exact_sha_after_lost_node_checkpoint
+1 failed, 5 passed in 22.52s

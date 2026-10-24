@@ -156,10 +156,73 @@ for its owning stage to reconcile. Native commands are never automatically retri
 by this service. Failed add, amend, reset, clean, squash and other required Git
 operations stop execution rather than silently accepting incomplete work.
 
+## Shared checkpointed unit execution
+
+The parent graph ingests/plans/approves, creates the shared workspace, schedules
+units, consumes outcomes, joins levels and reaches approval/publication/cleanup.
+Both a sequential unit and a parallel worker invoke the same compiled child graph:
+
+```mermaid
+flowchart LR
+    P[Prepare attempt] --> M[Model]
+    M --> C[Audit and commit]
+    M --> D[Recovery decision]
+    C --> F[Formatter]
+    F --> N[Normalize parallel candidate]
+    N --> G[All-layer gate]
+    G --> R[Review when enabled]
+    G --> D
+    R --> D
+    D --> P
+    D --> E[Finalize unit]
+```
+
+The recovery decision chooses bounded partial continuation, same-model fix, one
+stronger-model escalation, bounded review revision or termination. It uses one
+policy for both shapes, including optional SBFL before a checked reset. There is
+no Python worker recovery loop. The existing strict review-policy hardening is
+still S12 work; exhausted blocking review currently retains the legacy reporting
+behavior and is not a release-readiness claim.
+
+A successful model result, its pending commit metadata and cost events checkpoint
+before audit/commit. Each next step checkpoints before another model call. Child
+execution inherits the parent's SQLite saver and uses sync durability when that
+checkpointer exists. LangGraph isolates child checkpoints under each parent task
+namespace; each child stores `unit_namespace = <run-id>/<unit-id-hash>` so the durable
+namespace maps unambiguously to its run/unit. Ordinary restart resumes the saved
+child stage; it does not call the model or clone the workspace again. A standalone
+legacy helper without a checkpointer keeps its nonpersistent API behavior.
+
+Parent outcomes are typed and keyed by unit ID. Identical replay is idempotent;
+conflicting terminal outcomes require explicit recovery. A keyed list view retains
+the existing per-unit reporting API. Cost, finding and error events use stable IDs
+so replay cannot append the same event twice. Dependency completion records are
+passed separately from the child's local output ledger.
+
+Parallel workers retain the single-commit join interface. When revisions create
+multiple commits, checked normalization records a critical squash intent/outcome,
+preserves the tree and operation trailer, and occurs before the authoritative gate
+and review. A completed squash can be reused after losing its node checkpoint;
+uncertain squash intent stops for S11 reconciliation. Sequential history is retained.
+Join/integration/final coverage and full artifact reconciliation remain S10/S11.
+
+Optional unit-stage events carry run/unit/attempt IDs and forward through the
+parent's writer, preserving CLI phase progress. Observation failure cannot replace
+or bypass critical checkpoint/receipt persistence. Full telemetry/transcript honesty
+remains S19 work.
+
+Active version-2 checkpoints created before this topology and already owning a
+workspace require manual recovery: resume emits
+`legacy_unit_graph_requires_manual_recovery` before constructing an executor and
+keeps the checkpoint/artifacts. New workspace preparation records
+`unit_graph_version = 1`; pre-workspace approval checkpoints can enter the new
+execution graph. Historical runs remain inspectable. No recovery path silently
+resets consumed budgets or replays ambiguous paid work.
+
 ## Unit attempt state and reset boundaries
 
-`UnitAttemptState` owns the flat channels used by existing nodes and the forthcoming
-common unit subgraph: current unit, unit/attempt base commits, last passing SHA,
+`UnitAttemptState` owns the flat channels used by existing nodes and the shared
+checkpointed unit subgraph: current unit, unit/attempt base commits, last passing SHA,
 attempt ID/number, model tier, recovery counters, separate gate/review/continuation
 feedback, candidate/evidence, error/resume flags and current review findings.
 `BlacksmithState` inherits these fields; run-wide costs, historical findings, errors
@@ -188,9 +251,7 @@ transitions, not merely because `resume` was invoked.
 Real CLI/checkpointer tests cover an escalated and reviewed sequential unit, then
 parallel siblings, then a fresh sequential unit, including a stop after the join
 and resume before its model call. The final unit starts cheap with no stale flags,
-receives its own review, and resumes the same attempt identity. The graph still
-contains the old worker recovery loop; S08 replaces it with the common compiled
-unit subgraph. The review-receipt channel starts absent; strict actual-patch review
+receives its own review, and resumes the same attempt identity. Both scheduling shapes now use the common compiled unit subgraph. The review-receipt channel starts absent; strict actual-patch review
 receipts are S12 work. These state tests do not prove integration/publication or
 killed-SDK recovery/billing safety.
 
@@ -213,7 +274,7 @@ Setup/test/lint must leave HEAD, tree, index and nonignored source clean. Ignore
 build/dependency output is permitted. Mutation returns `dirty`, even when the command
 exits zero. Exceptions produce fresh nonpassing evidence; errors/timeouts/dirty
 results halt before retry/review/publication routing can use old passing state.
-Ordinary test failures retain the existing bounded recovery policy, pending S08.
+Ordinary test failures use the shared bounded unit recovery policy.
 Per-command output is capped and multi-layer graph feedback has a 32 KiB aggregate
 tail, with complete links to the retained capped command artifacts.
 
@@ -236,7 +297,7 @@ without another amend; uncertain pending stages still require S11 recovery.
 
 This proves unit verifier integrity for the recorded commands. It does not prove
 the full natural-language test contract, merged/final integration coverage, honest
-patch review or publication approval. S08-S19 and live release gates remain open.
+patch review or publication approval. S09-S19 and live release gates remain open.
 
 ## Execution validation and archived PRDs
 

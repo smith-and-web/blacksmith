@@ -29,6 +29,7 @@ def _serde_warnings(caplog):
         r for r in caplog.records if "unregistered" in r.message or "will be blocked" in r.message
     ]
 
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VENDORED_PRD = REPO_ROOT / "blacksmith-v0-prd.md"
 
@@ -37,9 +38,7 @@ EXPECTED_NODES = {
     "plan",
     "approve_plan",
     "prepare_worktree",
-    "implement",
-    "auto_fix",
-    "test_gate",
+    "execute_unit",
     "approve_pr",
     "open_pr",
     "human_halt",
@@ -57,6 +56,18 @@ def test_graph_compiles(tmp_path):
     compiled = compile_graph(saver)
     node_ids = set(compiled.get_graph().nodes)
     assert EXPECTED_NODES <= node_ids
+    children = dict(compiled.get_subgraphs())
+    assert "execute_unit" in children
+    assert {
+        "prepare_attempt",
+        "implement",
+        "audit_commit",
+        "auto_fix",
+        "test_gate",
+        "review",
+        "recovery_decision",
+        "finalize_unit",
+    } <= set(children["execute_unit"].get_graph().nodes)
     saver.conn.close()
 
 
@@ -130,9 +141,7 @@ def test_route_after_implement_uses_layer_gate():
     assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "open_draft_pr"
     # ...but a FAILED implement (status HALTED) still discards the work via human_halt.
     assert (
-        route_after_implement(
-            {"prd": prd, "selected_unit": human_unit, "status": Status.HALTED}
-        )
+        route_after_implement({"prd": prd, "selected_unit": human_unit, "status": Status.HALTED})
         == "human_halt"
     )
     assert route_after_implement({}) == "auto_fix"  # nothing selected -> default auto path

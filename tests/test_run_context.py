@@ -517,7 +517,7 @@ def test_real_cli_parallel_resume_forwards_frozen_context_to_distinct_workers(pr
     assert all("EXACT_PROSE_SENTINEL" in call["prompt"] for call in workers)
     final = saved_values(config_path, "parallel")
     assert final["status"] == Status.HALTED and not final.get("pr_url")
-    assert {Path(b["clone_path"]) for b in final["level_builds"]} == {
+    assert {Path(b["clone_path"]) for b in final["unit_outcomes"].values()} == {
         context.unit_path("U1"), context.unit_path("U2"),
     }
     assert (root / "README.md").read_text() == "SOURCE_ADVANCED\n"

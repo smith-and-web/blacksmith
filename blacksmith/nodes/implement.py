@@ -59,7 +59,14 @@ _ALLOWED_TOOLS = ["Read", "Glob", "Grep"]  # auto-allowed read-only tools
 # searching for a Bash tool), and web tools. A run that exhausts its turns hunting for a way
 # to run tests is exactly the failure this prevents — the test gate runs the suite, not the agent.
 _DISALLOWED_TOOLS = [
-    "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "Agent",
+    "Task",
+    "ToolSearch",
+    "WebSearch",
+    "WebFetch",
 ]
 _IMPLEMENT_MAX_TURNS = 40
 
@@ -113,6 +120,7 @@ def conventional_commit_message(unit: WorkUnit, *, commit_type: str = _COMMIT_TY
     header = f"{commit_type}({scope}): {subject}"
     return header[:_HEADER_MAX_LEN].rstrip() if len(header) > _HEADER_MAX_LEN else header
 
+
 # The target repo's CLAUDE.md (if committed) is injected into the implementer's system
 # prompt as project context, so a repo with no claude.ai Project still carries its own
 # conventions into the run. See _read_project_context for why we read it ourselves
@@ -127,6 +135,7 @@ _PROJECT_CONTEXT_FILE = "CLAUDE.md"
 # blind Read/Glob/Grep exploration. Bounded by ``[index].max_map_bytes``. With no
 # ``index_config`` (or ``enabled=False``, the default), none of this runs and the system
 # prompt is byte-for-byte unchanged from before this unit.
+
 
 def make_pre_edit_guard(
     protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS,
@@ -180,6 +189,7 @@ def implement(
     sandbox: SandboxManager | None = None,
     sandbox_exec_timeout_s: int = _DEFAULT_SANDBOX_EXEC_TIMEOUT_S,
     index_config: IndexConfig | None = None,
+    defer_commit: bool = False,
 ) -> dict:
     if executor is None:
         return {"status": Status.IMPLEMENTING}  # skeleton pass-through
@@ -217,7 +227,8 @@ def implement(
         policy = policy_for_state(state)
     except PolicyViolation as exc:
         return {
-            "status": Status.HALTED, "implement_error_kind": "policy_violation",
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
             "errors": [{"node": "implement", "message": str(exc)}],
         }
     # Escalation (WU-ESCALATE-ON-FAIL): the first attempt runs the cheaper first-attempt
@@ -254,7 +265,8 @@ def implement(
     if index_enabled:
         allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
     guard = make_pre_edit_guard(
-        policy.rules, worktree_root=worktree_path,
+        policy.rules,
+        worktree_root=worktree_path,
         allowed_mcp_tools=[t for t in allowed_tools if t.startswith("mcp__")],
     )
     repo_map = _build_repo_map(worktree_path, index_config)
@@ -304,7 +316,8 @@ def implement(
             sandbox_enabled=sandbox_enabled,
             index_enabled=index_enabled,
             worktree_path=worktree_path,
-        ) + render_context(state, unit, include_plan=True),
+        )
+        + render_context(state, unit, include_plan=True),
         **call_kwargs,
     )
     # Ledger event for THIS attempt (WU-COST-EVENTS), built once and emitted on EVERY return
@@ -344,35 +357,67 @@ def implement(
             "errors": [{"node": "implement", "message": message}],
         }
 
+    pending = {
+        "base_commit": pre_implement_ref,
+        "can_escalate": can_escalate,
+        "escalating": escalating,
+        "blocked": list(guard.blocked),
+        "cost_usd": result.cost_usd,
+        "usage": usage_breakdown(result.usage),
+    }
+    update = {
+        "pending_implementation": pending,
+        "attempt_base_commit": pre_implement_ref,
+        "cost_events": [event],
+        "status": Status.IMPLEMENTING,
+    }
+    if can_escalate and not escalating:
+        update["pre_implement_ref"] = pre_implement_ref
+    if defer_commit:
+        return update
+    return {**update, **audit_and_commit({**state, **update})}
+
+
+def audit_and_commit(state: BlacksmithState) -> dict:
+    """Commit a checkpointed successful model result without invoking the model."""
+    pending = state.get("pending_implementation")
+    if pending is None:
+        return {"status": Status.TESTING}  # dependency-free legacy graph
+    worktree_path = state["worktree_path"]
+    unit = state["selected_unit"]
+    pre_implement_ref = pending["base_commit"]
     try:
+        policy = policy_for_state(state)
+        policy.audit(pre_implement_ref)
         files, diff_summary = _stage_and_commit(
-            worktree_path, conventional_commit_message(unit), call_context=call_context,
+            worktree_path,
+            conventional_commit_message(unit),
+            call_context=call_context_for(state, unit_id=unit.id),
         )
         policy.audit(pre_implement_ref)
     except PolicyViolation as exc:
         return {
             "status": Status.HALTED,
             "implement_error_kind": "policy_violation",
-            "cost_events": [event],
             "errors": [{"node": "implement", "message": str(exc)}],
         }
     except CommitError as exc:
         return {
             "status": Status.HALTED,
-            "cost_events": [event],
             "errors": [
                 {"node": "implement", "message": f"failed to commit the unit's changes: {exc}"}
             ],
         }
-    if not files and not guard.blocked:
+    if not files:
         # The agent changed nothing — the unit wasn't implemented. Halt rather than
         # gate an unchanged tree and then fail on an empty-diff PR.
         return {
             "status": Status.HALTED,
-            "cost_events": [event],
             "errors": [
-                {"node": "implement", "message": "implement produced no file changes; "
-                 "nothing to gate or open a PR"}
+                {
+                    "node": "implement",
+                    "message": "implement produced no file changes; nothing to gate or open a PR",
+                }
             ],
         }
     update: dict = {
@@ -381,22 +426,22 @@ def implement(
             "files_touched": files,
             "diff_summary": diff_summary,
             "candidate_commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
-            "blocked": list(guard.blocked),
-            "cost_usd": result.cost_usd,
-            "usage": usage_breakdown(result.usage),
+            "blocked": pending["blocked"],
+            "cost_usd": pending["cost_usd"],
+            "usage": pending["usage"],
         },
         # Append-only ledger event for THIS attempt (WU-COST-EVENTS). The escalation retry
         # is a separate implement invocation that reaches here too, so each attempt
         # contributes exactly one event — the multi-unit/escalation spend is no longer lost
         # to the last-write-wins ``implementation`` slice.
-        "cost_events": [event],
+        "pending_implementation": None,
         "status": Status.TESTING,
     }
     # Record the pre-attempt ref so a gate failure can reset to exactly here — discarding only
     # this attempt's commit, never prior units' work — and escalate once. Only on the first
     # attempt, and only when the executor can escalate; otherwise leave it unset so a gate
     # failure routes straight to human_halt as before.
-    if can_escalate and not escalating and pre_implement_ref:
+    if pending["can_escalate"] and not pending["escalating"] and pre_implement_ref:
         update["pre_implement_ref"] = pre_implement_ref
     return update
 
@@ -408,7 +453,10 @@ class CommitError(Exception):
 
 
 def _stage_and_commit(
-    worktree_path: str, message: str, *, call_context: CallContext | None = None,
+    worktree_path: str,
+    message: str,
+    *,
+    call_context: CallContext | None = None,
 ) -> tuple[list[str], str]:
     """Stage all changes, capture the staged file list + diffstat, and commit if any.
 
@@ -419,18 +467,29 @@ def _stage_and_commit(
     operation = call_context.key("git.commit") if call_context else None
     if journal is not None:
         existing = journal.get(operation)
-        base = (existing.intent["base_commit"] if existing
-                else _git(worktree_path, "rev-parse", "HEAD").strip())
-        receipt = journal.intent(operation, {
-            "path": str(Path(worktree_path).resolve()), "message": message, "base_commit": base,
-        })
+        base = (
+            existing.intent["base_commit"]
+            if existing
+            else _git(worktree_path, "rev-parse", "HEAD").strip()
+        )
+        receipt = journal.intent(
+            operation,
+            {
+                "path": str(Path(worktree_path).resolve()),
+                "message": message,
+                "base_commit": base,
+            },
+        )
         if not receipt.created:
             if receipt.status == "completed":
                 head = _git(worktree_path, "rev-parse", "HEAD").strip()
                 dirty = _git(worktree_path, "status", "--porcelain", "--untracked-files=all")
                 commit_message = _git(worktree_path, "log", "-1", "--format=%B")
-                if (head != receipt.outcome["commit"] or dirty.strip()
-                        or operation.trailer not in commit_message):
+                if (
+                    head != receipt.outcome["commit"]
+                    or dirty.strip()
+                    or operation.trailer not in commit_message
+                ):
                     raise ReceiptError(
                         "committed operation has unknown extra changes; inspect workspace"
                     )
@@ -441,17 +500,25 @@ def _stage_and_commit(
         files, summary = _commit_changes(worktree_path, message)
     except BaseException as exc:
         if journal is not None:
-            journal.finish(operation, "failed" if isinstance(exc, CommitError) else "interrupted",
-                           {"error_type": type(exc).__name__})
+            journal.finish(
+                operation,
+                "failed" if isinstance(exc, CommitError) else "interrupted",
+                {"error_type": type(exc).__name__},
+            )
         raise
     if journal is not None:
         if not files:
             journal.finish(operation, "failed", {"error_kind": "empty_diff"})
             return files, summary
-        journal.finish(operation, "completed", {
-            "commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
-            "files": files, "diff_summary": summary,
-        })
+        journal.finish(
+            operation,
+            "completed",
+            {
+                "commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
+                "files": files,
+                "diff_summary": summary,
+            },
+        )
     return files, summary
 
 
@@ -474,9 +541,7 @@ def _commit_changes(worktree_path: str, message: str) -> tuple[list[str], str]:
 
 
 def _git(worktree_path: str, *args: str) -> str:
-    result = run_command(
-        ["git", "-C", str(worktree_path), *args], capture_output=True, text=True
-    )
+    result = run_command(["git", "-C", str(worktree_path), *args], capture_output=True, text=True)
     result.require_complete_output()
     if result.returncode:
         raise CommitError(result.stderr.strip() or result.stdout.strip() or "git command failed")

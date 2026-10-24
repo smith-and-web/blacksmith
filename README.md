@@ -3,8 +3,8 @@
 Heavy-PRD readiness remediation is in progress. Use the
 [implementation checklist](docs/reviews/heavy-prd-progress.md) for verified slices
 and remaining gates. [Version-2 run context and migration](docs/heavy-prd-run-context.md)
-documents config-relative paths, frozen inputs, execution locks and legacy resume
-refusal. The historical feature list below is not a heavy-PRD readiness claim.
+documents config-relative paths, frozen inputs, execution locks, the shared unit
+graph and checkpoint migration refusals. The historical feature list below is not a heavy-PRD readiness claim.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

@@ -31,11 +31,11 @@ add a dependency without adding it to `pyproject.toml`.
 
 ## Architecture
 
-- `blacksmith/graph.py` — the LangGraph topology. Nodes: `ingest_prd`,
-  `next_unit`, `approve_plan`, `implement`, `continue_implement`, `test_gate`,
-  `auto_fix`, `fix_retry`, `escalate`, `review`, `finalize_review`,
-  `prepare_review_revision`, `open_pr`, `open_draft_pr`, `approve_pr`,
-  `join_level`, `human_halt`. This file is the map — read it first.
+- `blacksmith/graph.py` — parent topology: ingest/plan/approve, prepare workspace,
+  `execute_unit`, next-unit/join scheduling, PR approval/publication and cleanup.
+- `blacksmith/unit_graph.py` — the shared checkpointed unit topology: prepare attempt,
+  implement, audit/commit, auto-fix, normalize parallel candidate, test gate, review,
+  recovery decision and finalize. Both scheduling shapes invoke this same graph.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).
 - `blacksmith/executor.py` — Claude Agent SDK invocation, tool grants, options.

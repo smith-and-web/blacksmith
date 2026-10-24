@@ -201,11 +201,8 @@ def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str
     return actual
 
 
-# The sequential implement->gate loop spends ~3 LangGraph super-steps per unit, so the
-# default recursion_limit of 25 caps a run at roughly 7-8 units before LangGraph raises
-# GraphRecursionError. 150 sits comfortably above ~3 super-steps/unit (~50 units of
-# headroom), letting large multi-unit DAGs run to completion. This only raises the
-# ceiling — it never changes which nodes run or in what order.
+# Compatibility ceiling for parent/child graphs. S16 derives scheduling/recursion
+# limits from validated DAG/recovery bounds; this fixed ceiling is not 100-unit proof.
 RECURSION_LIMIT = 150
 
 
@@ -246,6 +243,8 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     current_node: str | None = None
     for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
         if mode == "custom":
+            if isinstance(chunk, dict) and chunk.get("kind") == "unit_stage" and on_node:
+                on_node(chunk["phase"])
             if on_event is not None and isinstance(chunk, dict):
                 kind = chunk.get("kind") or "node_activity"
                 activity = {k: v for k, v in chunk.items() if k != "kind"}
@@ -967,6 +966,11 @@ def _resume(argv: list[str] | None = None) -> int:
                 selected_repo=selected.resolve_repo_path(),
                 require_workspace=bool(values.get("worktree_path")),
             )
+            if values.get("worktree_path") and values.get("unit_graph_version") != 1:
+                raise ResumeError(
+                    "legacy_unit_graph_requires_manual_recovery: execution topology changed; "
+                    "run/checkpoints/artifacts retained for inspection"
+                )
             # Saved models, limits and target survive local config changes.
             config = context.execution_config()
             graph = build_graph_for(config, checkpointer)

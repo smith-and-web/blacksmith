@@ -93,6 +93,9 @@ def test_unit_deps_covers_every_injectable_implement_param():
         for name, param in inspect.signature(implement).parameters.items()
         if param.kind is inspect.Parameter.KEYWORD_ONLY
     }
+    # This phase switch is owned by the shared graph's model/commit boundary,
+    # rather than an optional injected dependency.
+    injectable.remove("defer_commit")
     # A fully-populated bundle; implement_kwargs only emits the sandbox keys when a sandbox is
     # wired, so a non-None sentinel is enough to exercise the full key set.
     populated = UnitDeps(

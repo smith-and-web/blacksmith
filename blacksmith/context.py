@@ -59,7 +59,7 @@ def render_context(
         else:
             prompt += str(approved.get("steps") or "")
         completed = [
-            record for record in state.get("unit_results") or []
+            record for record in state.get("dependency_results", state.get("unit_results")) or []
             if record.get("unit_id") in unit.depends_on
         ]
         prompt += "\n\nDEPENDENCY COMPLETION RECORDS:\n" + json.dumps(
