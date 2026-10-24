@@ -18,8 +18,26 @@ def git(path, *args, check=True):
     return run_command(["git", "-C", str(path), *args], check=check).require_complete_output()
 
 
-def join_key(context, unit_id, level, kind="join.pick"):
-    return OperationKey(context.run_id, unit_id, f"join:{level}", kind)
+def join_key(context, unit_id, level, kind="join.pick", *, generation=0):
+    attempt = f"join:{level}" + (f":recovery:{generation}" if generation else "")
+    return OperationKey(context.run_id, unit_id, attempt, kind)
+
+
+def join_key_for(state, context, unit_id, level, kind="join.pick"):
+    generation = (state.get("join_generations") or {}).get(f"{level}:{unit_id}", 0)
+    return join_key(context, unit_id, level, kind, generation=generation)
+
+
+def join_observed(context, key):
+    original = context.journal().get(key)
+    if original and original.status == "completed":
+        return original
+    proof = context.journal().get(OperationKey(
+        key.run_id, key.unit_id, key.attempt_id, key.kind + ".reconciliation"))
+    if (proof and proof.status == "completed"
+            and proof.intent.get("original_operation") == key.id):
+        return proof
+    return original
 
 
 def levels_for(state):
@@ -129,8 +147,9 @@ def verify_completed_units(state, *, through=None):
                 raise GateError("join destination parent/tree/base mapping differs from actual Git")
             if state.get("run_context"):
                 context = context_from_state(state)
-                receipt = context.journal().get(join_key(context, unit.id, level))
-                commit = context.journal().get(join_key(context, unit.id, level, "join.commit"))
+                receipt = join_observed(context, join_key_for(state, context, unit.id, level))
+                commit = join_observed(context, join_key_for(
+                    state, context, unit.id, level, "join.commit"))
                 if (not receipt or receipt.status != "completed" or receipt.outcome != placed
                         or not commit or commit.status != "completed"
                         or commit.outcome != {"destination_commit": destination,

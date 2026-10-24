@@ -46,35 +46,35 @@ Implementation is incomplete. No live release gate has passed.
 
 ## Final required local verification
 
-- Latest full suite (S01-S04): `uv run pytest -q`, **868 passed in 130.47 s**, no failures/skips/xfails. Final S19 full suite remains required after later slices.
-- Latest `uv run ruff check`: **passed** after S01-S04. Final S19 lint remains required after later slices.
-- Requirement-by-requirement acceptance matrix, crash/recovery evidence, dependency versions and revision: pending.
+- Latest full suite (S01-S11): `uv run pytest -q`, **1084 passed in 837.99 s**, exit 0, no failures/warnings/skips/xfails. Final S19 full suite remains required after later slices.
+- Latest `uv run ruff check`: **passed** after S01-S11. Final S19 lint remains required after later slices.
+- Per-slice acceptance/crash/migration evidence and source/dependency identity are retained below. Final S19 all-requirement audit remains pending.
 
 ## Acceptance matrix tracking
 
 | Specification invariant | Current evidence / next proof |
 |---|---|
-| Prose and approved-plan sentinel, index on/off, other target | `test_requirements_context.py` covers both graph shapes; immutable CLI snapshots proven in `test_run_context.py`; approved-plan hashes pending S09 |
+| Prose and approved-plan sentinel, index on/off, other target | `test_requirements_context.py`, `test_run_context.py` and S09 `test_plan_integrity.py`: saved snapshot/full context and approved-plan hashes cross both graph shapes |
 | Traversal/symlink/notebook/metadata/PRD rules/unknown tools | `test_path_policy.py`; fail-closed callback, real changed-path audit, no commit/publication effect |
-| Parallel individually green, combined red | Pending S10; require real integration gate and retained siblings |
-| Multiple auto layers, later layer failing | Pending S06; all-layer receipt required |
-| Gate exception after previous passing result | HALTED-first routing added; full fresh receipt regression pending S06/S07 |
-| Sequential escalated → parallel → sequential state reset | Pending S07/S08; factory plus real graph sequence |
-| Add/amend/reset/squash failure, fixer/gate source edits | Checked add/diff/commit added; full fault matrix pending S05/S06/S08 |
-| Agent toolchain replacement or sandbox protected edit | Implement/formatter/publication path audit covered; trusted text snapshot S03 proven; gate consumption S06 pending; sandbox disabled/rejected S17 |
+| Parallel individually green, combined red | S10 `test_integration_integrity.py`: actual combined gate fails, no publication call, workers retained |
+| Multiple auto layers, later layer failing | S06 `test_gate_integrity.py`: all-layer exact-candidate receipts and later-layer red |
+| Gate exception after previous passing result | S06 fresh nonpassing receipt plus HALTED-first routes; unit state reset S07/S08 |
+| Sequential escalated → parallel → sequential state reset | S07/S08 real graph/CLI/checkpointer sequence in `test_unit_state.py` and `test_unit_subgraph.py` |
+| Add/amend/reset/squash failure, fixer/gate source edits | S05/S06/S08 command/integrity/subgraph matrix; S11 exact staged/committed reconciliation in `test_effect_recovery.py`; unknown edits hold |
+| Agent toolchain replacement or sandbox protected edit | Trusted S03 snapshot consumed by S06 gates; real path audits before/after effects; sandbox ownership or enabled-config rejection remains S17 |
 | Terminal human plus plan-only approval | Pending S13 exact-SHA guard; no paid/live publication allowed |
 | Invalid human topology before spend | S03 offline semantic validation proves all prohibited layouts stop before calls; final publication routing remains S13 |
 | Malformed/error/missing-result review and minority blocking | Pending S12 strict unavailable/blocking policy |
 | Deletion-only and cumulative revision patch review | Pending S12 real cumulative patch/read_diff |
-| Restart after plan/commit/gate/join/push/create | Pending S04/S09–S11/S14; new-process crash evidence required |
-| Corrupt/missing/wrong manifest and concurrent resume | S03 integrity and process-lock checks stop before executor construction; stage recovery remains S11 |
+| Restart after plan/commit/gate/join/push/create | S09–S11 real process exits cover plan/critic/SDK/commit/formatter/gate/squash/join/barrier; publication push/create reconciliation remains S14 |
+| Corrupt/missing/wrong manifest and concurrent resume | S03 locks/input checks plus S11 artifact/controller/repair/boundary tests refuse before executor; exact original checkpoints/receipts retained |
 | Distinct run/worker/branch identities | S03 real clone/path/branch tests pass |
 | 100-unit chain and 20 roots, max active 2 | Pending S16; measured deterministic concurrency |
 | Exhaustion across all paid call classes, concurrent reservations | Pending S15; missing cost consumes reservation; resume cannot reset |
-| Hanging command/children/large output and model timeout | Pending S05/S15; capped file logs plus process cleanup proof |
+| Hanging command/children/large output and model timeout | S05 real process-group timeout/cancellation and bounded logs pass; model deadlines/cancellation remain S15 |
 | Per-workspace sandbox sentinel, timeout, resume | Deferred option requires explicit enabled-config rejection in S17; real Docker gate remains unrun |
 | Respond preserved feedback, synthetic unit, remote race/push failure | Deferred option requires explicit unsupported-until-hardened error in S18 |
-| Optional observability/memory failure, critical journal failure | Offline live-SDK/network suite prevention added; production failure injection pending S04/S19 |
+| Optional observability/memory failure, critical journal failure | S04 critical transaction faults halt before effects; S08 writer failure is best effort; full optional-store/metrics matrix remains S19. Turn 13 native network test guard corrected after the failed unintended push documented below |
 
 Contract schema edits require explicit human review before merge (spec §3.2). No merge is authorized or attempted. Legacy state-v1 execution must be refused without rewriting checkpoints; S03 legacy refusal/readability/no-rewrite proof passes; explicit terminal-stage recovery remains S11.
 
@@ -359,3 +359,54 @@ No row claims a live provider, remote publication, Docker or production recovery
 
 - S11 controller committed locally as `03d4308` (`feat: resume saved unit stages with sealed recovery amendments`); host pre-commit and source/docs `git show --check` passed, excluding verbatim logs. Only requested files were staged. Original specification/probe remain untracked and unchanged; no push.
 - Brain capture: updated existing `Projects/blacksmith.md` through MCP with turn 12/30, exact 1047-test proof, supported controller and explicit incomplete S11/S15/live boundaries. Targeted lint: 0 errors/0 warnings. After >70 seconds, index lastRun.errors=0 and invalidFrontmatter.count=0 (bge-m3:567m, 140 documents/953 chunks); semantic retrieval ranked the hub first and readback verified the exact counter/proof/incomplete/remaining boundary (`691b794e-0c31-4dfc-84c1-4378455a60ee`).
+
+
+## Turn 13: S11 reconciliation, explicit repair and complete recovery boundaries
+
+- Read objective/repository instructions and current brain before mutation; previous turn classified progress. Advanced goal counter 12 -> 13 exactly once. Original spec/probe hashes and feature branch verified unchanged. No agents delegated. Native goal retains full S01-S19 objective.
+- Capture publication now has a critical seal containing its expected manifest and file hashes before atomic manifest/index writes. Explicit `recovery repair --operation-id` either reconciles matching sealed bytes or retains an unsealed partial with a hashed inventory. Original pending/failed capture/amendment receipts stay immutable beside separate proof. Changed sealed files refuse. Repaired amendments preserve the same patch/budget; abandoned partial amendments receive request-specific replacement identities.
+- Read-only `recovery inspect --run-dir` needs no checkpoint/credentials/executor; thread inspection uses SQLite read-only access and shows legacy completed metadata without migration/execution. Bootstrap failures capture retained input/journal evidence before a checkpoint when critical storage permits, and always print the absolute retained path/supported inspection command. Critical capture failure prints a run-directory fallback. No automatic deletion or collection.
+- Verification seals bind exact result data before final artifact/outcome publication. Missing final artifacts can restore only from their critical seal against matching clean HEAD/tree/config and command hashes. Formatter commands have per-command receipts plus staged-tree/parent/amend intent; pending owned commits or exact staged trees finish without repeating completed formatters. Clean failed formatter evidence remains `clean_failure`. Squash and implementation commit recovery reuse original operation identity and matching committed/staged trees, refusing unknown edits.
+- Explicit join rollback recovery validates saved bases, workers and source receipts, restores prior exact destination objects, retries failed effects under generation-aware keys and reuses matching orphaned commits instead of creating duplicates. Original failed join receipts remain with separate observed-effect proof. Lost restore outcomes finish against the same SHA; an owned staged pick commits once without fetch/pick replay. Combined/final gate failures stay scoped to the combined candidate.
+- Completed child outcomes/costs lost before the parent barrier are consumed once from saved child state plus critical source/gate evidence. An unstarted sibling starts fresh only with no worker/attempt/paid-attempt evidence and the unchanged saved level base. Actual failed units keep counters/tier/bases; flat outcome history records every generation without recursively duplicating prior history. Recovered outcomes without an earlier terminal record still carry generation/amendment metadata. Plan/PR rejection schedules a new interrupt.
+- Unknown native command outcomes stop before new SDK/effect admission; terminal failed/cancelled native commands with recorded return codes remain distinct. The journal queries these by indexed unit/attempt identity. This is conservative inspection behavior, not a claim that an orphan process or unknown effect was physically terminated. S15 owns global SDK cancellation/admission/reservations and unknown cost accounting.
+
+### Turn 13 boundary exception and correction
+
+- `effect-exits-01` had a missed commit crash injection: it patched `impl._git`, while the real commit calls `impl.run_command`. That child reached the legacy publication node and attempted a real push to its synthetic fixture remote. The critical journal recorded `command:100:open_pr:git` as **failed, return code 128**, with zero stdout bytes and verified 79-byte stderr: authentication username could not be read for GitHub because no device was configured. No `gh` command ran. No successful publication occurred. Exact outcome/log paths/hash and the verified stderr are retained in `heavy-prd-turn-13-unexpected-push.json`. Do not claim no push attempt occurred in turn 13.
+- Corrected the injection and added a child publication guard plus plan-only approval. `tests/conftest.py` now denies native network Git protocols (local scratch file transport remains available), isolates GitHub CLI config and empties publication token variables so dotenv cannot restore developer credentials. This changes only the test environment; host Git/GitHub settings remain unchanged. Python socket/SDK guards alone had not protected native Git child processes.
+
+### Turn 13 verification receipts so far
+
+- Repair-01: 10 passed/8.81 s. Artifact-regression-01: 34 passed/2 failed/48.29 s; exact row assertions now include the bootstrap failure capture/seal and SDK-failure capture seal, preserving zero-provider/no-clone assertions. Repair-02: 19/40.53 s.
+- Effects-regression-01: 66/98.54 s (unit gates/shared graph/native commands). Effect-exits-01: 5 passed/1 failed/27.40 s, including the boundary exception above. Corrected effect-exits-02: 6/25.49 s. These six real exits cover gate outcome/artifact, formatter result/amend/staged tree and implementation staged commit, with no SDK/formatter replay, one final unit commit and exactly unit/final gates.
+- Join-recovery-01: 4/52.37 s (rollback fetch failure, failure after owned commit, two staged pick exits). Boundaries-01: 5/33.49 s (fresh PR interrupt, depleted continuation, single budget amendment, three recovery generations and lost parent barrier/unstarted sibling). Squash-01: 3/7.36 s, including extra-edit refusal.
+- Recovery-aggregate-01: **43 passed in 184.18 s**. Join-final-01: 2/25.93 s (process exit after restore and explicit final-gate retry). Pick-counts-01: 2/39.41 s; actual command receipts prove one cherry-pick for each sibling despite rollback recovery.
+- Strengthened budget test caught an unrelated retained-partial capture changing a prepared amendment's identity: cap 5 instead of intended 3, repeated addition 4 instead of 2 (`budget-epoch-01`, failed receipt retained). Replacement epochs now include only retained failed amendments for the same checkpoint/request. The unchanged assertion passes. Budget-native-02: 2/7.60 s; budget-native-03: 2/9.22 s, including unconfirmed-native refusal before executor with exact original state/intent/HEAD preserved.
+- Intermediate full-01: **1080 passed in 818.47 s**, exit 0, before the final budget-epoch/native guards/stronger assertions. Intermediate full-02 includes the new native-boundary regression; current ruff passes. `heavy-prd-turn-13-environment.json` records dependency versions, base revision `ff83c7ebbf24764a144f5ae6a75664ef68f42673` and all 136 source hashes. Final full-03 result follows below. No dependency or lockfile changes, weakened assertions, skips or xfails.
+
+- Intermediate full-02: **1081 passed in 832.58 seconds**, exit 0, with 18 pytest old temporary-directory cleanup warnings. Added missing-worker boundary cases: **3 passed/6 deselected in 51.55 s**, with 66 old cleanup warnings. They prove a missing successful sibling or unstarted sibling with existing workspace/paid-attempt evidence refuses before executor with original checkpoints/cost receipts unchanged. No warning suppression. Final full-03 includes these final assertions; environment source hashes refreshed (136 files).
+
+### S11 / R06 acceptance audit
+
+| Requirement | Production path and acceptance evidence |
+|---|---|
+| Critical intent/outcome journal; fail closed before effects | S04 `receipts.py` WAL/FULL transactions and deterministic keys; `test_receipts.py`/`test_receipt_wiring.py` exercise real transaction/process/critical-write failures. Recovery seals and repairs also use this journal |
+| Preserve failure/rejection/interruption artifacts, including binary/untracked/ref state | `protect_run`/`capture` wrap CLI execution and bootstrap failure handling; `test_recovery_artifacts.py` independently restores binary staged/unstaged changes, untracked content and orphaned Git objects from retained snapshots/bundles. All workers and saved root/child state, input/plan/command/model evidence remain retained |
+| Atomic manifests and interrupted artifact publication | Capture seals precede atomic manifest/index writes; `recovery_repair.py` reconciles exact sealed bytes or hashes retained partials without changing original receipts. Ten `test_recovery_repair.py` cases include real retained evidence, corruption refusal and idempotent repair |
+| Reuse known commit/formatter/gate/squash effects; unknown edits refuse | `implement.py`, `verification.py`, `formatter_recovery.py` and controller retain original effect identity and exact staged/committed trees. Eleven `test_effect_recovery.py` cases use real Git and process exits; completed SDK/formatter/native effects are counted and not replayed; unknown staged/source edits refuse |
+| Per-plan/per-attempt checkpoints and ambiguous SDK continuation | S08/S09 child/planning checkpoints plus explicit controller; real exits in planning/artifact/controller tests prove completed call reuse, partial work retention and ordinary-resume refusal. Explicit continuation uses a new receipt and remaining allowance; no exactly-once live billing claim |
+| Ordered join reconciliation and rollback without losing siblings | `joins.py`/`join_recovery.py` validate source/destination/base/tree/trailers and reuse prior exact objects after checked rollback; seven new join cases cover staged pick, orphaned effect, lost restore outcome, integration/final retry and exactly one actual cherry-pick per sibling. Missing/foreign/duplicate outcomes refuse in S10 |
+| Explicit failed-stage resume, original budgets, new rejection interrupts | Sealed amendments and existing shared unit graph retain counters/tier/bases/cost IDs. Twelve controller cases plus nine boundary cases cover depleted allowances, one-time budget addition after lost checkpoint, request-specific amendment identity, multiple flat generations, fresh plan/PR interrupts, missing workers and lost parent barriers/unstarted siblings |
+| Validate original inputs/artifacts/workspaces before scheduling; saved config; legacy readability | S03 run/thread locks and immutable config/input checks plus S11 controller/capture validation precede executor construction. Repair/inspection tests cover no-checkpoint/bootstrap and read-only legacy completed checkpoints. Old missing-version/hash/topology checkpoints are preserved and execution refused; metadata is never invented |
+| Supported absolute recovery path, inspection/repair guidance, no automatic deletion | CLI errors and `diagnose` print absolute retained paths and exact inspect/repair actions, including pre-checkpoint capture failures; inspection loads no credentials/executor. Runbook documents limitations, explicit flags and manual recovery of unknown effects. No run garbage collector added |
+
+All source paths in this audit are exercised by the final full offline suite. Final full-03 result and source-hash/ruff checks below satisfy the scoped S11 completion criterion. S12 strict review, S13 exact publication approval, S14 remote reconciliation, S15 global admission/cancellation and S16-S19 remain separate requirements. No local/mock result satisfies any remaining live release gate.
+
+
+### Turn 13 final verification and S11 closeout
+
+- Final command: `uv run pytest -q > docs/reviews/heavy-prd-turn-13-pytest-03.log 2>&1`, **exit 0: 1084 passed in 837.99 seconds (13:57)**. Handle 52548 was explicitly polled terminal. No final-run warnings, skips or xfails. All 76 new S11 cases across turns 11-13 and all existing regressions are included. Intermediate failed receipts and cleanup warnings remain retained verbatim.
+- `uv run ruff check > docs/reviews/heavy-prd-turn-13-ruff.log 2>&1`, **exit 0: All checks passed!** All 136 Python source file hashes and the complete source-file set equal the pre-run record. `heavy-prd-turn-13-environment.json` records versions/base revision and final full/ruff/deviation hashes; no dependency or lockfile changes.
+- Original spec SHA-256 is unchanged: `4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3`. Original probe is unchanged: `70e36e96aba1a449244bddca13150eeeda7fe0874e663f8b75a8f44ad0e2901c`. Both remain untracked and unstaged. Source/docs whitespace checks exclude only verbatim raw `.log` receipts.
+- S11/R06 scoped completion criterion is met. Both execution shapes retain their original budgets/attempts/artifacts, reconcile proven effects and refuse unproven effects; historical inspection and migration refusals are covered. The full goal remains active at **13/30**, with S12-S19 and every live release gate outstanding. A failed unintended real push occurred during test development and is disclosed above; no successful publication, merge, paid model call, canary or Docker smoke occurred. No exactly-once live billing/cancellation, global admission or heavy-PRD release claim.

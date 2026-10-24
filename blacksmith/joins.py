@@ -9,12 +9,14 @@ from blacksmith.gate import GateError
 from blacksmith.integration import (
     git,
     join_key,
+    join_key_for,
+    join_observed,
     levels_for,
     outcomes_for,
     validate_saved_base,
     validate_worker,
 )
-from blacksmith.receipts import ReceiptError
+from blacksmith.receipts import OperationKey, ReceiptError
 from blacksmith.run_context import atomic_write, context_from_state
 from blacksmith.state import Status
 from blacksmith.verification import candidate_identity
@@ -46,9 +48,10 @@ def prepare_level(state):
 
 def _trailer_matches(path, head, parent, tree, operation, source):
     body = git(path, "show", "-s", "--format=%B", head).stdout.splitlines()
-    return (git(path, "rev-parse", head + "^").stdout.strip() == parent
+    return (operation.trailer in body and "Blacksmith-Source-Commit: " + source in body
+            and git(path, "rev-parse", head + "^").stdout.strip() == parent
             and git(path, "rev-parse", head + "^{tree}").stdout.strip() == tree
-            and operation.trailer in body and "Blacksmith-Source-Commit: " + source in body)
+            )
 
 
 def _place(state, unit, row, base, parent):
@@ -56,24 +59,63 @@ def _place(state, unit, row, base, parent):
     level = state["level_cursor"]
     context = context_from_state(state) if state.get("run_context") else None
     journal = context.journal() if context else None
-    key = join_key(context, unit.id, level) if context else None
-    commit_key = join_key(context, unit.id, level, "join.commit") if context else None
+    key = join_key_for(state, context, unit.id, level) if context else None
+    commit_key = join_key_for(state, context, unit.id, level, "join.commit") if context else None
     intent = {"level": level, "level_base": base, "parent_commit": parent,
               "source_commit": source, "clone_path": row["clone_path"]}
     previous = journal.intent(key, intent) if journal else None
     head, tree, dirty = candidate_identity(path)
-    if previous and previous.status == "completed":
-        placed = previous.outcome
+    recovery = state.get("join_recovery") or {}
+    saved = recovery.get("destinations", {}).get(unit.id)
+    observed = join_observed(context, key) if context else None
+    if previous and ((observed and observed.status == "completed") or saved):
+        placed = observed.outcome if observed and observed.status == "completed" else saved
+        if recovery.get("destinations", {}).get(unit.id) == placed:
+            from blacksmith.recovery_control import amendment_for_state
+            sealed = amendment_for_state(state)
+            if sealed.get("join_recovery") != recovery:
+                raise ReceiptError("join restore differs from sealed recovery amendment")
+            pending = journal.get(commit_key)
+            if (not pending or pending.intent != {**intent,
+                                                  "destination_tree": placed["destination_tree"]}
+                    or placed["operation_id"] != key.id):
+                raise ReceiptError("saved join effect lacks original tree intent")
+            restore = OperationKey(context.run_id, unit.id,
+                key.attempt_id + ":restore:" + state["recovery_amendment_id"], "join.restore")
+            restore_intent = {"original_operation": key.id, "parent": parent, **placed}
+            if (not _trailer_matches(path, placed["destination_commit"], parent,
+                                     placed["destination_tree"], key, source)):
+                raise GateError("saved destination changed before join restore")
+            if head == parent and not dirty:
+                journal.intent(restore, restore_intent)
+                git(path, "reset", "--hard", placed["destination_commit"])
+                head, tree, dirty = candidate_identity(path)
+            if head == placed["destination_commit"] and not dirty and journal.get(restore):
+                journal.finish(restore, "completed", placed)
         if (dirty or head != placed["destination_commit"]
                 or not _trailer_matches(
                     path, head, parent, placed["destination_tree"], key, source)):
             raise GateError("completed join differs from actual candidate; retain for inspection")
+        if previous.status != "completed":
+            _finish_observed(journal, key, previous, placed)
+            commit_outcome = {"destination_commit": placed["destination_commit"],
+                              "destination_tree": placed["destination_tree"]}
+            _finish_observed(journal, commit_key, journal.get(commit_key), commit_outcome)
         return placed
     if previous and previous.status != "intent":
         raise GateError("failed/uncertain join requires explicit recovery")
     pending_commit = journal.get(commit_key) if journal else None
     if pending_commit:
         expected_tree = pending_commit.intent["destination_tree"]
+        if head == parent:
+            if (git(path, "write-tree").stdout.strip() != expected_tree
+                    or git(path, "ls-files", "--others", "--exclude-standard").stdout):
+                raise GateError("unknown staged changes during join recovery")
+            git(path, "diff", "--quiet")
+            body = git(path, "show", "-s", "--format=%B", source).stdout.rstrip()
+            body += "\n\nBlacksmith-Source-Commit: " + source + "\n" + key.trailer
+            git(path, "commit", "-m", body)
+            head, tree, dirty = candidate_identity(path)
         if (dirty or not _trailer_matches(path, head, parent, expected_tree, key, source)):
             raise GateError("interrupted_join_requires_reconciliation: retain staged work")
         commit_result = {"destination_commit": head, "destination_tree": tree}
@@ -120,6 +162,15 @@ def _place(state, unit, row, base, parent):
     if journal:
         journal.finish(key, "completed", placed)
     return placed
+
+
+def _finish_observed(journal, key, previous, outcome):
+    if previous.status in {"intent", "completed"}:
+        journal.finish(key, "completed", outcome)
+    else:
+        proof = OperationKey(key.run_id, key.unit_id, key.attempt_id, key.kind + ".reconciliation")
+        journal.intent(proof, {"original_operation": key.id})
+        journal.finish(proof, "completed", outcome)
 
 
 def _failed(state, unit, cause, *, key=None, journal=None):
@@ -171,7 +222,8 @@ def join_level(state):
         unit = units[cursor]
         if state.get("run_context"):
             context = context_from_state(state)
-            with command_scope(context, unit_id=unit.id, attempt_id=f"join:{level}", stage="join"):
+            attempt = join_key_for(state, context, unit.id, level).attempt_id
+            with command_scope(context, unit_id=unit.id, attempt_id=attempt, stage="join"):
                 result = _place(state, unit, state["unit_outcomes"][unit.id], base, parent)
         else:
             result = _place(state, unit, state["unit_outcomes"][unit.id], base, parent)

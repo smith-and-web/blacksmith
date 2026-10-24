@@ -1,0 +1,31 @@
+[
+  {
+    "kind": "command:100:open_pr:git",
+    "status": "failed",
+    "argv": [
+      "git",
+      "push",
+      "-u",
+      "origin",
+      "blacksmith/23e9d821-376c-4354-9d9e-2d4cb6c6c21d/u1-316ca0efda6296d8"
+    ],
+    "outcome": {
+      "cancelled": false,
+      "duration_s": 0.2721194580080919,
+      "error_type": null,
+      "log_dir": "/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-137/test_effect_recovery_after_rea5/.blacksmith/runs/23e9d821-376c-4354-9d9e-2d4cb6c6c21d/commands/f6aaacc0d12125671dd696da329c680bc63d3555354dfc044600c6063c94538e",
+      "returncode": 128,
+      "stderr_bytes": 79,
+      "stderr_retained_bytes": 79,
+      "stderr_sha256": "84c1d555d8a4c174b1214551c5c8ad38d3d969311b9957b168c31f252ceaebe8",
+      "stdout_bytes": 0,
+      "stdout_retained_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "timed_out": false,
+      "truncated": false
+    },
+    "verified_stderr": "fatal: could not read Username for 'https://github.com': Device not configured\n",
+    "remote": "https://github.com/example/context-demo.git",
+    "gh_commands": 0
+  }
+]

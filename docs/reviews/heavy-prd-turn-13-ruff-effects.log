@@ -1,0 +1,66 @@
+E501 Line too long (101 > 100)
+  --> blacksmith/formatter_recovery.py:57:101
+   |
+55 |             if (dirty or _git(path, "rev-parse", head + "^{tree}").strip() != intended["tree"]
+56 |                     or _git(path, "rev-parse", head + "^").strip() != intended["parent"]
+57 |                     or amend.key.trailer not in _git(path, "log", "-1", "--format=%B").splitlines()):
+   |                                                                                                     ^
+58 |                 raise ReceiptError("unknown formatter amend effect; retain for inspection")
+59 |             outcome = {"candidate_commit": head, "candidate_tree": intended["tree"]}
+   |
+
+B023 Function definition does not bind loop variable `amend_key`
+   --> blacksmith/verification.py:537:46
+    |
+535 |                 def before_amend():
+536 |                     intended_tree = _git(path, "write-tree").strip()
+537 |                     context.journal().intent(amend_key, {"formatter": key.id,
+    |                                              ^^^^^^^^^
+538 |                         "before_commit": head, "parent": _git(path, "rev-parse", "HEAD^").strip(),
+539 |                         "tree": intended_tree, "command": row.model_dump(mode="json")})
+    |
+
+B023 Function definition does not bind loop variable `head`
+   --> blacksmith/verification.py:538:42
+    |
+536 |                     intended_tree = _git(path, "write-tree").strip()
+537 |                     context.journal().intent(amend_key, {"formatter": key.id,
+538 |                         "before_commit": head, "parent": _git(path, "rev-parse", "HEAD^").strip(),
+    |                                          ^^^^
+539 |                         "tree": intended_tree, "command": row.model_dump(mode="json")})
+540 |                     return _git(path, "log", "-1", "--format=%B").rstrip() + "\n\n" + amend_key.trailer
+    |
+
+B023 Function definition does not bind loop variable `row`
+   --> blacksmith/verification.py:539:59
+    |
+537 |                     context.journal().intent(amend_key, {"formatter": key.id,
+538 |                         "before_commit": head, "parent": _git(path, "rev-parse", "HEAD^").strip(),
+539 |                         "tree": intended_tree, "command": row.model_dump(mode="json")})
+    |                                                           ^^^
+540 |                     return _git(path, "log", "-1", "--format=%B").rstrip() + "\n\n" + amend_key.trailer
+    |
+
+B023 Function definition does not bind loop variable `amend_key`
+   --> blacksmith/verification.py:540:87
+    |
+538 |                         "before_commit": head, "parent": _git(path, "rev-parse", "HEAD^").strip(),
+539 |                         "tree": intended_tree, "command": row.model_dump(mode="json")})
+540 |                     return _git(path, "log", "-1", "--format=%B").rstrip() + "\n\n" + amend_key.trailer
+    |                                                                                       ^^^^^^^^^
+541 |
+542 |                 amended = _amend_if_changed(path, before_amend=before_amend)
+    |
+
+E501 Line too long (103 > 100)
+   --> blacksmith/verification.py:540:101
+    |
+538 |                         "before_commit": head, "parent": _git(path, "rev-parse", "HEAD^").strip(),
+539 |                         "tree": intended_tree, "command": row.model_dump(mode="json")})
+540 |                     return _git(path, "log", "-1", "--format=%B").rstrip() + "\n\n" + amend_key.trailer
+    |                                                                                                     ^^^
+541 |
+542 |                 amended = _amend_if_changed(path, before_amend=before_amend)
+    |
+
+Found 6 errors.

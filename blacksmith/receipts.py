@@ -260,6 +260,18 @@ class OperationJournal:
             return [self._receipt(row)
                     for row in conn.execute("SELECT * FROM operations ORDER BY rowid")]
 
+    def pending_commands(self, unit_id: str, attempt_id: str) -> list[OperationReceipt]:
+        _identifier(unit_id)
+        _identifier(attempt_id)
+        with self._connection() as conn:
+            rows = [self._receipt(row) for row in conn.execute(
+                "SELECT * FROM operations WHERE run_id=? AND unit_id=? AND attempt_id=? "
+                "AND kind LIKE 'command:%' AND status IN ('intent','unknown','interrupted')",
+                (self.run_id, unit_id, attempt_id),
+            )]
+        return [row for row in rows if row.status == "intent"
+                or (row.outcome or {}).get("returncode") is None]
+
     def get(self, key: OperationKey) -> OperationReceipt | None:
         self._check_key(key)
         with self._connection() as conn:
@@ -482,6 +494,18 @@ def attempt_identity(state: Mapping[str, Any]) -> str:
     )
 
 
+def outcome_record(outcome: dict) -> dict:
+    """A historical outcome retains its fields without recursively copying history."""
+    return {key: value for key, value in outcome.items() if key != "recovery_history"}
+
+
+def outcome_history(outcome: dict) -> list[dict]:
+    history = outcome.get("recovery_history", [])
+    if not isinstance(history, list) or any(not isinstance(row, dict) for row in history):
+        raise ReceiptError("invalid unit recovery history")
+    return [outcome_record(row) for row in history]
+
+
 def merge_unit_outcomes(left: dict, right: dict) -> dict:
     """One immutable terminal outcome per unit; identical checkpoint replay is harmless."""
     result = dict(left)
@@ -490,14 +514,20 @@ def merge_unit_outcomes(left: dict, right: dict) -> dict:
             raise ReceiptError("unit outcome key/identity mismatch")
         if unit_id in result and result[unit_id] != outcome:
             previous = result[unit_id]
-            if previous in outcome.get("recovery_history", []):
-                history = outcome["recovery_history"]
-                if (previous.get("ok") or history[-1] != previous
+            history = outcome_history(outcome)
+            previous_record = outcome_record(previous)
+            if previous_record in history:
+                if (previous.get("ok")
+                        or history != [*outcome_history(previous), previous_record]
                         or not outcome.get("recovery_amendment_id")
                         or outcome.get("recovery_generation")
                         != previous.get("recovery_generation", 0) + 1):
                     raise ReceiptError("invalid unit recovery outcome chain")
-            elif outcome in previous.get("recovery_history", []):
+            elif outcome_record(outcome) in outcome_history(previous):
+                prior = outcome_history(previous)
+                index = prior.index(outcome_record(outcome))
+                if outcome_history(outcome) != prior[:index]:
+                    raise ReceiptError("conflicting historical unit recovery chain")
                 continue  # A delayed checkpoint of the retained original outcome.
             else:
                 raise ReceiptError("conflicting terminal unit outcome; explicit recovery required")
@@ -548,11 +578,14 @@ def call_context_for(
     from blacksmith.recovery import validate as validate_recovery
     validate_recovery(context)
     journal = OperationJournal.for_context(context)
+    attempt = attempt_id or attempt_identity(state)
+    if journal.pending_commands(unit_id, attempt):
+        raise ReceiptError("unconfirmed_native_command_requires_inspection")
     return CallContext(
         str(journal.path),
         context.run_id,
         journal.context_hash,
         unit_id,
-        attempt_id or attempt_identity(state),
+        attempt,
         state.get("recovery_call_overrides"),
     )

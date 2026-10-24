@@ -13,7 +13,14 @@ import os
 from copy import deepcopy
 from pathlib import Path
 
-from blacksmith.receipts import OperationKey, attempt_identity, digest, encoded, merge_events
+from blacksmith.receipts import (
+    OperationKey,
+    attempt_identity,
+    digest,
+    encoded,
+    merge_events,
+    merge_unit_outcomes,
+)
 from blacksmith.recovery import (
     RecoveryError,
     _directory,
@@ -24,6 +31,7 @@ from blacksmith.recovery import (
     file_hash,
     latest_checkpoints,
     owned_file,
+    serialize_state,
     validate,
 )
 from blacksmith.run_context import context_from_state
@@ -72,21 +80,30 @@ def fingerprint(path):
     }
 
 
-def dispatch(state):
-    """One parent transition selects one saved child, or one parent stage."""
-    queue = state.get("recovery_queue") or []
+def amendment_for_state(state):
+    """Read the critical sealed scheduling amendment at its point of use."""
     context = context_from_state(state)
     operation = next((o for o in context.journal().operations()
                       if o.key.id == state.get("recovery_amendment_id")), None)
     if operation is None or operation.key.kind != "recovery.amend":
         raise RecoveryError("recovery transition lacks its critical amendment")
     from blacksmith.graph import blacksmith_serde
-    sealed = _load_amendment(context, operation, blacksmith_serde())
+    return _load_amendment(context, operation, blacksmith_serde())
+
+
+def dispatch(state):
+    """One parent transition selects one saved child, or one parent stage."""
+    queue = state.get("recovery_queue") or []
+    sealed = amendment_for_state(state)
     if (sealed["limits"] != state["limits"]
             or sealed["recovery_units"] != state["recovery_units"]
             or sealed["recovery_target"] != state["recovery_target"]
             or sealed["recovery_fingerprints"] != state["recovery_fingerprints"]):
         raise RecoveryError("recovery transition differs from critical amendment")
+    for field in ("join_recovery", "join_generations", "join_destinations",
+                  "join_cursor", "join_complete"):
+        if field in sealed and state.get(field) != sealed[field]:
+            raise RecoveryError("join recovery differs from critical amendment")
     key = queue[0] if queue else "__run__"
     fingerprints = state.get("recovery_fingerprints") or {}
     if key in fingerprints:
@@ -164,15 +181,16 @@ def _validate_workspaces(context, root):
                 dirty = _git(path, "status", "--porcelain", "--untracked-files=all").stdout
                 if head != outcome["source_commit"] or dirty:
                     raise RecoveryError("successful sibling changed since its recorded outcome")
-    except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+    except (KeyError, TypeError, ValueError, RuntimeError, AttributeError) as exc:
         raise RecoveryError("invalid recorded unit workspace metadata") from exc
 
 
 def _limits(context, addition):
+    from blacksmith.recovery_repair import observed_outcome
     amended = sum(
         float(o.intent["request"].get("add_budget_usd") or 0)
         for o in context.journal().operations()
-        if o.key.kind == "recovery.amend" and o.status == "completed"
+        if o.key.kind == "recovery.amend" and observed_outcome(context, o)
     )
     config = context.execution_config().limits
     limits = {
@@ -196,11 +214,125 @@ def _limits(context, addition):
     return limits, amended
 
 
+def _reuse_effect_key(context, state, stage, actual):
+    """Stage-owned reconciliation decides known Git effects under their original keys."""
+    unit, attempt = state["selected_unit"].id, attempt_identity(state)
+    journal = context.journal()
+    if stage == "normalize_candidate":
+        if journal.get(OperationKey(context.run_id, unit, attempt, "git.squash")):
+            return True
+    elif stage == "audit_commit":
+        pending = state.get("pending_implementation")
+        if not pending:
+            raise RecoveryError("missing checkpointed model result for commit recovery")
+        base = pending["base_commit"]
+        key = OperationKey(context.run_id, unit, attempt, "git.commit")
+        operation = journal.get(key)
+        tree = journal.get(OperationKey(context.run_id, unit, attempt, "git.commit.tree"))
+        if actual["head"] != base:
+            body = _git(state["worktree_path"], "log", "-1", "--format=%B").stdout.splitlines()
+            if operation and tree and key.trailer in body:
+                return True
+            raise RecoveryError("unknown commit after checkpointed model; inspect before retry")
+        return bool(operation and operation.status == "intent" and tree)
+    elif stage == "auto_fix":
+        owner = state.get("implementation_attempt_id") or attempt
+        commit = journal.get(OperationKey(context.run_id, unit, owner, "git.commit"))
+        if commit and commit.status != "completed":
+            commit = journal.get(OperationKey(
+                context.run_id, unit, owner, "git.commit.reconciliation"))
+        if not commit or commit.status != "completed":
+            raise RecoveryError("missing implementation ownership for formatter recovery")
+        before = commit.outcome["commit"]
+        formatter = journal.get(OperationKey(context.run_id, unit, attempt, "git.fix:" + before))
+        if formatter and formatter.status in {"intent", "completed"}:
+            return True
+        if actual["head"] != before:
+            raise RecoveryError("unknown candidate before formatter retry")
+        return False
+    expected = (state.get("implementation") or {}).get("candidate_commit")
+    if expected and actual["head"] != expected:
+        raise RecoveryError("candidate HEAD changed since failure; inspect before retry")
+    return False
+
+
+def _unknown_commands(context, unit, attempt):
+    return context.journal().pending_commands(unit, attempt)
+
+
+def _unstarted_units(context, root, saved_units):
+    """Only units with no worker, attempt checkpoint or paid attempt may start fresh."""
+    from blacksmith.graph import _fanout_sends
+    from blacksmith.integration import levels_for, validate_saved_base
+    from blacksmith.unit_state import new_unit_attempt
+    level = root.get("level_cursor", 0)
+    levels = levels_for(root)
+    if (not root.get("fanout") or level >= len(levels) or len(levels[level]) < 2
+            or root.get("prepared_level") != level):
+        return {}
+    missing = {u.id for u in levels[level] if u.id not in saved_units
+               and u.id not in (root.get("unit_outcomes") or {})}
+    if not missing:
+        return {}
+    base = validate_saved_base(root, level)
+    head = _git(context.workspace_path, "rev-parse", "HEAD").stdout.strip()
+    dirty = _git(context.workspace_path, "status", "--porcelain", "--untracked-files=all").stdout
+    if head != base or dirty:
+        raise RecoveryError("shared level base changed before an unstarted sibling")
+    result = {}
+    for send in _fanout_sends(root, level):
+        unit = send.arg["selected_unit"]
+        if unit.id not in missing:
+            continue
+        if context.unit_path(unit.id).exists() or any(
+            o.key.unit_id == unit.id and o.key.kind.startswith("model.")
+            and o.key.kind not in {"model.plan", "model.critic"}
+            for o in context.journal().operations()
+        ):
+            raise RecoveryError("missing worker checkpoint with existing attempt evidence")
+        result[unit.id] = {**send.arg, **new_unit_attempt(unit.id, base),
+                           "unit_mode": "parallel", "unit_initialized": False}
+    return result
+
+
+def _completed_children(context, root, units):
+    """Consume committed child outcomes even if the parent barrier never checkpointed."""
+    from blacksmith.integration import validate_saved_base, validate_worker
+    from blacksmith.verification import verify_historical_unit_gate
+    outcomes = dict(root.get("unit_outcomes") or {})
+    updates = {}
+    for identity, state in units.items():
+        row = state.get("unit_outcome")
+        if not row or state.get("unit_stage") != "finalize_unit" or outcomes.get(identity) == row:
+            continue
+        if (row["unit_id"] != identity or row["attempt_id"] != attempt_identity(state)
+                or row.get("recovery_generation", 0) != state.get("recovery_generation", 0)):
+            raise RecoveryError("completed child outcome differs from its saved attempt")
+        previous = outcomes.get(identity)
+        if previous and previous.get("recovery_generation", 0) > row.get("recovery_generation", 0):
+            continue
+        if row["ok"] and not row["human"]:
+            if state.get("unit_mode") == "parallel":
+                base = validate_saved_base(root, row["level"])
+                validate_worker(root, state["selected_unit"], row, base)
+            else:
+                if Path(row["clone_path"]) != context.workspace_path:
+                    raise RecoveryError("completed sequential child has foreign workspace")
+                from blacksmith.verification import required_layers
+                verify_historical_unit_gate(row["gate_receipt"], state,
+                    candidate_commit=row["source_commit"], layers=required_layers(state))
+        outcomes = merge_unit_outcomes(outcomes, {identity: row})
+        updates[identity] = row
+    return outcomes, updates
+
+
 def _load_amendment(context, operation, serde):
-    if operation.status != "completed":
+    from blacksmith.recovery_repair import observed_outcome
+    observed = observed_outcome(context, operation)
+    if observed is None:
         raise RecoveryError("incomplete recovery amendment; inspect retained amendment first")
-    path = owned_file(_directory(context), operation.outcome["patch"])
-    if file_hash(path) != operation.outcome["sha256"]:
+    path = owned_file(_directory(context), observed["patch"])
+    if file_hash(path) != observed["sha256"]:
         raise RecoveryError("changed recovery amendment")
     data = _read(path)
     if data["kind"] not in {"msgpack", "json"}:
@@ -208,7 +340,7 @@ def _load_amendment(context, operation, serde):
     return serde.loads_typed((data["kind"], base64.b64decode(data["data"], validate=True)))
 
 
-def prepare(
+def _prepare(
     context,
     saver,
     saved,
@@ -250,10 +382,18 @@ def prepare(
         "reapproval": rejection,
     }
     checkpoint = saved.config["configurable"]["checkpoint_id"]
+    operations = context.journal().operations()
+    retained = {o.intent["operation_id"] for o in operations
+                if o.key.kind == "recovery.repair" and o.status == "completed"
+                and o.outcome["disposition"] == "retained_partial"}
+    abandoned = [o.key.id for o in operations
+                 if o.key.kind == "recovery.amend" and o.key.id in retained
+                 and o.intent["checkpoint_id"] == checkpoint and o.intent["request"] == request]
     key = OperationKey(
         context.run_id,
         "__run__",
-        "recovery:" + digest(encoded([checkpoint, request])),
+        "recovery:" + digest(encoded([checkpoint, request, abandoned]
+                                     if abandoned else [checkpoint, request])),
         "recovery.amend",
     )
     if existing := context.journal().get(key):
@@ -312,12 +452,23 @@ def prepare(
             ],
         )
     else:
+        root_unit = root.get("selected_unit")
+        if root_unit and _unknown_commands(context, root_unit.id, attempt_identity(root)):
+            raise RecoveryError("unconfirmed native command; inspect original child process")
         units = _latest_units(checkpoints)
-        outcomes = root.get("unit_outcomes") or {}
+        outcomes, collected = _completed_children(context, root, units)
+        if collected:
+            patch["unit_outcomes"] = collected
+            for field in ("errors", "review_findings", "unresolved_review_findings"):
+                rows = list(root.get(field) or [])
+                for identity in collected:
+                    rows = merge_events(rows, units[identity].get(field) or [])
+                patch[field] = rows
+        unstarted = _unstarted_units(context, root, units)
         selected = [
             u.id
             for u in root.get("work_units") or []
-            if u.id in units and not outcomes.get(u.id, {}).get("ok")
+            if (u.id in units or u.id in unstarted) and not outcomes.get(u.id, {}).get("ok")
         ]
         if unit_id:
             if unit_id not in selected:
@@ -334,10 +485,26 @@ def prepare(
             elif integration and integration.outcome != "passed":
                 patch["recovery_target"] = "integration_gate"
             else:
-                raise RecoveryError("no recoverable failed unit/gate; inspect retained stage")
+                from blacksmith.join_recovery import prepare_join
+                join = prepare_join(context, {**root, "unit_outcomes": outcomes})
+                if join is None:
+                    raise RecoveryError("no recoverable failed unit/gate; inspect retained stage")
+                patch.update(join)
         else:
             for identity in selected:
+                if identity in unstarted:
+                    state = unstarted[identity]
+                    state["cost_events"] = [e for e in costs if e.get("unit_id") == identity]
+                    state["limits"] = limits
+                    patch["recovery_units"][identity] = state
+                    patch["recovery_fingerprints"][identity] = {
+                        "path": str(context.workspace_path),
+                        "value": fingerprint(context.workspace_path)}
+                    continue
                 state = deepcopy(units[identity])
+                if _unknown_commands(context, identity, attempt_identity(state)):
+                    raise RecoveryError("native command outcome is unconfirmed; "
+                                        "inspect original command/child process before recovery")
                 state["cost_events"] = merge_events(state.get("cost_events") or [],
                     [event for event in costs if event.get("unit_id") == identity])
                 path = Path(state["worktree_path"])
@@ -359,6 +526,7 @@ def prepare(
                 if stage not in UNIT_STAGES:
                     raise RecoveryError("missing recorded failed stage; manual inspection required")
                 review_resume = stage == "review"
+                effect_resume = False
                 overrides = dict(state.get("recovery_call_overrides") or {})
                 if review_resume and not continue_attempt:
                     raise RecoveryError("review requires --continue-attempt "
@@ -403,15 +571,7 @@ def prepare(
                 elif stage == "implement":
                     raise RecoveryError("model stage requires explicit --continue-attempt")
                 else:
-                    expected_head = (state.get("implementation") or {}).get("candidate_commit")
-                    if (
-                        expected_head
-                        and actual["head"] != expected_head
-                        and stage != "normalize_candidate"
-                    ):
-                        raise RecoveryError(
-                            "candidate HEAD changed since failure; inspect before retry"
-                        )
+                    effect_resume = _reuse_effect_key(context, state, stage, actual)
                 generation = (previous or state).get("recovery_generation", 0) + 1
                 old_attempt = attempt_identity(state)
                 state.update(
@@ -428,7 +588,7 @@ def prepare(
                 state["implementation_attempt_id"] = (
                     state.get("implementation_attempt_id") or old_attempt
                 )
-                state["attempt_id"] = old_attempt if review_resume else (
+                state["attempt_id"] = old_attempt if review_resume or effect_resume else (
                     old_attempt + f":recovery:{generation}")
                 if add_budget_usd and stage == "test_gate":
                     state["recovery_entry"] = "recovery_decision"
@@ -450,11 +610,13 @@ def prepare(
     # Retain a fresh immutable capture before any attempt transition or replacement.
     manifest = capture(context, saver, reason="explicit recovery amendment", stage="recovery")
     relative = "amendments/" + key.id + ".json"
+    patch_text = serialize_state(patch, saver.serde)
     intent = {
         "checkpoint_id": checkpoint,
         "request": request,
         "capture": str(manifest.relative_to(_directory(context))),
         "patch": relative,
+        "patch_sha256": digest(patch_text),
         "acknowledged_operations": [o.key.id for o in context.journal().operations()
                                     if o.key.kind.startswith("model.")
                                     and o.status not in {"completed", "failed"}
@@ -469,3 +631,14 @@ def prepare(
         {"patch": relative, "sha256": file_hash(owned_file(_directory(context), relative))},
     )
     return patch
+
+
+def prepare(context, saver, saved, *, retry_stage=False, continue_attempt=False,
+            unit_id=None, add_budget_usd=None):
+    try:
+        return _prepare(context, saver, saved, retry_stage=retry_stage,
+                        continue_attempt=continue_attempt, unit_id=unit_id,
+                        add_budget_usd=add_budget_usd)
+    except (KeyError, TypeError, ValueError, AttributeError, RuntimeError) as exc:
+        raise RecoveryError("missing/corrupt recovery scheduling metadata; "
+                            f"retained: {context.directory}") from exc

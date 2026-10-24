@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import tempfile
 from pathlib import Path
@@ -265,10 +266,8 @@ class RunContext(BaseModel):
         atomic_write(self.directory / "runtime-config.json", self.runtime_config_json)
         atomic_write(self.directory / "trusted-blacksmith.toml", self.toolchain_text)
 
-    def verify(self, *, selected_repo: Path, require_workspace: bool = False) -> None:
-        """Read-only reconciliation of immutable input files and source identity."""
-        if selected_repo.resolve() != Path(self.repo_path):
-            raise RunContextError("selected repository differs from recorded run repository")
+    def verify_inputs(self) -> None:
+        """Validate retained inputs even when bootstrap never produced a checkpoint."""
         try:
             manifest = json.loads((self.directory / "manifest.json").read_text())
             if manifest != {
@@ -285,6 +284,12 @@ class RunContext(BaseModel):
                     raise ValueError("artifact mismatch")
         except (OSError, ValueError, KeyError) as exc:
             raise RunContextError(f"missing/corrupt run artifacts: {self.directory}") from exc
+
+    def verify(self, *, selected_repo: Path, require_workspace: bool = False) -> None:
+        """Read-only reconciliation of immutable input files and source identity."""
+        if selected_repo.resolve() != Path(self.repo_path):
+            raise RunContextError("selected repository differs from recorded run repository")
+        self.verify_inputs()
         self.journal().verify()  # Never replace a missing/corrupt critical recovery journal.
         from blacksmith.recovery import validate as validate_recovery
         validate_recovery(self)
@@ -438,7 +443,15 @@ def _create_run_context(config, prd, thread_id, *, required_tools):
                 {"base_commit": base, "planning_path": str(context.planning_path)},
             )
     except (OSError, RunContextError, ReceiptError) as exc:
+        # There may be no checkpointer or planning clone yet. Preserve a critical
+        # input/journal capture where possible; never replace the bootstrap error.
+        try:
+            from blacksmith.recovery import capture
+            capture(context, None, reason=f"bootstrap: {exc}", stage="bootstrap")
+        except (OSError, RunContextError, ReceiptError):
+            pass  # Original artifacts/partial clone and original cause remain below.
         raise RunContextError(
-            f"preflight snapshot failed; retained artifacts: {directory}"
+            f"preflight snapshot failed; retained artifacts: {directory}\n"
+            f"Next action: blacksmith recovery inspect --run-dir {shlex.quote(str(directory))}"
         ) from exc
     return context

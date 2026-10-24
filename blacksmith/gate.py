@@ -198,7 +198,7 @@ def run_fix(
     return FixResult(applied=True, changed=changed, ok=ok, output=output, command=fix_cmd)
 
 
-def _amend_if_changed(cwd: Path) -> bool:
+def _amend_if_changed(cwd: Path, *, before_amend=None) -> bool:
     """Stage everything and, only if that produced a staged diff, amend the unit's commit.
 
     Returns whether an amend happened. The ``--cached --quiet`` check is what keeps an
@@ -210,7 +210,9 @@ def _amend_if_changed(cwd: Path) -> bool:
     )
     if staged.returncode == 0:  # nothing staged -> the fixer changed nothing
         return False
-    amend = run_command(["git", "-C", str(cwd), "commit", "--amend", "--no-edit"], check=True)
+    message = before_amend() if before_amend else None
+    args = ["-m", message] if message is not None else ["--no-edit"]
+    amend = run_command(["git", "-C", str(cwd), "commit", "--amend", *args], check=True)
     return amend.returncode == 0
 
 

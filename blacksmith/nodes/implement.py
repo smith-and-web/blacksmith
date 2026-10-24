@@ -526,7 +526,16 @@ def _stage_and_commit(
                     # An original failed/interrupted receipt remains immutable. The
                     # separate proof records the observed Git effect, not a replay.
                     return outcome["files"], outcome["diff_summary"]
-            raise ReceiptError(f"interrupted_commit_requires_reconciliation: {operation.id}")
+            if receipt.status == "intent" and tree_record and head == base:
+                expected = tree_record.intent["tree"]
+                staged = _git(worktree_path, "write-tree").strip()
+                untracked = _git(worktree_path, "ls-files", "--others", "--exclude-standard")
+                if staged != expected or untracked.strip():
+                    raise ReceiptError("unknown staged changes before implementation commit")
+                _git(worktree_path, "diff", "--quiet")
+                # Exactly the original sealed tree is staged; finish that commit once.
+            else:
+                raise ReceiptError(f"interrupted_commit_requires_reconciliation: {operation.id}")
         message += "\n\n" + operation.trailer
     def before_commit(files, summary, tree):
         if journal:

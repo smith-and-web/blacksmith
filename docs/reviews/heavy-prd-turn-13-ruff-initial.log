@@ -1,0 +1,32 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/recovery_repair.py:3:1
+   |
+ 1 |   """Explicit repair of interrupted artifact publication, preserving original receipts."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | from pathlib import Path
+ 6 | |
+ 7 | | from blacksmith.receipts import digest, encoded
+ 8 | | from blacksmith.recovery import (
+ 9 | |     RecoveryError, _directory, _identity, _key, _read, file_hash, owned_file,
+10 | | )
+11 | | from blacksmith.run_context import atomic_write
+   | |_______________________________________________^
+   |
+help: Organize imports
+
+F401 [*] `pathlib.Path` imported but unused
+ --> blacksmith/recovery_repair.py:5:21
+  |
+3 | from __future__ import annotations
+4 |
+5 | from pathlib import Path
+  |                     ^^^^
+6 |
+7 | from blacksmith.receipts import digest, encoded
+  |
+help: Remove unused import: `pathlib.Path`
+
+Found 2 errors.
+[*] 2 fixable with the `--fix` option.

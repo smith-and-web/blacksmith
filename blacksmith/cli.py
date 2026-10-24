@@ -1066,29 +1066,72 @@ def _recovery(argv=None):
     from langgraph.checkpoint.sqlite import SqliteSaver
 
     from blacksmith.graph import blacksmith_serde
-    from blacksmith.recovery import inspect
+    from blacksmith.recovery import _read, diagnose
+    from blacksmith.recovery_repair import repair
 
     parser = argparse.ArgumentParser(prog="blacksmith recovery")
-    parser.add_argument("action", choices=["inspect"])
-    parser.add_argument("--thread-id", required=True)
+    parser.add_argument("action", choices=["inspect", "repair"])
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--thread-id")
+    selection.add_argument("--run-dir", type=Path)
+    parser.add_argument("--operation-id")
     parser.add_argument("--config", default=None)
     args = parser.parse_args(argv)
+    if args.action == "repair" and not args.operation_id:
+        parser.error("repair requires --operation-id from recovery inspect")
     try:
-        config = _load_config(args.config)
-        path = config.checkpointer.db_path
-        connection = sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True,
-                                     check_same_thread=False)
-        try:
-            saver = SqliteSaver(connection, serde=blacksmith_serde())
-            saved = saver.get_tuple({"configurable": {"thread_id": args.thread_id}})
-            if saved is None:
-                raise ResumeError("no checkpoint for recovery inspection")
-            context = context_from_state(saved.checkpoint["channel_values"])
-            result = inspect(context)
-            print(json.dumps(result, indent=2))
-        finally:
-            connection.close()
-        return 0
+        if args.run_dir:
+            directory = args.run_dir.expanduser().absolute()
+            if directory.resolve() != directory or directory.is_symlink():
+                raise ResumeError("foreign recovery run directory")
+            try:
+                context = RunContext.model_validate(_read(directory / "manifest.json")["context"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ResumeError("missing/corrupt retained run context") from exc
+            if context.directory != directory:
+                raise ResumeError("manifest belongs to a different run directory")
+        else:
+            config = _load_config(args.config)
+            path = config.checkpointer.db_path
+            connection = sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True,
+                                         check_same_thread=False)
+            try:
+                saver = SqliteSaver(connection, serde=blacksmith_serde())
+                saved = saver.get_tuple({"configurable": {"thread_id": args.thread_id}})
+                if saved is None:
+                    raise ResumeError("no checkpoint; inspect retained --run-dir instead")
+                values = saved.checkpoint["channel_values"]
+                legacy_state = values.get("state_version") != STATE_VERSION
+                legacy_recovery = values.get("recovery_version") != 1
+                if legacy_state or legacy_recovery:
+                    if args.action != "inspect":
+                        raise ResumeError("legacy_checkpoint_requires_manual_recovery")
+                    print(json.dumps({"thread_id": args.thread_id, "legacy": True,
+                        "status": values.get("status"), "executable": False,
+                        "diagnostic": ("legacy_checkpoint_requires_manual_recovery" if legacy_state
+                                       else "legacy_recovery_requires_manual_recovery"),
+                        "worktree_path": values.get("worktree_path")}))
+                    return 0
+                context = context_from_state(values)
+            finally:
+                connection.close()
+        context.verify_inputs()
+        context.journal().verify()
+        if args.action == "repair":
+            selected = _load_config(args.config) if args.config else context.execution_config()
+            if selected.resolve_repo_path() != Path(context.repo_path):
+                raise ResumeError("selected repository differs from recorded run")
+            with thread_lock(selected, context.thread_id), context.lock(), command_scope(context):
+                from blacksmith.run_context import git_read, origin_identity
+                origin = git_read(Path(context.repo_path), "remote", "get-url", "origin").strip()
+                if origin_identity(origin) != context.origin:
+                    raise ResumeError("source origin differs from recorded run")
+                repaired = repair(context, args.operation_id)
+                result = {**diagnose(context), "repair": repaired}
+        else:
+            result = diagnose(context)
+        print(json.dumps(result, indent=2))
+        return 0 if result["valid"] else 1
     except (ReceiptError, ResumeError, RunContextError, ConfigError, OSError, sqlite3.Error) as exc:
         print(f"recovery: {exc}; original evidence retained; no executor constructed",
               file=sys.stderr)

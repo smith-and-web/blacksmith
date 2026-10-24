@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import operator
 from enum import StrEnum
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from blacksmith.contract import PRD, WorkUnit
 from blacksmith.gate_receipts import FixReceipt, GateReceipt
@@ -140,6 +140,9 @@ class UnitAttemptState(TypedDict, total=False):
 
 
 class UnitOutcome(TypedDict):
+    recovery_generation: NotRequired[int]
+    recovery_amendment_id: NotRequired[str]
+    recovery_history: NotRequired[list[dict[str, Any]]]
     failed_stage: str | None
     unit_id: str
     title: str
@@ -202,6 +205,8 @@ class BlacksmithState(UnitAttemptState, total=False):
     recovery_acknowledged_calls: list[str]
     budget_amendment_usd: float
     join_graph_version: int
+    join_generations: dict[str, int]
+    join_recovery: dict[str, Any]
     prepared_level: int | None
     level_bases: dict[str, str]
     join_cursor: int

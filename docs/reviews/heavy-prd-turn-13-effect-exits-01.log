@@ -1,0 +1,56 @@
+.....F                                                                   [100%]
+=================================== FAILURES ===================================
+_ test_effect_recovery_after_real_exit_does_not_repeat_model_or_formatter[commit_staged] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-137/test_effect_recov...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109625370>
+mode = 'commit_staged'
+
+    @pytest.mark.parametrize("mode", ["gate_outcome", "gate_artifact", "formatter_outcome",
+                                     "formatter_amend", "formatter_staged", "commit_staged"])
+    def test_effect_recovery_after_real_exit_does_not_repeat_model_or_formatter(
+        project, monkeypatch, mode,
+    ):
+        root, config, prd, _ = project
+        fix = ("mkdir -p .checks; printf f >> .checks/fix-count; "
+               "python3 -c \"from pathlib import Path; Path('result.txt').write_text('FORMATTED')\"")
+        test = "mkdir -p .checks; printf g >> .checks/gate-count"
+        (root / "blacksmith.toml").write_text("fix_cmd=" + json.dumps(fix)
+                                             + "\ntest_cmd=" + json.dumps(test) + "\n")
+        (root / ".gitignore").write_text(".checks/\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-m", "recovery verifier")
+        config.write_text(config.read_text() + "[review]\nenabled=false\n")
+        child = subprocess.run([sys.executable, "-c", CRASH, str(Path(__file__).parent),
+                                str(prd), str(config), mode], capture_output=True,
+                               text=True, timeout=50)
+>       assert child.returncode == 97, child.stderr
+E       AssertionError: blacksmith: ingest_prd
+E         blacksmith: plan
+E         blacksmith: approve_plan
+E         blacksmith: approve_plan
+E         blacksmith: prepare_worktree
+E         blacksmith: prepare_level
+E         blacksmith: execute_unit
+E         blacksmith: prepare_attempt
+E         blacksmith: implement
+E         blacksmith: audit_commit
+E         blacksmith: auto_fix
+E         blacksmith: normalize_candidate
+E         blacksmith: test_gate
+E         blacksmith: finalize_unit
+E         blacksmith: final_gate
+E         blacksmith: approve_pr
+E         blacksmith: approve_pr
+E         blacksmith: open_pr
+E         blacksmith: cleanup_worktree
+E         Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-137/test_effect_recovery_after_rea5/.blacksmith/runs/23e9d821-376c-4354-9d9e-2d4cb6c6c21d/recovery/f30c8341-4f69-4eaa-ad0e-f328ccba1709/manifest.json
+E         Next action: blacksmith recovery inspect --thread-id effect --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-137/test_effect_recovery_after_rea5/runtime.toml
+E         
+E       assert 0 == 97
+E        +  where 0 = CompletedProcess(args=['/Users/josh.smith/Code/blacksmith/.venv/bin/python3', '-c', "\nimport os, sys\nsys.path.insert...rs/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-137/test_effect_recovery_after_rea5/runtime.toml\n').returncode
+
+tests/test_effect_recovery.py:83: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_effect_recovery.py::test_effect_recovery_after_real_exit_does_not_repeat_model_or_formatter[commit_staged]
+1 failed, 5 passed in 27.40s

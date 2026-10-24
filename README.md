@@ -7,8 +7,8 @@ documents config-relative paths, frozen inputs, execution locks, the shared unit
 graph, approved plan hashes, exact-source joins, integration/final layer gates
 and checkpoint migration refusals. The
 historical feature list below is not a heavy-PRD readiness claim. S11 artifact
-capture/inspection and explicit unit-stage amendments are implemented. S11 remains
-in progress for remaining effect reconciliation and recovery diagnostics.
+capture/inspection, explicit stage amendments, sealed-effect reconciliation and
+repair diagnostics are implemented; final S11 verification is in the evidence record.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -108,9 +108,9 @@ and run `blacksmith <prd>` from anywhere inside it. Setting an explicit absolute
 
 The PRD path is the single positional argument. `--config` points at a non-default
 `blacksmith.config.toml` (otherwise it's discovered by walking up to the git root);
-`--thread-id` names the checkpointer thread; a fresh run resets a terminally-finished
-thread and refuses a paused one, so a reused id won't resurrect prior state — a fresh id
-per run is still the simplest habit.
+`--thread-id` names the checkpointer thread. A fresh run refuses every retained
+thread ID, including completed runs; choose a new ID or explicitly resume the saved
+run. Existing checkpoints and recovery artifacts are preserved.
 Interactive runs pause for a y/n at the plan and PR gates; `--auto-approve` approves
 both, and `--approve plan,pr` approves only the gates you name (an unlisted gate is
 denied, halting the run there). `--quiet` silences the per-node progress stream.

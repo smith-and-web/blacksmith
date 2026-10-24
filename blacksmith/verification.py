@@ -150,11 +150,65 @@ def _save(context, operation, record, *, passing):
     path = _artifact(context, "gates" if isinstance(record, GateReceipt) else "fixes", operation)
     if record.artifact_path != str(path):
         raise ReceiptError("verification artifact identity mismatch")
+    if path.resolve() != path or path.is_symlink():
+        raise ReceiptError("foreign verification artifact path")
+    seal = OperationKey(operation.run_id, operation.unit_id, operation.attempt_id,
+                        "verification.seal:" + operation.id)
+    context.journal().intent(seal, {"operation_id": operation.id, "receipt": data})
+    context.journal().finish(seal, "completed", {"sha256": digest(encoded(data) + "\n")})
     try:
         atomic_write(path, encoded(data) + "\n")
     except OSError as exc:
         raise ReceiptError(f"critical verification artifact write failed: {path}") from exc
     context.journal().finish(operation, "completed" if passing else "failed", {"receipt": data})
+
+
+def _reconcile(context, operation, previous, cls, state):
+    """Restore a sealed completed verification without repeating its commands."""
+    seal_key = OperationKey(operation.run_id, operation.unit_id, operation.attempt_id,
+                            "verification.seal:" + operation.id)
+    seal = context.journal().get(seal_key)
+    if not seal or seal.status != "completed" or previous.status != "intent":
+        raise ReceiptError("interrupted_verification_requires_explicit_recovery")
+    data = seal.intent["receipt"]
+    if (seal.intent["operation_id"] != operation.id
+            or seal.outcome != {"sha256": digest(encoded(data) + "\n")}):
+        raise ReceiptError("verification seal does not match its recorded outcome")
+    try:
+        record = cls.model_validate(data)
+    except (ValueError, TypeError) as exc:
+        raise ReceiptError("invalid sealed verification receipt") from exc
+    path = _artifact(context, "gates" if cls is GateReceipt else "fixes", operation)
+    if (record.receipt_id != operation.id or record.run_id != context.run_id
+            or record.artifact_path != str(path)
+            or record.toolchain_hash != context.toolchain_sha256
+            or not record.candidate_commit):
+        raise ReceiptError("verification seal belongs to a different candidate/run")
+    if path.resolve() != path or path.is_symlink():
+        raise ReceiptError("foreign sealed verification artifact path")
+    try:
+        if path.exists() and json.loads(path.read_text()) != data:
+            raise ReceiptError("changed sealed verification artifact")
+    except (OSError, ValueError) as exc:
+        raise ReceiptError("changed sealed verification artifact") from exc
+    head, tree, dirty = candidate_identity(state["worktree_path"])
+    expected_tree = (record.candidate_tree if cls is GateReceipt else
+                     _git(state["worktree_path"], "rev-parse",
+                          record.candidate_commit + "^{tree}").strip())
+    if dirty or (head, tree) != (record.candidate_commit, expected_tree):
+        raise ReceiptError("sealed verification differs from current clean candidate")
+    for command in record.commands:
+        if _seal_command(command).output_artifact_sha256 != command.output_artifact_sha256:
+            raise ReceiptError("changed sealed command evidence")
+    restore = OperationKey(operation.run_id, operation.unit_id, operation.attempt_id,
+                            "verification.reconcile:" + operation.id)
+    context.journal().intent(restore, {"seal": seal_key.id, "artifact": str(path)})
+    if not path.exists():
+        atomic_write(path, encoded(data) + "\n")
+    passing = record.outcome == "passed" if cls is GateReceipt else record.eligible
+    context.journal().finish(operation, "completed" if passing else "failed", {"receipt": data})
+    context.journal().finish(restore, "completed", {"receipt": data})
+    return _load(context, operation, context.journal().get(operation), cls)
 
 
 def _load(context, operation, previous, cls):
@@ -266,6 +320,9 @@ def run_candidate_gate(
     unit = state.get("selected_unit")
     scope_id = scope_id or (unit.id if unit else "__run__")
     attempt = attempt_identity(state)
+    if unit and context.journal().pending_commands(unit.id, attempt):
+        failure = failure or "unconfirmed native gate command; inspect original child process"
+        failure_outcome = "error"
     started = _now()
     head = tree = None
     dirty = ""
@@ -328,7 +385,10 @@ def run_candidate_gate(
                 if record.outcome == "passed":
                     verify_gate_receipt(record, state, layers=layers)
                 return result_for_receipt(record)
-            raise ReceiptError("interrupted_gate_requires_reconciliation")
+            record = _reconcile(context, operation, previous, GateReceipt, state)
+            if record.outcome == "passed":
+                verify_gate_receipt(record, state, layers=layers)
+            return result_for_receipt(record)
         if outcome == "passed":
             try:
                 for index, planned in enumerate(commands):
@@ -400,6 +460,8 @@ def fix_candidate(state):
     context = context_from_state(state)
     unit = state["selected_unit"]
     attempt = attempt_identity(state)
+    if context.journal().pending_commands(unit.id, attempt):
+        raise ReceiptError("unconfirmed native formatter command; inspect original child process")
     owner_attempt = state.get("implementation_attempt_id") or attempt
     commit_key = OperationKey(context.run_id, unit.id, owner_attempt, "git.commit")
     owner = context.journal().get(commit_key)
@@ -414,6 +476,7 @@ def fix_candidate(state):
     started = _now()
     commands = []
     head = before
+    resume_index = 0
     outcome, message = "passed", ""
     with command_scope_for_state(state, "fix_candidate"):
         path = _workspace(state, context)
@@ -425,15 +488,17 @@ def fix_candidate(state):
                 if not command.strip():
                     raise GateError("empty formatter command")
                 planned.setdefault(command, []).append(layer)
-        previous = context.journal().intent(
-            key,
-            {
-                "before_commit": before,
-                "workspace": str(path),
-                "layers": layers,
-                "toolchain_hash": context.toolchain_sha256,
-            },
-        )
+        from blacksmith.formatter_recovery import resume_formatter, step_key
+        old = context.journal().get(key)
+        intent = {"before_commit": before, "workspace": str(path), "layers": layers,
+                  "toolchain_hash": context.toolchain_sha256}
+        if old:
+            intent.update({k: old.intent[k] for k in ("steps_version", "started_at")
+                           if k in old.intent})
+        else:
+            intent.update(steps_version=1, started_at=started)
+        previous = context.journal().intent(key, intent)
+        started = intent.get("started_at", started)
         if not previous.created:
             if previous.status in {"completed", "failed"}:
                 record = _load(context, key, previous, FixReceipt)
@@ -441,14 +506,25 @@ def fix_candidate(state):
                 if record.eligible and (actual_head != record.candidate_commit or dirty):
                     raise GateError("formatter receipt does not match current clean candidate")
                 return record
-            raise ReceiptError("interrupted_formatter_requires_reconciliation")
+            seal = context.journal().get(OperationKey(
+                key.run_id, key.unit_id, key.attempt_id, "verification.seal:" + key.id))
+            if seal:
+                return _reconcile(context, key, previous, FixReceipt, state)
+            commands, head, resume_index = resume_formatter(state, context, key, previous, planned)
+            if any(row.outcome != "passed" for row in commands):
+                outcome, message = "clean_failure", "formatter failed without source changes"
         try:
             actual_head, _, dirty = candidate_identity(path)
-            if actual_head != before or dirty:
+            if actual_head != head or dirty:
                 raise GateError("formatter requires the clean owned implementation commit")
             if commit_key.trailer not in _git(path, "log", "-1", "--format=%B").splitlines():
                 raise GateError("formatter commit ownership trailer is missing")
-            for command, covered in planned.items():
+            for index, (command, covered) in enumerate(planned.items()):
+                if index < resume_index:
+                    continue
+                command_key = step_key(key, index)
+                context.journal().intent(command_key, {"formatter": key.id,
+                    "command": command, "layers": covered, "candidate_commit": head})
                 row, _ = _execute(
                     path, GateCommandReceipt(stage="fix", command=command, layers=tuple(covered))
                 )
@@ -465,9 +541,21 @@ def fix_candidate(state):
                         outcome, message = "timeout", "formatter timed out"
                         break
                     outcome, message = "clean_failure", "formatter failed without source changes"
+                    context.journal().finish(command_key, "completed", {
+                        "command": row.model_dump(mode="json"), "candidate_commit": head})
                     continue
                 policy_for_state(state, path).audit(state.get("pre_implement_ref") or before)
-                _amend_if_changed(path)
+                amend_key = step_key(key, index, "amend")
+
+                def before_amend(amend_key=amend_key, head=head, row=row):
+                    intended_tree = _git(path, "write-tree").strip()
+                    context.journal().intent(amend_key, {"formatter": key.id,
+                        "before_commit": head, "parent": _git(path, "rev-parse", "HEAD^").strip(),
+                        "tree": intended_tree, "command": row.model_dump(mode="json")})
+                    body = _git(path, "log", "-1", "--format=%B").rstrip()
+                    return body + "\n\n" + amend_key.trailer
+
+                amended = _amend_if_changed(path, before_amend=before_amend)
                 head, _, dirty = candidate_identity(path)
                 policy_for_state(state, path).audit(state.get("pre_implement_ref") or before)
                 if dirty:
@@ -475,6 +563,18 @@ def fix_candidate(state):
                     break
                 if commit_key.trailer not in _git(path, "log", "-1", "--format=%B").splitlines():
                     raise GateError("formatter amend lost commit ownership")
+                if amended:
+                    intent = context.journal().get(amend_key).intent
+                    tree = _git(path, "rev-parse", "HEAD^{tree}").strip()
+                    if (tree != intent["tree"]
+                            or _git(path, "rev-parse", "HEAD^").strip() != intent["parent"]
+                            or amend_key.trailer not in _git(
+                                path, "log", "-1", "--format=%B").splitlines()):
+                        raise GateError("formatter amend changed intended tree/ownership")
+                    context.journal().finish(amend_key, "completed", {
+                        "candidate_commit": head, "candidate_tree": tree})
+                context.journal().finish(command_key, "completed", {
+                    "command": row.model_dump(mode="json"), "candidate_commit": head})
         except ReceiptError:
             raise
         except PolicyViolation as exc:

@@ -12,7 +12,15 @@ from langgraph.graph import END, START, StateGraph
 from blacksmith.commands import command_scope_for_state
 from blacksmith.nodes.implement import audit_and_commit, conventional_commit_message
 from blacksmith.path_policy import policy_for_state
-from blacksmith.receipts import ReceiptError, attempt_identity, call_context_for, digest, encoded
+from blacksmith.receipts import (
+    ReceiptError,
+    attempt_identity,
+    call_context_for,
+    digest,
+    encoded,
+    outcome_history,
+    outcome_record,
+)
 from blacksmith.run_context import RunContextError, context_from_state, unit_hash
 from blacksmith.state import BlacksmithState, Status, UnitAttemptState
 from blacksmith.unit_state import new_unit_attempt
@@ -206,10 +214,11 @@ def build_unit_graph(deps, worktree_manager=None):
             if not ok
             else "",
         }
-        if previous := state.get("recovery_previous_outcome"):
+        if state.get("recovery_generation"):
             result["recovery_generation"] = state.get("recovery_generation", 0)
-            result["recovery_history"] = [*previous.get("recovery_history", []), previous]
             result["recovery_amendment_id"] = state.get("recovery_amendment_id")
+        if previous := state.get("recovery_previous_outcome"):
+            result["recovery_history"] = [*outcome_history(previous), outcome_record(previous)]
         return {"unit_outcome": result, "status": Status.TESTING if ok else Status.HALTED}
 
     g = StateGraph(BlacksmithState)
@@ -236,7 +245,11 @@ def build_unit_graph(deps, worktree_manager=None):
     )
     g.add_node("finalize_review", wrap("finalize_review", gm.finalize_review))
     g.add_node("finalize_unit", wrap("finalize_unit", finalize))
-    g.add_conditional_edges(START, lambda s: s.get("recovery_entry") or "prepare_attempt")
+    entries = ("prepare_attempt", "implement", "audit_commit", "auto_fix",
+               "normalize_candidate", "test_gate", "review", "recovery_decision",
+               "continue_implement", "fix_retry", "escalate", "prepare_review_revision")
+    g.add_conditional_edges(START, lambda s: s.get("recovery_entry") or "prepare_attempt",
+                            {name: name for name in entries})
     g.add_conditional_edges(
         "prepare_attempt", lambda s: "finalize_unit" if s.get("unit_human") else "implement"
     )
@@ -287,31 +300,56 @@ def normalize_parallel_candidate(state):
     journal = context.journal() if context else None
     operation = context.key("git.squash") if context else None
     existing = journal.get(operation) if journal else None
+    staged_resume = False
     if existing:
         before, tree, dirty = candidate_identity(path)
-        if existing.status != "completed":
-            raise ReceiptError("interrupted_squash_requires_reconciliation")
-        if (
-            dirty
-            or existing.outcome["candidate_commit"] != before
-            or existing.outcome["candidate_tree"] != tree
-        ):
-            raise ReceiptError("squash outcome does not match candidate")
-        return {"implementation": {**state["implementation"], "candidate_commit": before}}
-    count = gm._git_run(path, "rev-list", "--count", f"{base}..HEAD").stdout.strip()
-    if int(count) <= 1:
-        return {}
-    before, tree, dirty = candidate_identity(path)
-    if dirty:
-        raise ValueError("cannot normalize a dirty unit candidate")
-    if journal:
-        journal.intent(
-            operation, {"before_commit": before, "base_commit": base, "candidate_tree": tree}
-        )
+        if existing.status == "completed":
+            if (dirty or existing.outcome["candidate_commit"] != before
+                    or existing.outcome["candidate_tree"] != tree):
+                raise ReceiptError("squash outcome does not match candidate")
+            return {"implementation": {**state["implementation"], "candidate_commit": before}}
+        intended = existing.intent
+        if intended["base_commit"] != base:
+            raise ReceiptError("squash intent differs from recorded unit base")
+        expected = intended["candidate_tree"]
+        if (not dirty and tree == expected and before != intended["before_commit"]
+                and gm._git_run(path, "rev-parse", "HEAD^").stdout.strip() == base
+                and operation.trailer in gm._git_run(
+                    path, "log", "-1", "--format=%B").stdout.splitlines()):
+            outcome = {"candidate_commit": before, "candidate_tree": tree}
+            proof = context.key("git.squash.reconciliation")
+            journal.intent(proof, {"original_operation": operation.id, **outcome})
+            journal.finish(proof, "completed", outcome)
+            if existing.status == "intent":
+                journal.finish(operation, "completed", outcome)
+            return {"implementation": {**state["implementation"], "candidate_commit": before}}
+        if existing.status != "intent":
+            raise ReceiptError("failed squash requires explicit generation recovery")
+        if before == base:
+            # A lost process after soft reset may leave exactly the intended tree staged.
+            if (gm._git_run(path, "write-tree").stdout.strip() != expected
+                    or gm._git_run(path, "ls-files", "--others", "--exclude-standard").stdout):
+                raise ReceiptError("unknown staged changes during squash")
+            gm._git_run(path, "diff", "--quiet")
+            staged_resume = True
+        elif before != intended["before_commit"] or dirty or tree != expected:
+            raise ReceiptError("unknown candidate during squash reconciliation")
+        tree = expected
+    else:
+        count = gm._git_run(path, "rev-list", "--count", f"{base}..HEAD").stdout.strip()
+        if int(count) <= 1:
+            return {}
+        before, tree, dirty = candidate_identity(path)
+        if dirty:
+            raise ValueError("cannot normalize a dirty unit candidate")
+        if journal:
+            journal.intent(operation, {
+                "before_commit": before, "base_commit": base, "candidate_tree": tree})
     message = conventional_commit_message(state["selected_unit"])
     if operation:
         message += "\n\n" + operation.trailer
-    gm._git_run(path, "reset", "--soft", base)
+    if not staged_resume:
+        gm._git_run(path, "reset", "--soft", base)
     gm._git_run(path, "commit", "-m", message)
     head, after_tree, dirty = candidate_identity(path)
     policy_for_state(state, path).audit(base)
@@ -379,7 +417,8 @@ def unit_runner(unit_graph):
             else sum(float(e.get("cost_usd") or 0) for e in state.get("cost_events") or []),
         )
         if recovered:
-            seed = {**recovered, "limits": state["limits"], "unit_initialized": True}
+            seed = {**seed, **recovered, "limits": state["limits"],
+                    "unit_initialized": recovered.get("unit_initialized", True)}
             # Include all run spend once, excluding the unit events already in this seed.
             known = {e.get("event_id") for e in seed.get("cost_events", [])}
             seed["run_cost_base"] = sum(

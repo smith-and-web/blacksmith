@@ -80,6 +80,7 @@ def owned_file(root, relative):
 
 
 def _validate(context, *, allow_pending=False):
+    from blacksmith.recovery_repair import observed_outcome, resolution
     root = _directory(context)
     index = _read(root / "index.json")
     if (not isinstance(index, dict) or not isinstance(index.get("records"), list)
@@ -106,7 +107,7 @@ def _validate(context, *, allow_pending=False):
         if any(record.get(k) != v for k, v in identity.items()):
             raise RecoveryError("recovery snapshot belongs to a different run")
         owner = journal.get(_key(context, name, "recovery.capture"))
-        if not owner or owner.status != "completed" or owner.outcome != entry:
+        if not owner or observed_outcome(context, owner) != entry:
             raise RecoveryError("recovery manifest lacks its matching critical receipt")
         for row in record["files"]:
             artifact = owned_file(path.parent, row["path"])
@@ -117,15 +118,19 @@ def _validate(context, *, allow_pending=False):
                 raise RecoveryError(f"unreadable recovery file: {artifact}") from exc
     for operation in journal.operations():
         if operation.key.kind == "recovery.amend":
-            if operation.status != "completed":
+            observed = observed_outcome(context, operation)
+            if observed is None:
+                if resolution(context, operation) or allow_pending:
+                    continue
                 raise RecoveryError("incomplete recovery amendment; retained for inspection")
-            patch = owned_file(root, operation.outcome["patch"])
-            if file_hash(patch) != operation.outcome["sha256"]:
+            patch = owned_file(root, observed["patch"])
+            if file_hash(patch) != observed["sha256"]:
                 raise RecoveryError("changed recovery amendment")
         if operation.key.kind == "recovery.capture":
-            if operation.status == "completed" and operation.key.attempt_id not in seen:
+            observed = observed_outcome(context, operation)
+            if observed and operation.key.attempt_id not in seen:
                 raise RecoveryError("recovery index is missing a completed capture")
-            if operation.status == "intent" and not allow_pending:
+            if (not observed and not resolution(context, operation) and not allow_pending):
                 raise RecoveryError("incomplete recovery capture; use recovery inspect first")
     return index
 
@@ -135,7 +140,7 @@ def validate(context, *, allow_pending=False):
         return _validate(context, allow_pending=allow_pending)
     except (RecoveryError, ReceiptError):
         raise
-    except (KeyError, TypeError, ValueError, OSError, AttributeError) as exc:
+    except (KeyError, TypeError, ValueError, OSError, AttributeError, RuntimeError) as exc:
         raise RecoveryError(f"missing/corrupt recovery metadata: {_directory(context)}") from exc
 
 
@@ -144,8 +149,12 @@ def _git(path, *args):
 
 
 def _dump_state(path, values, serde):
+    atomic_write(path, serialize_state(values, serde))
+
+
+def serialize_state(values, serde):
     kind, data = serde.dumps_typed(values)
-    atomic_write(path, encoded({"kind": kind, "data": base64.b64encode(data).decode()}) + "\n")
+    return encoded({"kind": kind, "data": base64.b64encode(data).decode()}) + "\n"
 
 
 def load_state(context, entry_id, snapshot):
@@ -242,7 +251,7 @@ def capture(context, checkpointer, *, reason, stage="cli"):
     record = {**_identity(context), "id": name, "stage": stage, "reason": str(reason),
               "checkpoints": [], "workspaces": []}
     with command_scope(context, unit_id="__run__", attempt_id=name, stage="recovery_capture"):
-        for config, values in latest_checkpoints(checkpointer, context):
+        for config, values in latest_checkpoints(checkpointer, context) if checkpointer else []:
             namespace = config["configurable"]["checkpoint_ns"]
             state_path = f"state/{digest(namespace)}.json"
             _dump_state(directory / state_path, values, checkpointer.serde)
@@ -256,7 +265,7 @@ def capture(context, checkpointer, *, reason, stage="cli"):
         paths += [("unit-" + digest(u.id), context.unit_path(u.id))
                   for u in context.prd().contract.work_units]
         existing = [(label, path) for label, path in paths if path.exists() or path.is_symlink()]
-        if not existing:
+        if not existing and context.planning_path.exists():
             existing = [("planning", context.planning_path)]
         for label, path in existing:
             record["workspaces"].append(_workspace(context, path, directory / label,
@@ -296,9 +305,13 @@ def capture(context, checkpointer, *, reason, stage="cli"):
                          "bytes": p.stat().st_size}
                         for p in sorted(directory.rglob("*")) if p.is_file()]
     record["bytes"] = sum(row["bytes"] for row in record["files"])
-    atomic_write(directory / "manifest.json", encoded(record) + "\n")
+    manifest_text = encoded(record) + "\n"
     entry = {"id": name, "manifest": f"{name}/manifest.json",
-             "sha256": file_hash(directory / "manifest.json")}
+             "sha256": hashlib.sha256(manifest_text.encode()).hexdigest()}
+    seal = _key(context, name, "recovery.capture.seal")
+    journal.intent(seal, {"operation_id": key.id, "entry": entry, "record": record})
+    journal.finish(seal, "completed", {"entry": entry})
+    atomic_write(directory / "manifest.json", manifest_text)
     # Both writes are critical; a crash between them is diagnosed before any paid call.
     atomic_write(root / "index.json", encoded(
         {**index, "records": [*index["records"], entry]},
@@ -321,6 +334,26 @@ def inspect(context):
                                       and op.status not in {"completed", "failed"}]}
 
 
+def diagnose(context):
+    """Read-only metadata and repair guidance remain available for incomplete captures."""
+    from blacksmith.recovery_repair import resolution
+    try:
+        result = {**inspect(context), "valid": True}
+    except (ReceiptError, OSError) as exc:
+        result = {**_identity(context), "recovery_path": str(_directory(context)),
+                  "valid": False, "integrity_error": str(exc)}
+    result["pending_artifacts"] = []
+    for operation in context.journal().operations():
+        if (operation.key.kind in {"recovery.capture", "recovery.amend"}
+                and operation.status != "completed" and not resolution(context, operation)):
+            command = ["blacksmith", "recovery", "repair", "--run-dir", str(context.directory),
+                       "--operation-id", operation.key.id]
+            result["pending_artifacts"].append({"operation_id": operation.key.id,
+                "kind": operation.key.kind, "status": operation.status,
+                "next_action": shlex.join(command)})
+    return result
+
+
 @contextmanager
 def protect_run(context, checkpointer):
     """Capture before releasing the run lock, on terminal failure or raised exception."""
@@ -335,8 +368,10 @@ def protect_run(context, checkpointer):
             path = capture(context, checkpointer, reason=f"{type(exc).__name__}: {exc}")
             print(f"Recovery manifest: {path}\nNext action: {action}", file=sys.stderr)
         except BaseException as capture_error:
+            fallback = shlex.join(["blacksmith", "recovery", "inspect", "--run-dir",
+                                   str(context.directory)])
             print(f"Critical recovery capture failed: {capture_error}; retained: "
-                  f"{_directory(context)}", file=sys.stderr)
+                  f"{_directory(context)}\nNext action: {fallback}", file=sys.stderr)
             if isinstance(exc, Exception):
                 raise RecoveryError("critical recovery capture failed; no further effects") from exc
         raise

@@ -1,0 +1,334 @@
+...                                                                      [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith/runs/1934cd4d-95b3-4dda-80c9-39b0bc7de2ab/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith/runs/1934cd4d-95b3-4dda-80c9-39b0bc7de2ab/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith/runs/1934cd4d-95b3-4dda-80c9-39b0bc7de2ab
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith/runs/1934cd4d-95b3-4dda-80c9-39b0bc7de2ab'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_recovery_files_removed_du0'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_cli_resume_uses_save1/.blacksmith/runs/31925073-0970-48ea-bdc5-76d40da87214/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_cli_resume_uses_save1/.blacksmith/runs/31925073-0970-48ea-bdc5-76d40da87214/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_resume_missing_or_corrupt1/.blacksmith/runs/0b6ba2bb-b957-401a-ba02-6226a86acd3a/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_resume_missing_or_corrupt1/.blacksmith/runs/0b6ba2bb-b957-401a-ba02-6226a86acd3a/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_process_exit_after_model_0/.blacksmith/runs/42bbc4eb-a32b-4b2f-b7b8-3b53ecf124a4/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_process_exit_after_model_0/.blacksmith/runs/42bbc4eb-a32b-4b2f-b7b8-3b53ecf124a4/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith/runs/1a194880-2328-4041-af85-f69de2046a97/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith/runs/1a194880-2328-4041-af85-f69de2046a97/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith/runs/1a194880-2328-4041-af85-f69de2046a97
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith/runs/1a194880-2328-4041-af85-f69de2046a97'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa2'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith/runs/4c853278-8fb1-45bb-b46e-d201812f2b10/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith/runs/4c853278-8fb1-45bb-b46e-d201812f2b10/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith/runs/4c853278-8fb1-45bb-b46e-d201812f2b10
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith/runs/4c853278-8fb1-45bb-b46e-d201812f2b10'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c0'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_process_exit_reconci0/.blacksmith/runs/4bf10615-ccbf-4f00-b6c5-1bf05ac96cce/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_process_exit_reconci0/.blacksmith/runs/4bf10615-ccbf-4f00-b6c5-1bf05ac96cce/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs/022728da-c3c7-47c7-908f-c57bb646d4a3/planning/.git
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs/022728da-c3c7-47c7-908f-c57bb646d4a3/planning/.git'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs/022728da-c3c7-47c7-908f-c57bb646d4a3/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs/022728da-c3c7-47c7-908f-c57bb646d4a3/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs/022728da-c3c7-47c7-908f-c57bb646d4a3
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs/022728da-c3c7-47c7-908f-c57bb646d4a3'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_historical_unit_p0'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs/266394b9-dccc-4e8a-9113-d69d1022133f/planning/.git
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs/266394b9-dccc-4e8a-9113-d69d1022133f/planning/.git'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs/266394b9-dccc-4e8a-9113-d69d1022133f/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs/266394b9-dccc-4e8a-9113-d69d1022133f/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs/266394b9-dccc-4e8a-9113-d69d1022133f
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs/266394b9-dccc-4e8a-9113-d69d1022133f'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first1'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith/runs/11599ed6-be3c-4cf9-8eae-50b66e32565b/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith/runs/11599ed6-be3c-4cf9-8eae-50b66e32565b/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith/runs/11599ed6-be3c-4cf9-8eae-50b66e32565b
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith/runs/11599ed6-be3c-4cf9-8eae-50b66e32565b'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_clone_toolchain_cannot_re0'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_production_unit_graph_rej0/.blacksmith/runs/bb5ecb8f-adc8-4921-935f-1482c15d52b2/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_production_unit_graph_rej0/.blacksmith/runs/bb5ecb8f-adc8-4921-935f-1482c15d52b2/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_cli_resume_uses_save0/.blacksmith/runs/4b60f671-dae0-4d95-9130-2113c4a22700/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_cli_resume_uses_save0/.blacksmith/runs/4b60f671-dae0-4d95-9130-2113c4a22700/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_sealed_capture_repair_pre2/.blacksmith/runs/4500f4dd-f844-4af2-81ca-d28b4fc1a3a6/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_sealed_capture_repair_pre2/.blacksmith/runs/4500f4dd-f844-4af2-81ca-d28b4fc1a3a6/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_effect_recovery_after_rea2/.blacksmith/runs/db783817-3b28-40ad-9a32-c8791338cf39/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_effect_recovery_after_rea2/.blacksmith/runs/db783817-3b28-40ad-9a32-c8791338cf39/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith/runs/c2a49116-7316-499f-818a-94c21e86f78b/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith/runs/c2a49116-7316-499f-818a-94c21e86f78b/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith/runs/c2a49116-7316-499f-818a-94c21e86f78b
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith/runs/c2a49116-7316-499f-818a-94c21e86f78b'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0/target'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_custom_runtime_config_ins0'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_pr_rejection_requires_fre0/.blacksmith/runs/41e09fa6-a403-45aa-a1c8-31ae67d9070e/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_pr_rejection_requires_fre0/.blacksmith/runs/41e09fa6-a403-45aa-a1c8-31ae67d9070e/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_effect_recovery_after_rea5/.blacksmith/runs/5bf2a82a-267e-4698-8d70-a7ad21aa27f0/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_effect_recovery_after_rea5/.blacksmith/runs/5bf2a82a-267e-4698-8d70-a7ad21aa27f0/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_production_unit_graph_rej1/.blacksmith/runs/8c137a12-9966-45ee-991d-bc4ec6e58ab1/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_production_unit_graph_rej1/.blacksmith/runs/8c137a12-9966-45ee-991d-bc4ec6e58ab1/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_gate_exception_or_changed0/.blacksmith/runs/15c40b36-5012-48b6-a1e3-1a7eb10cf732/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_gate_exception_or_changed0/.blacksmith/runs/15c40b36-5012-48b6-a1e3-1a7eb10cf732/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith/runs/829af867-ba21-476d-b721-a6f465dc308b/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith/runs/829af867-ba21-476d-b721-a6f465dc308b/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith/runs/829af867-ba21-476d-b721-a6f465dc308b
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith/runs/829af867-ba21-476d-b721-a6f465dc308b'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_critical_artifact_write_f0'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_process_exit_reconci1/.blacksmith/runs/d5905c80-f082-4ded-bcf6-cb63a2987426/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_real_process_exit_reconci1/.blacksmith/runs/d5905c80-f082-4ded-bcf6-cb63a2987426/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_final_gate_runs_prior_lay0/.blacksmith/runs/4ac041d6-3c96-4093-8016-a8fc4572e146/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_final_gate_runs_prior_lay0/.blacksmith/runs/4ac041d6-3c96-4093-8016-a8fc4572e146/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first0/.blacksmith/runs/30a231d5-8a0f-4512-8268-8dbf73fe807a/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_fetch_failure_after_first0/.blacksmith/runs/30a231d5-8a0f-4512-8268-8dbf73fe807a/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_resume_missing_or_corrupt0/.blacksmith/runs/6d3c3604-78c1-4185-8d79-29d21b95e688/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_resume_missing_or_corrupt0/.blacksmith/runs/6d3c3604-78c1-4185-8d79-29d21b95e688/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c1/.blacksmith/runs/2046a538-6866-4653-84d9-c27320e7158f/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_optional_model_handlers_c1/.blacksmith/runs/2046a538-6866-4653-84d9-c27320e7158f/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_failed_parallel_stage_ret0/.blacksmith/runs/06d2a414-d0d9-49b7-93d5-761946eb0423/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_failed_parallel_stage_ret0/.blacksmith/runs/06d2a414-d0d9-49b7-93d5-761946eb0423/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith/runs/6712724d-7a94-4c37-bdc4-0c3b4a32337f/planning
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith/runs/6712724d-7a94-4c37-bdc4-0c3b4a32337f/planning'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith/runs/6712724d-7a94-4c37-bdc4-0c3b4a32337f
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith/runs/6712724d-7a94-4c37-bdc4-0c3b4a32337f'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith/runs
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith/runs'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3/.blacksmith'
+    warnings.warn(
+
+.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/_pytest/pathlib.py:95: PytestWarning: (rm_rf) error removing /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3
+  <class 'OSError'>: [Errno 66] Directory not empty: '/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/garbage-5b68dca1-4d05-4323-8a66-cee1a67c41d4/test_corrupt_or_missing_artifa3'
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+3 passed, 6 deselected, 66 warnings in 51.55s

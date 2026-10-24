@@ -8,7 +8,7 @@ from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITra
 
 
 @pytest.fixture(autouse=True)
-def isolated_git_environment(monkeypatch):
+def isolated_git_environment(monkeypatch, tmp_path_factory):
     for key in tuple(os.environ):
         if key.startswith("GIT_"):
             monkeypatch.delenv(key, raising=False)
@@ -17,9 +17,22 @@ def isolated_git_environment(monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     # No inferred OS identity and no inherited hooks. A hook test must explicitly
     # configure its repository's hooksPath, as the conventional-commit fixture does.
-    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "3")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.useConfigOnly")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    # Native Git children do not use Python's socket guard. Only scratch local
+    # transports are available, even if a crash injection misses its exit point.
+    monkeypatch.setenv("GIT_CONFIG_KEY_1", "protocol.allow")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_1", "never")
+    monkeypatch.setenv("GIT_CONFIG_KEY_2", "protocol.file.allow")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_2", "always")
+    gh_config = tmp_path_factory.getbasetemp() / "offline-gh"
+    gh_config.mkdir(exist_ok=True)
+    monkeypatch.setenv("GH_CONFIG_DIR", str(gh_config))
+    for key in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
+        # dotenv must not restore a developer's publication credentials.
+        monkeypatch.setenv(key, "")
+    monkeypatch.setenv("GH_PROMPT_DISABLED", "1")
 
 
 @pytest.fixture(autouse=True)

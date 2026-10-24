@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
 Heavy-PRD remediation is still in progress. This documents completed runtime
-slices through S10, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+slices through S11, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -104,8 +104,8 @@ artifacts cannot be overwritten with changed content. The plan approval proposal
 is persisted before displaying the interrupt and includes the run ID, PRD hash,
 bundle hash and per-unit hashes. Acceptance persists `approved.json` plus the same
 hash binding in checkpoint state; a substituted plan cannot reuse the earlier bool.
-Approval rejection does not create an approved artifact. Terminal reapproval still
-requires S11; its artifact capture foundation is documented below.
+Approval rejection does not create an approved artifact. Explicit resume after a
+rejection schedules a fresh approval interrupt; see recovery below.
 
 Every implementation attempt (including continuation/fix/escalation/review revision)
 and reviewer validates the whole approved bundle, selected plan and immutable
@@ -123,8 +123,8 @@ work, budgets or checkpoints. An old active workspace may first hit the stricter
 S08 `legacy_unit_graph_requires_manual_recovery` guard. Runs interrupted before
 any plans were checkpointed may enter the new planner and reuse completed journal
 responses; uncertain responses still stop. Do not manufacture approval hashes for
-an old run. Inspect retained history/artifacts until explicit S11 migration/recovery
-is available, or start a new run with a new thread ID.
+an old run. Inspect retained history/artifacts read-only, or start a new run with a
+new thread ID. Missing historical approval hashes are never manufactured.
 
 ## Critical operation receipts
 
@@ -149,12 +149,11 @@ Known streamed turns and reported terminal usage survive stream errors.
 
 Implementation commits carry `Blacksmith-Operation-Id: <id>` trailers. Completed
 commit reuse requires the recorded HEAD, a matching trailer and a clean workspace;
-unknown extra changes stop for inspection. Matching committed effects now have
-S11 reconciliation; other interrupted stages remain in progress. Native commands now record individual
-intent/outcome receipts. Completed formatter receipts can reuse an already amended, clean owned candidate.
-Interrupted formatter/squash/join/publication reconciliation and full artifact recovery
-remain later slices; a command receipt alone does not make an
-interrupted multi-command stage safe to repeat.
+unknown extra changes stop for inspection. Matching implementation, formatter,
+squash and join effects have the reconciliation described below. Native commands
+record individual intent/outcome receipts. An unconfirmed command process/effect
+stops recovery; its original intent remains unchanged. Publication reconciliation
+is S14. A command receipt alone does not make a multi-command stage safe to repeat.
 
 Cost events use call IDs and keyed reduction so a replayed update cannot add the
 same call twice. Missing costs remain unknown, not measured zero-dollar calls.
@@ -252,9 +251,9 @@ Parallel workers retain the single-commit join interface. When revisions create
 multiple commits, checked normalization records a critical squash intent/outcome,
 preserves the tree and operation trailer, and occurs before the authoritative gate
 and review. A completed squash can be reused after losing its node checkpoint;
-uncertain squash intent stops for S11 reconciliation. Sequential history is retained.
-S10 now validates and integrates these recorded sources as described below. S11
-artifact capture is present; complete failed-stage recovery remains in progress.
+a pending squash reconciles its exact committed or staged tree. Unknown edits stop
+for inspection. Sequential history is retained. Joins and explicit recovery are
+described below.
 
 Optional unit-stage events carry run/unit/attempt IDs and forward through the
 parent's writer, preserving CLI phase progress. Observation failure cannot replace
@@ -306,10 +305,10 @@ Git objects; they are not reused as gates for a later shared HEAD.
 If a process exits after a pick or Git commit but before the outcome/checkpoint,
 resume reconciles the exact clean HEAD, parent, staged-tree intent, source and
 operation trailer, reuses the existing commit and continues at the next pick. An
-unknown extra commit, dirty workspace, missing/corrupt evidence or uncommitted
-interrupted pick stops for explicit recovery. Failed receipts are immutable; S11
-must record an explicit recovery generation instead of overwriting one or resetting
-consumed budgets. This does not prove live model billing/cancellation behavior.
+unknown extra commit, unsealed staged work or corrupt evidence stops for inspection.
+An exact sealed staged pick can finish once under its original operation. Explicit
+rollback recovery uses recorded generations and restores prior exact destination
+objects. Original failed receipts remain immutable and consumed budgets remain. This does not prove live model billing/cancellation behavior.
 
 A conflict, failed fetch (including a bounded-command exception), failed commit or
 changed commit hook writes retained failure/conflict evidence, then uses checked
@@ -318,7 +317,7 @@ shared workspace. A rollback error preserves both its own cause and the original
 failure and does not retry/reset again. Unknown extra edits are retained for
 inspection instead of being discarded. HALTED/rejected cleanup now preserves
 workspaces/branches. S11 now captures manifests/binary/untracked snapshots/refs
-bundles; explicit failed-stage recovery remains in progress.
+bundles; explicit failed-stage recovery is documented below.
 
 After each multi-unit join, `integration_gate` runs the frozen toolchain over the
 union of all auto layers completed so far. Before normal PR approval or the terminal
@@ -364,7 +363,7 @@ Attempt identities retain the existing `(fix count, escalated, revision count,
 continuation count)` encoding, so receipt keys and consumed counters are not reset
 by a metadata addition or an ordinary restart. Older projections lacking a known
 unit-base field retain `None`; no historical SHA is invented. Complete ambiguous
-stage/boundary reconciliation remains S11 work. The factory runs at actual new-unit
+stage reconciliation is described in the recovery section below. The factory runs at actual new-unit
 transitions, not merely because `resume` was invoked.
 
 Real CLI/checkpointer tests cover an escalated and reviewed sequential unit, then
@@ -412,72 +411,59 @@ may proceed only with unchanged HEAD and no tracked/index/nonignored source edit
 its failed command remains visible in a `clean_failure` formatter receipt. Partial
 failed edits, protected-path edits, Git/staging/amend errors and timeout halt with
 nonpassing gate evidence. Completed formatter receipts reconcile the amended SHA
-without another amend; uncertain pending stages still require S11 recovery.
+without another amend; pending formatter stages reconcile from their original
+command/tree intents. Unsealed unknown changes stop for inspection.
 
 This proves unit verifier integrity for the recorded commands. It does not prove
 the full natural-language test contract, honest patch review or publication approval.
-S10 adds merged/final coverage; S11-S19 and live release gates remain open.
+S10 adds merged/final coverage. S12-S19 and live release gates remain separate;
+full S11 verification is recorded in the implementation evidence.
 
-## Recovery artifact foundation (S11 in progress)
+## Recovery artifacts and explicit restart
 
-S11 is not complete. The implemented foundation captures retained evidence and
-reconciles an observed implementation commit; explicit failed-stage recovery,
-continuation amendments and budget additions are still being implemented. Do not
-interpret this section as a recovery acceptance or general readiness release.
+Recovery runs under the original thread/run execution locks and saved configuration.
+A failure, rejection, interruption or exception retains the workspace and a private
+capture with its absolute manifest path and a supported next action. Bootstrap
+failures can capture original inputs and journal before any checkpoint exists. If
+critical storage itself fails, the diagnostic identifies the retained directory;
+it does not invent a successful capture. There is no automatic garbage collection.
+Successful workspaces are retained too.
 
-Fresh version-2 runs initialize a critical `recovery/index.json` before planning.
-Run verification and production call contexts validate its run/context identity,
-critical ownership receipts, immutable snapshot manifests and every recorded file
-hash. Missing/corrupt indexes, malformed schemas, missing entries or changed
-snapshots stop before a new model call. Removing recovery metadata while waiting
-for plan approval blocks workspace preparation. Old active runs lacking this data
-receive diagnostics without manufacturing a replacement or resetting paid work.
-
-After preflight, the CLI protects the drive under the original run lock. On HALTED,
-rejection or an exception (including cancellation/KeyboardInterrupt), it writes a
-new private snapshot and prints its absolute recovery manifest path. Failed capture
-is critical: partial files and its pending receipt remain, it reports the failure
-and no later effect is scheduled. Earlier preflight failures retain the original run
-directory/input manifest/journal but do not yet have a complete recovery capture;
-explicit inspection/repair of those cases is part of remaining S11 work.
-
-A completed snapshot includes:
-
-- Full staged and unstaged binary patches (Git writes explicit owned files, so
-  patch size is not silently limited by the command stdout cap).
-- Nonignored untracked files and symlink target metadata, with no following of
-  escape links; the complete original workspace remains retained.
-- A refs bundle, including orphaned operation commits preserved from reflogs.
-- Latest root and unit checkpoint state, with registered serializer types, original
-  failure stages and consumed unit counters.
-- Original input/config/toolchain manifests, plans, gate/fix/join artifacts,
-  command logs and a consistent SQLite backup of model/operation receipts.
-
-Files and directory entries are flushed before atomic manifest/index publication;
-a completed capture has a matching critical journal receipt. Every older snapshot
-stays immutable. Versioned runs now retain successful workspaces too. There is no
-automatic deletion or garbage collection. Inspection reports the retained paths,
-per-snapshot/total bytes and uncertain call IDs so the disk cost stays visible.
-
-Inspect without loading credentials, constructing an executor or modifying the
-checkpoint database, workspaces or artifacts:
+A completed capture includes full staged/unstaged binary patches, nonignored
+untracked files and safe symlink target metadata, refs bundles including orphaned
+operation commits, latest root/child state and consumed counters, original
+inputs/plans/verification/command artifacts and a consistent journal backup. Files
+and directories flush before atomic manifest/index publication. A critical seal
+binds the intended manifest and every file hash before publication. Snapshot bytes,
+retained paths and uncertain call IDs are visible in inspection.
 
 ```sh
 blacksmith recovery inspect --thread-id my-run --config /path/to/blacksmith.config.toml
+blacksmith recovery inspect --run-dir /absolute/path/.blacksmith/runs/RUN_ID
 ```
 
-Inspection uses a SQLite read-only connection. Supply the original config selection
-when it was explicit. Missing/corrupt evidence produces a diagnostic; it is not
-silently regenerated. The printed inspection command quotes the saved thread ID
-and includes the original explicit config path.
+Inspection loads no credentials or executor. Thread inspection uses read-only
+SQLite; run-directory inspection needs no checkpoint database. Old checkpoints
+remain inspectable with an explicit legacy/manual-recovery diagnostic and cannot
+execute. Missing/corrupt input or recovery files produce a diagnostic without paid
+work. Printed commands quote the saved thread/config selection; a failed capture
+uses the absolute run-directory command.
 
-An SDK call killed without terminal evidence remains uncertain. Ordinary resume
-refuses it with `interrupted_attempt_requires_resume`, preserving partial binary
-and untracked files in a capture and leaving the original model receipt unchanged.
-Explicit recovery now uses a sealed critical amendment, then schedules the saved
-stage through the same compiled unit graph. It does not recreate the worker or
-reset counters, model tier, bases, approved plans or costs. Successful siblings
-stay unchanged. Replaced failed outcomes retain their original generation history.
+An interrupted capture/amendment is diagnosed with its operation ID. Explicit repair
+is local, locked and verifies original input hashes and source identity:
+
+```sh
+blacksmith recovery repair --run-dir /absolute/path/.blacksmith/runs/RUN_ID --operation-id OPERATION_ID
+```
+
+Repair reconciles only critically sealed, matching bytes. A missing final manifest
+can be reconstructed from its original critical seal; changed sealed files refuse.
+An unsealed partial is retained with a hashed inventory and labeled
+`retained_partial`, never promoted into a completed capture. The original failed or
+pending receipt stays unchanged beside a separate repair receipt. A reconciled
+amendment keeps the same scheduling patch/budget; an unprovable partial amendment
+remains failed evidence and a later explicit request gets a distinct operation.
+No old paid call, config value or hash is guessed from missing metadata.
 
 ```sh
 blacksmith resume --thread-id my-run --config /path/to/blacksmith.config.toml --retry-stage
@@ -485,44 +471,63 @@ blacksmith resume --thread-id my-run --config /path/to/blacksmith.config.toml --
 blacksmith resume --thread-id my-run --config /path/to/blacksmith.config.toml --add-budget-usd 10
 ```
 
-`--retry-stage` explicitly retries a recorded deterministic failed unit stage or
-integration/final gate. An optional `--unit-id` selects one failed unit; otherwise
-recorded failed siblings enter a finite queue. Model work requires
-`--continue-attempt`, which acknowledges the original uncertain receipt and consumes
-remaining continuation allowance. The new call has a new receipt; the old receipt
-and partial files remain. Planning/critic recovery reuses completed roles and
-changes only the acknowledged uncertain call key. Review-panel recovery reuses
-completed seats, preserves the gated candidate and consumes continuation allowance.
+`--retry-stage` explicitly selects the recorded failed stage under original budgets.
+`--unit-id` can select a failed unit. A sealed critical amendment precedes scheduling
+and binds workspace bytes/index/HEAD; dispatch verifies it again. A finite queue
+uses the existing compiled unit graph and original worker. Counters, tier, bases,
+last passing candidate, approved inputs and cost IDs survive. Prior failed outcomes
+remain in a flat generation history. Completed child results lost before the parent
+barrier are consumed once. A genuinely unstarted sibling starts at the saved level
+base only when no worker/attempt/paid-attempt evidence exists; incomplete metadata
+with existing effects refuses execution. Successful siblings do not rerun.
 
-A positive finite `--add-budget-usd` adds to the frozen run cap, never substitutes
-the local config or clears spend. The critical amendment is durable before graph
-scheduling; repeated preparation of the same checkpoint/request reuses its sealed
-patch. Original cost events are preserved by call ID; missing completed checkpoint
-events are reconciled from child/journal evidence. This is not the global admission
-reservation/accounting service required by S15. Unknown provider usage remains
-unknown; offline tests do not prove invoice or cancellation behavior.
+An SDK effect without terminal evidence remains uncertain. Ordinary resume refuses
+it with `interrupted_attempt_requires_resume`. `--continue-attempt` acknowledges the
+original unchanged receipt and partial files, consumes remaining continuation
+allowance and creates a new call receipt. Planner/critic and panel recovery reuse
+completed roles/seats. Review continuation preserves the gated candidate and uses
+the same continuation allowance. Unknown usage remains unknown; live cancellation
+and provider billing are not proved by these offline drills.
 
-Ordinary terminal failure resume refuses without an explicit recovery action.
-Plan/PR rejection resume schedules a fresh approval interrupt. Workspace bytes,
-index and HEAD are bound to the amendment and checked again at dispatch. Missing
-workers, changed successful siblings, unknown candidate commits, depleted
-continuations and corrupt amendment files stop before further paid work.
+A positive finite `--add-budget-usd` adds to the saved cap without changing frozen
+models/config or clearing spend. A prepared amendment lost before its checkpoint
+reuses the same sealed patch. Repeated amendment flags while dispatch is pending
+refuse instead of adding budget twice. Ordinary resume never replenishes allowance.
+Known costs missing from parent state reconcile by call ID; recovered child policy
+spend includes each known cost once. S15 separately supplies global reservations,
+unknown-spend accounting and first-call/all-role admission; the prior stale parallel
+worker total is not a global spending ceiling.
 
-S11 remains incomplete: generic pending formatter/gate/squash/staged-join
-reconciliation, complete join-failure recovery, interruption before an unscheduled
-sibling starts, no-checkpoint/old-run inspection and interrupted-capture repair
-still need verification and implementation. Unknown deterministic effects continue
-to hold for inspection. Do not infer those cases from the supported unit-gate and
-model-continuation drills.
+Plan and PR rejection require a fresh interrupt on resume. Unit, integration and
+final failures resume at their actual scopes; combined failures do not repair an
+arbitrary last worker. SDK/model work is not repeated to repair deterministic stages.
 
-Implementation commits now persist staged-tree intent before the Git commit. If
-a process exits after committing but before outcome/checkpoint, resume verifies
-clean exact HEAD, parent, tree and operation trailer, records reconciliation and
-reuses the existing commit without another SDK/Git commit. A pending original
-intent may complete. A failed/interrupted original receipt remains immutable;
-a separate observed-effect proof establishes ownership for formatting. Unknown
-extra changes or missing old tree evidence still require inspection. This is
-observed Git-effect proof, not an exactly-once provider billing claim.
+Implementation commits reconcile exact clean HEAD/parent/tree/operation trailer,
+or finish an exact sealed staged tree once. Formatter commands have per-command
+receipts and staged-tree/parent/amend intents. A completed command/amend can be
+reused after a lost outcome without running the formatter again; successful source
+changes still require original implementation ownership. Sealed verification
+results restore their final artifact/outcome only against matching clean Git and
+command hashes. Squash recovery reuses an exact owned commit or the recorded soft
+reset's exact staged tree. Unknown extra commits/edits and unsealed command effects
+stop for inspection.
+
+A failed join retains every worker and restores the complete saved level base with
+checked operations. Explicit recovery restores earlier exact destination objects
+in order, then retries only the failed pick under a new generation when needed.
+An already-created matching orphan commit is reused with separate observed-effect
+proof while its original failed receipt stays unchanged. Source/base/parent/tree
+and both operation/source trailers must match; ambiguous matches refuse. Restore
+intent precedes moving the clean shared tip; a lost restore outcome reconciles the
+same SHA. An owned staged pick can finish once without fetching/picking again.
+Recovery operations themselves perform no remote publication; approval/publication
+behavior is hardened separately in S13-S14.
+
+These are scoped offline guarantees. Strict review, exact-SHA QA/PR approval,
+publication reconciliation, global admission/deadlines, bounded scheduling and
+conditional sandbox/respond handling remain S12-S19. Clones are not OS sandboxes;
+the trusted host toolchain boundary still applies. Release canaries and Docker
+smoke remain separate authorized gates.
 
 ## Execution validation and archived PRDs
 
@@ -548,9 +553,8 @@ authoritative; changing the local config does not silently replace them on resum
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call
 refusal are in place. Artifact capture and implementation-commit reconciliation
-and explicit saved-unit recovery amendments are present; the remaining S11 cases
-are listed above. These slices do not establish exactly-once billing across a killed
-provider process or complete generic stage recovery.
+and explicit recovery are present; the proof and scoped holds are listed above.
+These slices do not establish exactly-once provider billing or live cancellation.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing
 history tools. Execution-resume refuses them with
@@ -559,5 +563,6 @@ records. Fresh runs also refuse an existing thread ID; select a new `--thread-id
 If an older nested invocation stored databases elsewhere, explicitly select those
 paths for inspection rather than assuming they moved with the new path semantics.
 
-No live canary, real push/PR creation or Docker recovery smoke is part of this
-implementation proof. Those gates require separate authorization.
+No live canary, successful publication or Docker recovery smoke is part of this
+implementation proof. Those gates require separate authorization. A failed test
+push attempt and the corrected offline harness are recorded in the review evidence.

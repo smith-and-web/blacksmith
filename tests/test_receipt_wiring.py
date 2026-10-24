@@ -48,7 +48,9 @@ def test_bootstrap_intent_failure_prevents_planning_clone_and_sdk(project, monke
     )
     assert cli.main([str(prd), "--config", str(config)]) == 1
     path = database(project)
-    assert operations(path) == [("recovery.initialize", "completed")]
+    assert operations(path) == [("recovery.initialize", "completed"),
+                                ("recovery.capture", "completed"),
+                                ("recovery.capture.seal", "completed")]
     assert not (path.parent / "planning").exists()
     assert (path.parent / "manifest.json").is_file()
     assert calls == []
@@ -73,7 +75,7 @@ def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, c
     ] + [(f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)]
     assert rows[10:] == [("recovery.capture", "completed")] + [
         (f"command:{i}:recovery_capture:git", "completed") for i in range(1, 9)
-    ]
+    ] + [("recovery.capture.seal", "completed")]
     assert not any(kind.startswith("model.") for kind, _ in rows)
     assert (path.parent / "planning").is_dir()
     assert not (path.parent / "workspace").exists()
