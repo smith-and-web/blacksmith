@@ -22,6 +22,7 @@ from typing import Any
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.plan import cost_event
 from blacksmith.path_policy import PolicyViolation, policy_for_state
+from blacksmith.receipts import ReceiptError, call_context_for
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
@@ -264,7 +265,16 @@ def _synthesize_summary(
         # error, never propagate out of the PR node — the summary is additive and can
         # never block or crash opening the PR.
         prompt = _summary_prompt(state, units)
-        result = executor.run_summary(prompt, raise_on_error=False)
+        kwargs = {"raise_on_error": False}
+        if state.get("run_context"):
+            from blacksmith.run_context import git_read
+            candidate = git_read(Path(state["worktree_path"]), "rev-parse", "HEAD").strip()
+            kwargs["call_context"] = call_context_for(
+                state, unit_id="__run__", attempt_id=f"summary:{candidate}",
+            )
+        result = executor.run_summary(prompt, **kwargs)
+    except ReceiptError:
+        raise
     except Exception:
         return None, None, None
     event = cost_event("summary", unit_id, result)

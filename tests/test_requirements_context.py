@@ -67,6 +67,10 @@ class RequirementsTransport(Executor):
 
     async def _collect(self, prompt, options, *, emit_findings=False):
         assert Path(options.cwd).is_dir()  # inspect the read cwd when the call actually occurs
+        expected_tools = {"Read", "Glob", "Grep"}
+        if prompt.startswith("Implement this work unit"):
+            expected_tools |= {"Write", "Edit", "NotebookEdit"}
+        assert set(options.tools) == expected_tools
         if prompt.startswith("Produce a concise"):
             role = "plan"
             uid = re.search(r"^Unit (\S+):", prompt, re.M).group(1)

@@ -19,7 +19,7 @@ import json
 import re
 import warnings
 from collections.abc import AsyncIterator, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +37,7 @@ from langgraph.config import get_stream_writer
 
 from blacksmith import transcript
 from blacksmith.config import BlacksmithConfig
+from blacksmith.receipts import CallContext, ReceiptError, digest
 
 # The SDK (>=0.2.115) warns that listing a tool in ``allowed_tools`` auto-approves it before
 # the ``can_use_tool`` guard is consulted. That is intentional here: the implementer's guard
@@ -126,6 +127,8 @@ class ExecutorResult:
     # the turn cap either as a ResultMessage with ``subtype == "error_max_turns"`` or, on some
     # paths, by raising "Reached maximum number of turns" during iteration — both map here.
     error_kind: str | None = None
+    call_id: str | None = None
+    terminal_received: bool = True
 
     @property
     def hit_turn_limit(self) -> bool:
@@ -163,12 +166,14 @@ class Executor:
         can_use_tool: Any = None,
         betas: Sequence[str] | None = None,
         mcp_servers: dict[str, Any] | None = None,
+        tools: Sequence[str] | None = None,
     ) -> ClaudeAgentOptions:
         # Dedicated key (PRD §8 / AC-8): resolve_api_key raises if it is unset, so an
         # accidental fall-back to other auth is impossible.
         env = {"ANTHROPIC_API_KEY": self._config.resolve_api_key()}
         return ClaudeAgentOptions(
             model=model,
+            tools=list(tools) if tools is not None else None,
             system_prompt=system_prompt,
             cwd=str(cwd) if cwd is not None else None,
             max_turns=max_turns,
@@ -195,6 +200,8 @@ class Executor:
         model: str,
         raise_on_error: bool = True,
         emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
         **option_kwargs: Any,
     ) -> ExecutorResult:
         """Run one prompt to completion and return a structured result.
@@ -205,14 +212,61 @@ class Executor:
         ``_emit_activity``).
         """
         options = self.build_options(model=model, **option_kwargs)
-        result = asyncio.run(self._collect(prompt, options, emit_findings=emit_findings))
+        journal = call_context.journal() if call_context else None
+        key = call_context.key(operation_kind) if call_context else None
+        cached = None
+        if journal is not None:
+            receipt = journal.intent(key, {
+                "prompt_sha256": digest(prompt),
+                "system_prompt_sha256": digest(str(options.system_prompt or "")),
+                "model": options.model, "cwd": str(options.cwd) if options.cwd else None,
+                "max_turns": options.max_turns, "max_budget_usd": options.max_budget_usd,
+                "allowed_tools": options.allowed_tools,
+                "disallowed_tools": options.disallowed_tools,
+                "tools": options.tools,
+                "permission_mode": options.permission_mode,
+                "mcp_servers": sorted(options.mcp_servers),
+            })
+            if not receipt.created:
+                if receipt.status not in {"completed", "failed"}:
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+                try:
+                    cached = ExecutorResult(**receipt.outcome["result"])
+                except (KeyError, TypeError) as exc:
+                    raise ReceiptError("invalid retained SDK result") from exc
+                if (cached.call_id != key.id or not cached.terminal_received
+                        or cached.is_error != (receipt.status == "failed")):
+                    raise ReceiptError("invalid retained SDK result identity/status")
+        if cached is not None:
+            result = cached
+        else:
+            try:
+                result = asyncio.run(self._collect(prompt, options, emit_findings=emit_findings))
+            except BaseException as exc:
+                if journal is not None:
+                    journal.finish(key, "interrupted", {"error_type": type(exc).__name__})
+                raise
+            if journal is not None:
+                result = replace(result, call_id=key.id)
+                event = {"call_id": key.id, "unit_id": key.unit_id, "attempt_id": key.attempt_id,
+                         "node": operation_kind, "model": result.model,
+                         "cost_usd": result.cost_usd, "usage": result.usage,
+                         "num_turns": result.num_turns, "session_id": result.session_id}
+                status = ("unknown" if not result.terminal_received
+                          else "failed" if result.is_error else "completed")
+                journal.finish(key, status,
+                               {"result": asdict(result)},
+                               events=[(key.id + ":cost", "model_cost", event)])
+                if not result.terminal_received:
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
         if raise_on_error and result.is_error:
             raise ExecutorError(f"executor call failed (model={result.model}): {result.text!r}")
         return result
 
     def run_plan(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the cheaper plan model tier (PRD §8)."""
-        return self.run(prompt, model=self._config.models.plan, **kwargs)
+        return self.run(prompt, model=self._config.models.plan,
+                        operation_kind="model.plan", **kwargs)
 
     def run_summary(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the cheap plan model tier, for PR title/body narration (WU-PR-SUMMARY-TIER).
@@ -220,7 +274,10 @@ class Executor:
         Reuses ``config.models.plan`` rather than a dedicated tier -- this is a cheap,
         fail-open call at PR time, not a new cost center.
         """
-        return self.run(prompt, model=self._config.models.plan, **kwargs)
+        # Narration uses only the supplied immutable text, with no built-in or MCP tools.
+        kwargs.update(tools=[], allowed_tools=[], mcp_servers={})
+        return self.run(prompt, model=self._config.models.plan,
+                        operation_kind="model.summary", **kwargs)
 
     def run_plan_critique(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run the (advisory, OFF by default) plan critic on the existing plan model tier
@@ -229,11 +286,13 @@ class Executor:
         Reuses ``config.models.plan`` rather than a dedicated tier -- like ``run_summary``,
         this is a cheap, fail-open one-shot call, not a new cost center or model provider.
         """
-        return self.run(prompt, model=self._config.models.plan, **kwargs)
+        return self.run(prompt, model=self._config.models.plan,
+                        operation_kind="model.critic", **kwargs)
 
     def run_implement(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the first-attempt (cheaper) implement model tier (PRD §8)."""
-        return self.run(prompt, model=self._config.models.implement, **kwargs)
+        return self.run(prompt, model=self._config.models.implement,
+                        operation_kind="model.implement", **kwargs)
 
     def run_implement_escalate(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run the single escalation retry with the stronger implement model (PRD §8).
@@ -242,7 +301,8 @@ class Executor:
         ``config.models.implement_escalate``. Escalation happens at most once per unit, so
         this is called at most once per unit.
         """
-        return self.run(prompt, model=self._config.models.implement_escalate, **kwargs)
+        return self.run(prompt, model=self._config.models.implement_escalate,
+                        operation_kind="model.implement", **kwargs)
 
     def run_review(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the dedicated post-gate review model tier (WU-REVIEW-CONFIG/NODE).
@@ -251,7 +311,8 @@ class Executor:
         routed through the same dedicated key (PRD §8). ``emit_findings=True`` so each
         parsed finding is streamed as a "finding" activity event (WU-LIVE-INTRA-NODE).
         """
-        return self.run(prompt, model=self._config.models.review, emit_findings=True, **kwargs)
+        return self.run(prompt, model=self._config.models.review, emit_findings=True,
+                        operation_kind="model.review", **kwargs)
 
     async def _collect(
         self, prompt: str, options: ClaudeAgentOptions, *, emit_findings: bool = False
@@ -260,7 +321,7 @@ class Executor:
         # The session_id is surfaced mid-stream (on AssistantMessage/ResultMessage). Capture
         # it into this holder as _aggregate sees it so the error path below can link the
         # PARTIAL transcript already flushed for the call (instead of leaving session_id=None).
-        captured: dict[str, str | None] = {"session_id": None}
+        captured: dict[str, Any] = {"session_id": None, "num_turns": 0}
         try:
             if options.can_use_tool is not None:
                 # A can_use_tool guard needs a persistent bidirectional connection: the
@@ -291,22 +352,24 @@ class Executor:
             # Exception). BaseException (KeyboardInterrupt, CancelledError) is deliberately not
             # caught, so Ctrl-C and task cancellation still propagate.
             kind = "max_turns" if "maximum number of turns" in str(exc).lower() else "other"
+            terminal = captured.get("terminal")
             return ExecutorResult(
                 text=str(exc),
                 model=default_model,
                 is_error=True,
-                num_turns=0,
-                cost_usd=None,
-                usage=None,
+                num_turns=terminal.num_turns if terminal else captured["num_turns"],
+                cost_usd=terminal.total_cost_usd if terminal else None,
+                usage=terminal.usage if terminal else None,
                 session_id=captured["session_id"],
                 error_kind=kind,
+                terminal_received=terminal is not None,
             )
 
     async def _aggregate(
         self,
         messages,
         default_model: str,
-        captured: dict[str, str | None] | None = None,
+        captured: dict[str, Any] | None = None,
         *,
         emit_findings: bool = False,
     ) -> ExecutorResult:
@@ -336,6 +399,8 @@ class Executor:
                     # turn, plus one "tool_use" event per tool call within it -- best-effort,
                     # additive OBSERVATION only (see ``_emit_activity``).
                     turn += 1
+                    if captured is not None:
+                        captured["num_turns"] = turn
                     _emit_activity({"activity": "turn", "turn": turn})
                     for block in message.content:
                         if isinstance(block, ToolUseBlock):
@@ -347,8 +412,9 @@ class Executor:
                     session_id = message.session_id or session_id
                     if captured is not None:
                         captured["session_id"] = session_id
+                        captured["terminal"] = message
             text = result.result if result and result.result else "".join(texts)
-            is_error = bool(result.is_error) if result else False
+            is_error = bool(result.is_error) if result else True
             # The SDK's ResultMessage carries WHY it ended in ``subtype`` (e.g. "success",
             # "error_max_turns", "error_during_execution"). Classify the turn cap distinctly so
             # a caller can recover from it rather than treating it like any other error.
@@ -356,6 +422,8 @@ class Executor:
             error_kind = None
             if is_error:
                 error_kind = "max_turns" if subtype == "error_max_turns" else "other"
+            if result is None:
+                error_kind = "missing_terminal"
             if emit_findings and not is_error:
                 # Review call (WU-LIVE-INTRA-NODE): stream each parsed finding, in order, as
                 # its own "finding" activity event -- fail-open (see _extract_review_findings).
@@ -365,11 +433,12 @@ class Executor:
                 text=text or "",
                 model=model,
                 is_error=is_error,
-                num_turns=result.num_turns if result else 0,
+                num_turns=result.num_turns if result else turn,
                 cost_usd=result.total_cost_usd if result else None,
                 usage=result.usage if result else None,
                 session_id=result.session_id if result else None,
                 error_kind=error_kind,
+                terminal_received=result is not None,
             )
         finally:
             if capture:

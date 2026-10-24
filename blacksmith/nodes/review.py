@@ -64,6 +64,7 @@ from blacksmith.index import (
     index_tools_prompt_section,
 )
 from blacksmith.nodes.plan import cost_event
+from blacksmith.receipts import attempt_identity, call_context_for
 from blacksmith.state import BlacksmithState
 
 # Read-only tool surface (mirrors the plan node): the reviewer inspects the worktree's
@@ -131,11 +132,12 @@ def review(
 
     cost_events = []
     findings_by_reviewer: list[list[dict]] = []
-    for emphasis in emphases:
+    for seat, emphasis in enumerate(emphases):
         call_kwargs: dict = {
             "system_prompt": system_prompt,
             "cwd": worktree_path,
             "allowed_tools": allowed_tools,
+            "tools": list(_REVIEW_READ_ONLY),
             "disallowed_tools": _REVIEW_BLOCKED,
             "permission_mode": "default",
             "max_turns": _REVIEW_MAX_TURNS,
@@ -143,6 +145,10 @@ def review(
         }
         if mcp_servers:
             call_kwargs["mcp_servers"] = mcp_servers
+        context = call_context_for(state, unit_id=unit.id,
+                                   attempt_id=attempt_identity(state) + f":review-seat:{seat}")
+        if context is not None:
+            call_kwargs["call_context"] = context
         result = executor.run_review(
             _review_prompt(unit, implementation, emphasis=emphasis)
             + render_context(state, unit, include_plan=True),

@@ -821,6 +821,8 @@ def build_unit(
     review_findings: list[dict] = []
     unresolved: list[dict] = []
     while True:
+        sub.update(fix_attempts=fix_attempts, review_revisions=review_revisions,
+                   implement_continuations=continuations)
         # Feed the prior attempt's gate output back into the prompt (empty on the first attempt,
         # so it runs blind); ``implement`` routes it through ``_implement_prompt``'s prior_failure
         # path and commits with ``conventional_commit_message``.

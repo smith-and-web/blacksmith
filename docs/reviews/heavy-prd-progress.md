@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 3 / 30. Never reset this counter automatically.
+- Goal turn: 4 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; S01-S02 code and evidence committed as 88070ac/519f361; full suite 783 passed and ruff passed.
-- Current turn: 3; S03 complete and verified. Final full suite 833 passed in 120.36 s; ruff passed. No process is left running. This turn made implementation, regression, migration, documentation and evidence progress.
+- Previous-turn classification: progress; S03 committed as e8650ba/8902960 with 833 passing tests, ruff and migration/restart evidence.
+- Current turn: 4; S04 complete and verified. Final full suite 868 passed in 130.47 s; ruff passed. All test process handles are terminal.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
 - S01-S02 implementation commit: `88070ac` (local only).
@@ -23,7 +23,7 @@
 - [x] S01: Path policy and implement guard.
 - [x] S02: Shared requirements and plan context.
 - [x] S03: Immutable run context, paths, preflight and locks.
-- [ ] S04: Transactional operation journal.
+- [x] S04: Transactional operation journal.
 - [ ] S05: Checked bounded command and Git execution.
 - [ ] S06: Trusted multi-layer exact-candidate gates.
 - [ ] S07: Typed per-unit state and reset factory.
@@ -46,12 +46,14 @@ See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results,
 
 ## Current handoff
 
-Completed slices: S01 fail-closed path policy/guards/audits, S02 exact shared requirements/selected-plan context, S03 version-2 immutable run context/preflight/locks/migration. Final turn-3 full offline suite: **833 passed in 120.36 s** (`heavy-prd-turn-03-pytest-03.log`); `uv run ruff check`: **passed** (`heavy-prd-turn-03-ruff.log`). Earlier verification output is retained. The targeted run-context suite had **50 passed in 19.85 s** before the final added approval assertions; those assertions are covered by the full 833-test run.
+Completed slices: S01 path policy, S02 full requirements/plan context, S03 immutable version-2 context/preflight/locks/migration, S04 critical operation journal and SDK/commit receipt wiring. Final turn-4 full offline suite: **868 passed in 130.47 s** (`heavy-prd-turn-04-pytest-02.log`); `uv run ruff check`: **passed**. The journal/wiring tests had **35 passed in 8.53 s**; the SDK/context/replay group had **57 passed in 11.64 s**. An initial full run had 867 passed/1 failed because an old exact state-schema assertion required append-only costs; it now asserts the actual keyed reducer and replay totals. No assertions were weakened or xfails added.
 
-Outstanding: S04-S19. This includes the operation journal and replay-safe effects, checked bounded execution, trusted all-layer exact-candidate gate receipts, common typed unit execution subgraph, per-unit planning checkpoints/approved hashes, join integration gates, durable failure artifacts and explicit recovery, strict evidence-backed reviews, final QA/PR approval, publication reconciliation, run-wide budget/deadline admission, DAG scale bounds, disabled-or-hardened sandbox/respond and final acceptance matrix/docs. Current S03 approval restart tests do not prove recovery from killed SDK processes, retained terminal failures or ambiguous Git/publication effects.
+S04 interfaces: `OperationJournal.for_context/create/verify/intent/finish/get/events`, `OperationKey`, `CallContext`, `call_context_for` and `attempt_identity` in `receipts.py`. Journal identity includes the immutable context fingerprint; connections use WAL, FULL sync, foreign keys, explicit IMMEDIATE transactions and mode=rw on reopen. Intent/outcome/event identities are immutable and idempotent. SDK calls persist intent before transport, complete result plus cost atomically, reuse completed results and refuse uncertain replay. Implementation commits have operation trailers and checked reuse of an identical clean HEAD. Critical failures escape optional critic/summary fallbacks. Cost state uses `merge_events` keyed by receipt IDs; legacy unkeyed events keep append behavior.
 
-**Next action (goal turn 4):** increment this counter once to 4. Implement S04 `blacksmith/receipts.py`: separate per-run SQLite operation journal with WAL, explicit atomic intent/outcome transactions, deterministic run/unit/attempt/kind operation keys, immutable/idempotent event IDs and fail-closed critical writes. Persist operation identity before external effects and retain receipts separately from best-effort observability. Wire journal creation/validation through the version-2 run context and CLI so a receipt-store failure stops before model/Git mutation. Include actual SQLite concurrency/reopen/failure tests and production point-of-use tests. Then S05 checked bounded subprocess/Git service; do not jump ahead to independent Python recovery loops.
+Outstanding: S05-S19. In particular, the journal does not yet bound run spend/time or automatically reconcile every Git/fixer/squash/join/publication effect. Unknown/ambiguous SDK calls stop; explicit bounded continuation and terminal-stage recovery remain S11/S15. Full artifact retention, all-layer exact gate receipts, shared compiled unit graph, per-unit plan checkpoints/hashes, honest strict review, exact-SHA approval/publication and large-DAG limits remain incomplete. No live gate has passed.
 
-S03 interfaces: `create_run_context(config, parsed_prd, thread_id)` creates and validates artifacts; `context_from_state` validates v2 metadata; `RunCloneManager` builds from immutable planning source; main/resume own thread/run locks across drive and approvals. Source/config paths resolve relative to config location. `validate_execution_contract` separates current scheduling semantics from historical structural parsing. Runtime/migration runbook: `docs/heavy-prd-run-context.md`. Per-call budget admission, exact gate receipts, terminal recovery and publication reconciliation remain unimplemented; do not claim readiness from the current green suite.
+**Next action (goal turn 5):** increment this counter once to 5. Implement S05 checked bounded subprocess/Git service. Use file-backed capped stdout/stderr with byte counts/truncation markers and bounded state tails; POSIX new sessions; on timeout/cancel TERM the process group, wait at most 5 seconds, KILL and reap. Use 120-second Git/gh defaults and configured command limits for setup/fix/test/lint/SBFL. Strip model/admin/GitHub credential variables from trusted toolchain children. Forward service settings from config through production call sites, and fail on add/amend/reset/squash/Git/gh errors. Journal deterministic command intents/outcomes with meaningful operation IDs. Use actual subprocess/child-process/large-output/Git-failure regressions; keep sandbox disabled until S17's allowed rejection or proven ownership path. Then S06 exact multi-layer gate receipts/trusted toolchain. Do not add another independent Python recovery loop.
 
-The goal remains active. At turn 30, stop implementation, save completed/outstanding work, exact verification results and next action, then explicitly pause using the user's authorization. No push/merge/publication/paid canary. Preserve the original untracked spec and probe. `contract.py` changes require human review before any merge; no merge is in scope. No subagents are authorized or required by current instructions.
+Tests now use explicit SDK native tool sets and text-only summaries; real SDK options and installed CLI flag construction were checked without a live call. Missing terminal SDK responses are errors with known progress retained, not success. Runtime runbook: `docs/heavy-prd-run-context.md`. Full recovery after killed SDK processes, final publication and exact invoice limits are not established by the green offline suite.
+
+The goal remains active. At turn 30, stop implementation, save completed/outstanding work, exact verification results and next action, then explicitly pause under the user's authorization. No push/merge/publication/paid canary. Preserve the original untracked spec and probe. `contract.py` changes still require human review before any merge; no merge is in scope. No subagents are authorized or required by current instructions.

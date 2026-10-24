@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from blacksmith.config import BlacksmithConfig
 from blacksmith.contract import PRD, ContractError, parse_prd_text, validate_execution_contract
 from blacksmith.gate import GateError, TargetToolchain, parse_toolchain
+from blacksmith.receipts import OperationJournal, OperationKey, ReceiptError
 
 STATE_VERSION = 2
 
@@ -210,6 +211,9 @@ class RunContext(BaseModel):
     def lock(self) -> RunLock:
         return RunLock(self.directory / "execution.lock")
 
+    def journal(self) -> OperationJournal:
+        return OperationJournal.for_context(self)
+
     def prd(self) -> PRD:
         return parse_prd_text(self.prd_text, path=self.prd_path)
 
@@ -260,6 +264,7 @@ class RunContext(BaseModel):
                     raise ValueError("artifact mismatch")
         except (OSError, ValueError, KeyError) as exc:
             raise RunContextError(f"missing/corrupt run artifacts: {self.directory}") from exc
+        self.journal().verify()  # Never replace a missing/corrupt critical recovery journal.
         origin = git_read(Path(self.repo_path), "remote", "get-url", "origin").strip()
         if origin_identity(origin) != self.origin:
             raise RunContextError("source origin differs from recorded run identity")
@@ -348,6 +353,10 @@ def create_run_context(
     directory.mkdir(parents=True, exist_ok=False)
     try:
         context.save()  # Critical input persistence fails closed before planning.
+        journal = OperationJournal.create(context)
+        operation = OperationKey(context.run_id, "__run__", "bootstrap", "git.planning_snapshot")
+        journal.intent(operation, {"source": str(repo), "base_commit": base,
+                                   "destination": str(context.planning_path)})
         git_read(repo.parent, "clone", "--local", "--no-hardlinks", "--no-checkout",
                  str(repo), str(context.planning_path))
         git_read(context.planning_path, "checkout", "--detach", base)
@@ -361,7 +370,9 @@ def create_run_context(
                 path.chmod(path.stat().st_mode & ~0o222)
         context.planning_path.chmod(context.planning_path.stat().st_mode & ~0o222)
         context.verify(selected_repo=repo)
-    except (OSError, RunContextError) as exc:
+        journal.finish(operation, "completed", {"base_commit": base,
+                                                "planning_path": str(context.planning_path)})
+    except (OSError, RunContextError, ReceiptError) as exc:
         raise RunContextError(
             f"preflight snapshot failed; retained artifacts: {directory}"
         ) from exc

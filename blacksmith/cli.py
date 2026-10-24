@@ -46,6 +46,7 @@ from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
 from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
 from blacksmith.nodes.pr import Runner, subprocess_runner
+from blacksmith.receipts import ReceiptError
 from blacksmith.render import Renderer
 from blacksmith.respond import RespondError, RespondResult, respond_to_pr
 from blacksmith.run_context import (
@@ -989,7 +990,8 @@ def _resume(argv: list[str] | None = None) -> int:
                 ended_at=ended_at, approval_wait_s=approval_wait,
             )
             return 0 if final.values.get("status") == Status.DONE else 1
-    except (ResumeError, RunContextError, ConfigError, ContractError, GateError, OSError) as exc:
+    except (ResumeError, RunContextError, ConfigError, ContractError,
+            GateError, ReceiptError, OSError) as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
 
@@ -1341,7 +1343,8 @@ def main(argv: list[str] | None = None) -> int:
                 started_at=started_at, ended_at=ended_at, approval_wait_s=approval_wait,
             )
             return 0 if final.values.get("status") == Status.DONE else 1
-    except (FreshRunError, RunContextError, ConfigError, ContractError, GateError, OSError) as exc:
+    except (FreshRunError, RunContextError, ConfigError, ContractError,
+            GateError, ReceiptError, OSError) as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1
 

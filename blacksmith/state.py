@@ -15,6 +15,7 @@ from enum import StrEnum
 from typing import Annotated, Any, TypedDict
 
 from blacksmith.contract import PRD, WorkUnit
+from blacksmith.receipts import merge_events
 
 
 class Status(StrEnum):
@@ -205,14 +206,15 @@ class BlacksmithState(TypedDict, total=False):
     # so a multi-unit PR body can attribute each unit's files/summary to that unit rather
     # than lumping everything under the last unit's last-write-wins ``implementation``.
     unit_results: Annotated[list[UnitResult], operator.add]
-    # Append-only per-call cost/usage ledger (WU-COST-EVENTS). One event per model call —
+    # Per-call cost/usage ledger, idempotently keyed by receipt event ID. One event per model call —
     # the plan node and EVERY implement attempt (including the escalation retry) append
     # exactly one record. A reducer key (like ``errors``/``unit_results``) so the events
-    # accumulate across nodes rather than being clobbered last-write-wins. The run-end
+    # accumulate across nodes without counting replayed IDs twice. Legacy events without IDs
+    # retain append behavior. The run-end
     # report sums THIS ledger, so a multi-unit run reports every unit's (and every
     # escalation attempt's) spend instead of only plan + the final unit's
     # last-write-wins ``implementation`` slice.
-    cost_events: Annotated[list[dict], operator.add]
+    cost_events: Annotated[list[dict], merge_events]
     # Additive post-gate review loop (WU-REVIEW-NODE). Set by the ``review`` node, which
     # runs a stronger model over the CURRENT unit's diff after the gate has already
     # passed. ``review_clean`` is last-write-wins (only the current unit's latest

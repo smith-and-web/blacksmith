@@ -45,6 +45,7 @@ from blacksmith.path_policy import (
 from blacksmith.path_policy import (
     is_protected as is_protected,  # re-export the legacy helper
 )
+from blacksmith.receipts import CallContext, ReceiptError, call_context_for
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
 
@@ -270,6 +271,7 @@ def implement(
         # "default" permission mode they evaluate to "ask" and route through the
         # can_use_tool guard (which allows non-protected paths, blocks untouchables).
         "allowed_tools": allowed_tools,
+        "tools": ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"],
         # Raw Bash (and every other shell-capable/escape tool) stays disallowed
         # UNCHANGED, sandboxed or not -- run_command is the only execution channel.
         "disallowed_tools": _DISALLOWED_TOOLS,
@@ -289,6 +291,9 @@ def implement(
         )
     if mcp_servers:
         call_kwargs["mcp_servers"] = mcp_servers
+    call_context = call_context_for(state, unit_id=unit.id)
+    if call_context is not None:
+        call_kwargs["call_context"] = call_context
     result = run_attempt(
         _implement_prompt(
             unit,
@@ -340,7 +345,7 @@ def implement(
 
     try:
         files, diff_summary = _stage_and_commit(
-            worktree_path, conventional_commit_message(unit)
+            worktree_path, conventional_commit_message(unit), call_context=call_context,
         )
         policy.audit(pre_implement_ref)
     except PolicyViolation as exc:
@@ -399,12 +404,55 @@ class CommitError(Exception):
     successful implement and only failing later as an empty-diff PR."""
 
 
-def _stage_and_commit(worktree_path: str, message: str) -> tuple[list[str], str]:
+def _stage_and_commit(
+    worktree_path: str, message: str, *, call_context: CallContext | None = None,
+) -> tuple[list[str], str]:
     """Stage all changes, capture the staged file list + diffstat, and commit if any.
 
     Raises ``CommitError`` if the commit fails. Previously the commit's exit code was
     ignored, so a failed commit (e.g. a fresh clone with no author identity) looked like
     success and surfaced only at PR time as "No commits between main and <branch>"."""
+    journal = call_context.journal() if call_context else None
+    operation = call_context.key("git.commit") if call_context else None
+    if journal is not None:
+        existing = journal.get(operation)
+        base = (existing.intent["base_commit"] if existing
+                else _git(worktree_path, "rev-parse", "HEAD").strip())
+        receipt = journal.intent(operation, {
+            "path": str(Path(worktree_path).resolve()), "message": message, "base_commit": base,
+        })
+        if not receipt.created:
+            if receipt.status == "completed":
+                head = _git(worktree_path, "rev-parse", "HEAD").strip()
+                dirty = _git(worktree_path, "status", "--porcelain", "--untracked-files=all")
+                commit_message = _git(worktree_path, "log", "-1", "--format=%B")
+                if (head != receipt.outcome["commit"] or dirty.strip()
+                        or operation.trailer not in commit_message):
+                    raise ReceiptError(
+                        "committed operation has unknown extra changes; inspect workspace"
+                    )
+                return receipt.outcome["files"], receipt.outcome["diff_summary"]
+            raise ReceiptError(f"interrupted_commit_requires_reconciliation: {operation.id}")
+        message += "\n\n" + operation.trailer
+    try:
+        files, summary = _commit_changes(worktree_path, message)
+    except BaseException as exc:
+        if journal is not None:
+            journal.finish(operation, "failed" if isinstance(exc, CommitError) else "interrupted",
+                           {"error_type": type(exc).__name__})
+        raise
+    if journal is not None:
+        if not files:
+            journal.finish(operation, "failed", {"error_kind": "empty_diff"})
+            return files, summary
+        journal.finish(operation, "completed", {
+            "commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
+            "files": files, "diff_summary": summary,
+        })
+    return files, summary
+
+
+def _commit_changes(worktree_path: str, message: str) -> tuple[list[str], str]:
     # All staging/diff failures are infrastructure failures, not an empty diff.
     _git(worktree_path, "add", "-A")
     files = [

@@ -45,6 +45,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,7 @@ from blacksmith.index import (
 )
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.path_policy import PolicyViolation, compile_path_rules
+from blacksmith.receipts import ReceiptError, call_context_for
 from blacksmith.state import BlacksmithState, Status
 
 # How many prior gate-failure lessons to surface to the planner (most recent first).
@@ -100,7 +102,7 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
     it lets a run later locate the call's ``<transcripts_dir>/<session_id>.jsonl`` file
     (WU-TRANSCRIPT-CAPTURE). ``None`` when the call reported no session id.
     """
-    return {
+    event = {
         "node": node,
         "unit_id": unit_id,
         "model": result.model,
@@ -109,6 +111,10 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
         "usage": usage_breakdown(result.usage),
         "session_id": result.session_id,
     }
+    if getattr(result, "call_id", None):
+        event["event_id"] = result.call_id + ":cost"
+        event["call_id"] = result.call_id
+    return event
 
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
 # finishes in one) but block all writes — at plan time there is no worktree yet, so
@@ -232,12 +238,16 @@ def plan(
             "system_prompt": system_prompt,
             "cwd": repo_path,
             "allowed_tools": allowed_tools,
+            "tools": list(_PLAN_READ_ONLY),
             "disallowed_tools": _PLAN_BLOCKED,
             "max_turns": _PLAN_MAX_TURNS,
             "raise_on_error": False,  # surface failures (e.g. max-turns) into state, don't crash
         }
         if mcp_servers:
             call_kwargs["mcp_servers"] = mcp_servers
+        context = call_context_for(state, unit_id=unit.id, attempt_id="plan:0")
+        if context is not None:
+            call_kwargs["call_context"] = context
         result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
         # Ledger this attempt's spend on EVERY return (including the halt below), so a plan that
         # fails partway still counts the calls it made.
@@ -495,12 +505,20 @@ def _critic_loop(
     """
     revisions_used = 0
     while True:
+        if context := call_kwargs.get("call_context"):
+            call_kwargs = {**call_kwargs, "call_context": replace(
+                context, attempt_id=f"plan:{revisions_used}",
+            )}
         critique = _run_critique(
             executor, unit, result.text, cost_events, call_kwargs=call_kwargs,
         )
         if critique["approved"] or revisions_used >= max_revisions:
             return result
         revisions_used += 1
+        if context := call_kwargs.get("call_context"):
+            call_kwargs = {**call_kwargs, "call_context": replace(
+                context, attempt_id=f"plan:{revisions_used}",
+            )}
         result = executor.run_plan(_plan_prompt(unit, critique["critique"]), **call_kwargs)
         cost_events.append(cost_event("plan", unit.id, result))
         if result.is_error:
@@ -521,6 +539,8 @@ def _run_critique(
         critique_result = executor.run_plan_critique(
             _plan_critique_prompt(unit, plan_text), **(call_kwargs or {"raise_on_error": False})
         )
+    except ReceiptError:
+        raise
     except Exception:
         return {"approved": True, "critique": ""}
     cost_events.append(cost_event("plan_critic", unit.id, critique_result))

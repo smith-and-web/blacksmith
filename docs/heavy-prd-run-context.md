@@ -56,6 +56,7 @@ Each fresh run has a UUID and these paths under the config directory:
   input.prd.md
   runtime-config.json
   trusted-blacksmith.toml
+  operations.sqlite
   execution.lock
   planning/
   workspace/
@@ -71,6 +72,45 @@ A thread lock prevents competing fresh invocations; a run lock also covers resum
 using another config file. A second owner exits before graph construction. Lock
 files may remain on disk after exit; the kernel lock, not file existence, determines
 ownership.
+
+## Critical operation receipts
+
+Each version-2 run has a separate SQLite operation journal in WAL mode with
+`synchronous=FULL`. It is not the LangGraph checkpointer, memory store, metrics DB
+or live event sink. Missing/corrupt/mismatched journals stop execution before an
+executor is constructed on resume; a missing journal is never recreated as a new
+empty run. Receipt writes fail closed.
+
+Operation IDs hash the tuple `(run_id, unit_id, attempt_id, operation_kind)`.
+Intent commits before the effect; its outcome and cost events commit atomically
+afterward. Repeating an identical receipt/event is idempotent. Conflicting intent,
+outcome or event content is an integrity error, preserving the original receipt.
+
+Planning snapshot creation, version-2 SDK calls and implementation commits use
+these receipts. SDK roles include planner, critic, initial/escalated implementer,
+review-panel seats and PR summary. A completed SDK response can be reused after a
+checkpoint interruption without calling the provider again. Missing terminal
+results, lost streams and cancellation remain explicit uncertain outcomes;
+automatic replay refuses them with `interrupted_attempt_requires_resume`.
+Known streamed turns and reported terminal usage survive stream errors.
+
+Implementation commits carry `Blacksmith-Operation-Id: <id>` trailers. Completed
+commit reuse requires the recorded HEAD, a matching trailer and a clean workspace;
+unknown extra changes stop for inspection. An interrupted commit intent still
+requires stage-specific reconciliation in S11. Command/fixer/squash/join/publication
+receipts and full artifact recovery remain later slices.
+
+Cost events use call IDs and keyed reduction so a replayed update cannot add the
+same call twice. Missing costs remain unknown, not measured zero-dollar calls.
+Run-wide reservation admission and conservative budget charging are S15 work;
+the journal alone is not a spending limit or an exactly-once billing guarantee.
+`completed` means the recorded effect completed, not that a review approved a
+candidate or all acceptance requirements passed.
+
+SDK native tool sets are explicit: planner/critic/reviewer get read-only tools;
+the implementer gets guarded file tools. Summaries have no native or MCP tools.
+Installed SDK option/CLI-argument construction was checked locally; no live SDK
+permission canary has run.
 
 ## Execution validation and archived PRDs
 
@@ -94,9 +134,10 @@ diagnostic and no model call. Saved model, limit, toolchain and target settings 
 authoritative; changing the local config does not silently replace them on resume.
 
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
-interrupted node is driven with `None`; side-effect reconciliation for those nodes
-is still required by S04-S11. S03 alone does not establish replay-safe paid calls or
-recovery of terminal policy/gate failures.
+interrupted node is driven with `None`. SDK response reuse and uncertain-call
+refusal are in place; full side-effect reconciliation and explicit terminal-stage
+recovery are still required by S05-S11. These slices do not establish exactly-once
+billing across a killed provider process or recovery of terminal policy/gate failures.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing
 history tools. Execution-resume refuses them with

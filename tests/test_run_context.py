@@ -122,7 +122,7 @@ def test_snapshot_pins_source_commit_and_does_not_chmod_source(project, monkeypa
     assert (root / ".git/config").stat().st_mode & stat.S_IWUSR
     for artifact in context.directory.iterdir():
         if artifact.is_file():
-            assert "SECRET_MUST_NEVER_BE_SNAPSHOTTED" not in artifact.read_text()
+            assert b"SECRET_MUST_NEVER_BE_SNAPSHOTTED" not in artifact.read_bytes()
     (root / "README.md").write_text("NEW_SOURCE_COMMIT\n")
     git(root, "add", "README.md")
     git(root, "commit", "-m", "source advanced during approval")

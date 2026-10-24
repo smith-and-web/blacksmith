@@ -46,8 +46,8 @@ Implementation is incomplete. No live release gate has passed.
 
 ## Final required local verification
 
-- Latest full suite (S01-S03): `uv run pytest -q`, **833 passed in 120.36 s**, no failures/skips/xfails. Final S19 full suite remains required after later slices.
-- Latest `uv run ruff check`: **passed** after S01-S03. Final S19 lint remains required after later slices.
+- Latest full suite (S01-S04): `uv run pytest -q`, **868 passed in 130.47 s**, no failures/skips/xfails. Final S19 full suite remains required after later slices.
+- Latest `uv run ruff check`: **passed** after S01-S04. Final S19 lint remains required after later slices.
 - Requirement-by-requirement acceptance matrix, crash/recovery evidence, dependency versions and revision: pending.
 
 ## Acceptance matrix tracking
@@ -116,3 +116,28 @@ Contract schema edits require explicit human review before merge (spec §3.2). N
 - Environment metadata was collected with `uv run python` (Python 3.12.13). An initial host `python3` metadata attempt failed because that interpreter did not have the project packages; it was not used as dependency/version evidence.
 
 - S03 implementation checkpoint committed locally as `e8650ba` (`feat: freeze run inputs and validate version-2 execution`). Staged whitespace check and host pre-commit checks passed. Original specification and probe remain untracked and untouched. No push.
+
+## Turn 4: S04 operation journal and effect receipts
+
+- Added `receipts.py`: a separate per-run SQLite journal, WAL/FULL sync/foreign keys, strict run/context/schema ownership, explicit transactions, deterministic operation-key tuples, immutable intent/outcome/events, content hashes and corruption checks. mode=rw reopens cannot silently recreate a missing DB; atomic outcome+cost updates roll back together.
+- Real SQLite tests exercise concurrent writers (8 threads, 40 requests, 5 unique intents/events), reopen, conflicting values, schema/owner corruption, rollback triggers and a child process using os._exit after committing intent. This is offline process/storage proof, not provider billing proof.
+- Run-context bootstrap initializes the journal before the planning-clone effect. Resume validates it before executor construction. Version-2 model roles and implementation commits use receipts at the actual effect boundary. Git commits contain operation-ID trailers; replay of a completed identical clean commit does not add another commit; extra changes are retained and refused.
+- Executor wrappers cover plan, critic, initial/escalated implement, reviewer seats and summary. Completed SDK responses are reused; pending/unknown/interrupted outcomes cannot silently rerun transport. Missing ResultMessage is now an error; known assistant turns and terminal cost/usage are preserved on stream errors. SDK native tool surfaces are explicit and summaries are text-only. Installed SDK supports tools=[] as --tools with an empty argument; actual option construction is exercised, without a live SDK escape claim.
+- Critical receipt failures rethrow through optional critic and summary paths. Actual SQL-trigger regressions prove: no planning clone if bootstrap intent cannot persist; no provider call if model intent fails; no rebilling after outcome/cost rollback; no repeated plan after checkpoint interruption; no Git staging if commit intent fails; no publication after a summary receipt failure; and no executor construction/recreation for missing/corrupt journals.
+- Cost events use stable call IDs and the real keyed state reducer. Exact schema assertions retained and updated for the mandated reducer; distinct calls with equal costs remain distinct, replayed IDs count once, conflicting IDs fail and old unkeyed events retain compatibility.
+- Scoped limits: native command/fixer/squash/join/publication receipts, complete crash reconciliation/artifact recovery, budget reservations, deadlines and strict review verdicts remain later slices. Unknown model spend is retained as unknown; no invoice ceiling or exactly-once billing is claimed. Respond hardening/disablement remains S18.
+
+### Turn 4 commands and receipts
+
+- `heavy-prd-turn-04-targeted-01.log`: existing run-context/executor/implement tests, **108 passed in 28.71 s** before the terminal-stream/tool-set additions.
+- `heavy-prd-turn-04-receipts-01.log`: journal/SDK/Git unit regressions, **26 passed in 1.37 s**.
+- `heavy-prd-turn-04-wiring-01.log`: journal plus real CLI wiring regressions, **35 passed in 8.53 s**.
+- `heavy-prd-turn-04-targeted-02.log`: journal/wiring/full-context/SDK regressions, **57 passed in 11.64 s**.
+- `heavy-prd-turn-04-pytest-01.log`: full suite **867 passed, 1 failed in 130.10 s**. The failing assertion required operator.add, intentionally replaced by keyed receipt reduction. The assertion now remains exact for merge_events, and the helper exercises that real reducer plus replay/different-call totals.
+- An intermediate cost test edit briefly referenced an incorrect helper name; corrected to the existing `_accumulate`. `heavy-prd-turn-04-cost-reducer.log`: **12 passed in 2.08 s**. This did not weaken any assertion.
+- Final `uv run pytest -q > docs/reviews/heavy-prd-turn-04-pytest-02.log 2>&1`: exit 0, **868 passed in 130.47 s**, no xfails/skips/failures.
+- Final `uv run ruff check > docs/reviews/heavy-prd-turn-04-ruff.log 2>&1`: exit 0, **All checks passed!** Dependency/input metadata and revision are retained separately. Failed full-run output is preserved verbatim, including its whitespace.
+
+- S04 input/dependency/revision evidence: `heavy-prd-turn-04-environment.json`. Installed SDK `_build_command` was constructed with a deliberately nonexistent CLI path and no connect/query: it emitted `--tools` plus an empty argument, `--strict-mcp-config`, and the single literal `--setting-sources=` flag. An initial metadata assertion assumed a two-argument settings flag; source/argv inspection corrected that assumption without changing runtime code.
+- Brain capture updated `Projects/blacksmith.md` through MCP. Targeted lint returned 0 errors/0 warnings. After >70 seconds, index status had lastRun.errors=0 and invalidFrontmatter.count=0; semantic retrieval returned the new journal section at rank 1 (`b5092462-8817-4334-8600-8f0fec501a41`).
+- `git diff --check` on tracked edits passed. Verbatim failed pytest output is retained unchanged; staged source/docs whitespace checks exclude only raw `.log` receipts, whose whitespace comes from pytest formatting.
