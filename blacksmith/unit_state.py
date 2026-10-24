@@ -30,6 +30,7 @@ def new_unit_attempt(unit_id: str, base_commit: str | None) -> UnitAttemptState:
     if not unit_id.strip():
         raise ValueError("unit identity cannot be empty")
     state: UnitAttemptState = {
+        "unit_failed_stage": "",
         "current_unit_id": unit_id,
         "unit_base_commit": base_commit,
         "attempt_base_commit": base_commit,
@@ -99,6 +100,7 @@ def next_attempt(
             "review_clean": False,
             "review_current_findings": [],
             "implement_error_kind": "",
+            "unit_failed_stage": "",
             "resume_partial_implement": kind == "continuation",
             "continuation_feedback": "",
             "status": Status.IMPLEMENTING,

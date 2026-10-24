@@ -254,6 +254,12 @@ class OperationJournal:
             raise ReceiptError("corrupt operation JSON") from exc
         return OperationReceipt(key, row["status"], row["intent_json"], outcome, created)
 
+    def operations(self) -> list[OperationReceipt]:
+        """Validated immutable operation history for recovery/admission inspection."""
+        with self._connection() as conn:
+            return [self._receipt(row)
+                    for row in conn.execute("SELECT * FROM operations ORDER BY rowid")]
+
     def get(self, key: OperationKey) -> OperationReceipt | None:
         self._check_key(key)
         with self._connection() as conn:
@@ -525,6 +531,8 @@ def call_context_for(
     from blacksmith.run_context import context_from_state
 
     context = context_from_state(dict(state))
+    from blacksmith.recovery import validate as validate_recovery
+    validate_recovery(context)
     journal = OperationJournal.for_context(context)
     return CallContext(
         str(journal.path),

@@ -501,10 +501,41 @@ def _stage_and_commit(
                         "committed operation has unknown extra changes; inspect workspace"
                     )
                 return receipt.outcome["files"], receipt.outcome["diff_summary"]
+            tree_key = call_context.key("git.commit.tree")
+            tree_record = journal.get(tree_key)
+            head = _git(worktree_path, "rev-parse", "HEAD").strip()
+            dirty = _git(worktree_path, "status", "--porcelain", "--untracked-files=all")
+            if tree_record and head != base and not dirty.strip():
+                tree = _git(worktree_path, "rev-parse", "HEAD^{tree}").strip()
+                parent = _git(worktree_path, "rev-parse", "HEAD^").strip()
+                body = _git(worktree_path, "log", "-1", "--format=%B").splitlines()
+                expected_tree = (
+                    tree_record.outcome["observed_tree"] if tree_record.status == "completed"
+                    else tree_record.intent["tree"]
+                )
+                if (tree == expected_tree and parent == base and operation.trailer in body):
+                    outcome = {"commit": head, "files": tree_record.intent["files"],
+                               "diff_summary": tree_record.intent["diff_summary"]}
+                    proof_key = call_context.key("git.commit.reconciliation")
+                    journal.intent(proof_key, {"original_operation": operation.id,
+                                               "parent": base, "tree": tree, **outcome})
+                    journal.finish(proof_key, "completed", outcome)
+                    journal.finish(tree_key, "completed", {"commit": head, "observed_tree": tree})
+                    if receipt.status == "intent":
+                        journal.finish(operation, "completed", outcome)
+                    # An original failed/interrupted receipt remains immutable. The
+                    # separate proof records the observed Git effect, not a replay.
+                    return outcome["files"], outcome["diff_summary"]
             raise ReceiptError(f"interrupted_commit_requires_reconciliation: {operation.id}")
         message += "\n\n" + operation.trailer
+    def before_commit(files, summary, tree):
+        if journal:
+            journal.intent(call_context.key("git.commit.tree"), {
+                "tree": tree, "base_commit": base, "files": files, "diff_summary": summary,
+            })
+
     try:
-        files, summary = _commit_changes(worktree_path, message)
+        files, summary = _commit_changes(worktree_path, message, before_commit=before_commit)
     except BaseException as exc:
         if journal is not None:
             journal.finish(
@@ -517,11 +548,16 @@ def _stage_and_commit(
         if not files:
             journal.finish(operation, "failed", {"error_kind": "empty_diff"})
             return files, summary
+        head = _git(worktree_path, "rev-parse", "HEAD").strip()
+        journal.finish(call_context.key("git.commit.tree"), "completed", {
+            "commit": head,
+            "observed_tree": _git(worktree_path, "rev-parse", "HEAD^{tree}").strip(),
+        })
         journal.finish(
             operation,
             "completed",
             {
-                "commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
+                "commit": head,
                 "files": files,
                 "diff_summary": summary,
             },
@@ -529,7 +565,9 @@ def _stage_and_commit(
     return files, summary
 
 
-def _commit_changes(worktree_path: str, message: str) -> tuple[list[str], str]:
+def _commit_changes(
+    worktree_path: str, message: str, *, before_commit=None,
+) -> tuple[list[str], str]:
     # All staging/diff failures are infrastructure failures, not an empty diff.
     _git(worktree_path, "add", "-A")
     files = [
@@ -537,6 +575,8 @@ def _commit_changes(worktree_path: str, message: str) -> tuple[list[str], str]:
     ]
     diff_summary = _git(worktree_path, "diff", "--cached", "--stat")
     if files:
+        if before_commit:
+            before_commit(files, diff_summary, _git(worktree_path, "write-tree").strip())
         commit = run_command(
             ["git", "-C", str(worktree_path), "commit", "-m", message],
             capture_output=True,

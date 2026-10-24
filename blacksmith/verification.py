@@ -402,6 +402,10 @@ def fix_candidate(state):
     attempt = attempt_identity(state)
     commit_key = OperationKey(context.run_id, unit.id, attempt, "git.commit")
     owner = context.journal().get(commit_key)
+    if owner and owner.status != "completed":
+        owner = context.journal().get(OperationKey(
+            context.run_id, unit.id, attempt, "git.commit.reconciliation",
+        ))
     if owner is None or owner.status != "completed" or not owner.outcome.get("commit"):
         raise GateError("formatter requires an implementation commit owned by this attempt")
     before = owner.outcome["commit"]

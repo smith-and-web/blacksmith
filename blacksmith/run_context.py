@@ -241,6 +241,7 @@ class RunContext(BaseModel):
     def initial_state(self) -> dict:
         return {
             "state_version": STATE_VERSION,
+            "recovery_version": 1,
             "run_id": self.run_id,
             "run_context": self.model_dump(),
             "planning_path": str(self.planning_path),
@@ -285,6 +286,8 @@ class RunContext(BaseModel):
         except (OSError, ValueError, KeyError) as exc:
             raise RunContextError(f"missing/corrupt run artifacts: {self.directory}") from exc
         self.journal().verify()  # Never replace a missing/corrupt critical recovery journal.
+        from blacksmith.recovery import validate as validate_recovery
+        validate_recovery(self)
         origin = git_read(Path(self.repo_path), "remote", "get-url", "origin").strip()
         if origin_identity(origin) != self.origin:
             raise RunContextError("source origin differs from recorded run identity")
@@ -393,6 +396,8 @@ def _create_run_context(config, prd, thread_id, *, required_tools):
     try:
         context.save()  # Critical input persistence fails closed before planning.
         journal = OperationJournal.create(context)
+        from blacksmith.recovery import initialize
+        initialize(context)
         with command_scope(context, stage="bootstrap", attempt_id="bootstrap"):
             operation = OperationKey(
                 context.run_id, "__run__", "bootstrap", "git.planning_snapshot"

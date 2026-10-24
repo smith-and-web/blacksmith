@@ -48,6 +48,8 @@ def _tag(state, phase, update):
     if "review_current_findings" in update and "review_findings" in update:
         update["review_current_findings"] = update["review_findings"]
     update["unit_stage"] = phase
+    if update.get("status") == Status.HALTED and phase != "finalize_unit":
+        update["unit_failed_stage"] = phase
     return update
 
 
@@ -144,7 +146,8 @@ def build_unit_graph(deps, worktree_manager=None):
             elif gm._will_escalate(state) and gm._within_budget(state):
                 action = "escalate"
             else:
-                return {"recovery_action": action, "status": Status.HALTED}
+                return {"recovery_action": action, "status": Status.HALTED,
+                        "unit_failed_stage": phase}
         elif phase == "review" and not state.get("review_clean"):
             action = (
                 "prepare_review_revision" if gm._can_review_revise(state) else "finalize_review"
@@ -173,6 +176,7 @@ def build_unit_graph(deps, worktree_manager=None):
                 summary = gm._git_run(path, "diff", "--stat", f"{base}..HEAD").stdout
         result = {
             "unit_id": unit_id,
+            "failed_stage": state.get("unit_failed_stage") if not ok else None,
             "title": unit.title if unit else "",
             "ok": ok,
             "human": human,
@@ -318,6 +322,7 @@ def unit_runner(unit_graph):
         keep = {
             "prd",
             "state_version",
+            "recovery_version",
             "run_id",
             "run_context",
             "selected_unit",

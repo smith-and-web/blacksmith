@@ -104,8 +104,8 @@ artifacts cannot be overwritten with changed content. The plan approval proposal
 is persisted before displaying the interrupt and includes the run ID, PRD hash,
 bundle hash and per-unit hashes. Acceptance persists `approved.json` plus the same
 hash binding in checkpoint state; a substituted plan cannot reuse the earlier bool.
-Approval rejection does not create an approved artifact. Terminal rejection recovery
-and complete preservation manifests still require S11.
+Approval rejection does not create an approved artifact. Terminal reapproval still
+requires S11; its artifact capture foundation is documented below.
 
 Every implementation attempt (including continuation/fix/escalation/review revision)
 and reviewer validates the whole approved bundle, selected plan and immutable
@@ -149,8 +149,8 @@ Known streamed turns and reported terminal usage survive stream errors.
 
 Implementation commits carry `Blacksmith-Operation-Id: <id>` trailers. Completed
 commit reuse requires the recorded HEAD, a matching trailer and a clean workspace;
-unknown extra changes stop for inspection. An interrupted commit intent still
-requires stage-specific reconciliation in S11. Native commands now record individual
+unknown extra changes stop for inspection. Matching committed effects now have
+S11 reconciliation; other interrupted stages remain in progress. Native commands now record individual
 intent/outcome receipts. Completed formatter receipts can reuse an already amended, clean owned candidate.
 Interrupted formatter/squash/join/publication reconciliation and full artifact recovery
 remain later slices; a command receipt alone does not make an
@@ -253,8 +253,8 @@ multiple commits, checked normalization records a critical squash intent/outcome
 preserves the tree and operation trailer, and occurs before the authoritative gate
 and review. A completed squash can be reused after losing its node checkpoint;
 uncertain squash intent stops for S11 reconciliation. Sequential history is retained.
-S10 now validates and integrates these recorded sources as described below. Full
-artifact/stage recovery remains S11.
+S10 now validates and integrates these recorded sources as described below. S11
+artifact capture is present; complete failed-stage recovery remains in progress.
 
 Optional unit-stage events carry run/unit/attempt IDs and forward through the
 parent's writer, preserving CLI phase progress. Observation failure cannot replace
@@ -317,8 +317,8 @@ abort/reset to restore the whole saved level base. It retains every worker and t
 shared workspace. A rollback error preserves both its own cause and the original
 failure and does not retry/reset again. Unknown extra edits are retained for
 inspection instead of being discarded. HALTED/rejected cleanup now preserves
-workspaces/branches; complete atomic recovery manifests, binary/untracked snapshots,
-refs bundles and supported recovery commands remain S11 work.
+workspaces/branches. S11 now captures manifests/binary/untracked snapshots/refs
+bundles; explicit failed-stage recovery remains in progress.
 
 After each multi-unit join, `integration_gate` runs the frozen toolchain over the
 union of all auto layers completed so far. Before normal PR approval or the terminal
@@ -418,6 +418,75 @@ This proves unit verifier integrity for the recorded commands. It does not prove
 the full natural-language test contract, honest patch review or publication approval.
 S10 adds merged/final coverage; S11-S19 and live release gates remain open.
 
+## Recovery artifact foundation (S11 in progress)
+
+S11 is not complete. The implemented foundation captures retained evidence and
+reconciles an observed implementation commit; explicit failed-stage recovery,
+continuation amendments and budget additions are still being implemented. Do not
+interpret this section as a recovery acceptance or general readiness release.
+
+Fresh version-2 runs initialize a critical `recovery/index.json` before planning.
+Run verification and production call contexts validate its run/context identity,
+critical ownership receipts, immutable snapshot manifests and every recorded file
+hash. Missing/corrupt indexes, malformed schemas, missing entries or changed
+snapshots stop before a new model call. Removing recovery metadata while waiting
+for plan approval blocks workspace preparation. Old active runs lacking this data
+receive diagnostics without manufacturing a replacement or resetting paid work.
+
+After preflight, the CLI protects the drive under the original run lock. On HALTED,
+rejection or an exception (including cancellation/KeyboardInterrupt), it writes a
+new private snapshot and prints its absolute recovery manifest path. Failed capture
+is critical: partial files and its pending receipt remain, it reports the failure
+and no later effect is scheduled. Earlier preflight failures retain the original run
+directory/input manifest/journal but do not yet have a complete recovery capture;
+explicit inspection/repair of those cases is part of remaining S11 work.
+
+A completed snapshot includes:
+
+- Full staged and unstaged binary patches (Git writes explicit owned files, so
+  patch size is not silently limited by the command stdout cap).
+- Nonignored untracked files and symlink target metadata, with no following of
+  escape links; the complete original workspace remains retained.
+- A refs bundle, including orphaned operation commits preserved from reflogs.
+- Latest root and unit checkpoint state, with registered serializer types, original
+  failure stages and consumed unit counters.
+- Original input/config/toolchain manifests, plans, gate/fix/join artifacts,
+  command logs and a consistent SQLite backup of model/operation receipts.
+
+Files and directory entries are flushed before atomic manifest/index publication;
+a completed capture has a matching critical journal receipt. Every older snapshot
+stays immutable. Versioned runs now retain successful workspaces too. There is no
+automatic deletion or garbage collection. Inspection reports the retained paths,
+per-snapshot/total bytes and uncertain call IDs so the disk cost stays visible.
+
+Inspect without loading credentials, constructing an executor or modifying the
+checkpoint database, workspaces or artifacts:
+
+```sh
+blacksmith recovery inspect --thread-id my-run --config /path/to/blacksmith.config.toml
+```
+
+Inspection uses a SQLite read-only connection. Supply the original config selection
+when it was explicit. Missing/corrupt evidence produces a diagnostic; it is not
+silently regenerated. The currently printed next action is inspection; a full
+failed-stage recovery CLI and contextual command reporting remain S11 work.
+
+An SDK call killed without terminal evidence remains uncertain. Ordinary resume
+refuses it with `interrupted_attempt_requires_resume`, preserving partial binary
+and untracked files in a capture and leaving the original model receipt unchanged.
+Explicit continuation under the remaining continuation budget is not implemented
+by this foundation. Likewise a terminal rejection does not yet schedule a new
+approval interrupt, and ordinary resume cannot restore a terminal failed stage.
+
+Implementation commits now persist staged-tree intent before the Git commit. If
+a process exits after committing but before outcome/checkpoint, resume verifies
+clean exact HEAD, parent, tree and operation trailer, records reconciliation and
+reuses the existing commit without another SDK/Git commit. A pending original
+intent may complete. A failed/interrupted original receipt remains immutable;
+a separate observed-effect proof establishes ownership for formatting. Unknown
+extra changes or missing old tree evidence still require inspection. This is
+observed Git-effect proof, not an exactly-once provider billing claim.
+
 ## Execution validation and archived PRDs
 
 IDs, titles and module targets must be nonempty. Targets must be relative and cannot
@@ -441,8 +510,8 @@ authoritative; changing the local config does not silently replace them on resum
 
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call
-refusal are in place; full side-effect reconciliation and explicit terminal-stage
-comprehensive recovery remains S11 work. These slices do not establish exactly-once
+refusal are in place. Artifact capture and implementation-commit reconciliation
+are present; complete terminal-stage recovery remains S11 work. These slices do not establish exactly-once
 billing across a killed provider process or recovery of terminal policy/gate failures.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing

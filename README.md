@@ -6,7 +6,8 @@ and remaining gates. [Version-2 run context and migration](docs/heavy-prd-run-co
 documents config-relative paths, frozen inputs, execution locks, the shared unit
 graph, approved plan hashes, exact-source joins, integration/final layer gates
 and checkpoint migration refusals. The
-historical feature list below is not a heavy-PRD readiness claim.
+historical feature list below is not a heavy-PRD readiness claim. S11 artifact
+capture/inspection is being implemented; explicit failed-stage recovery is still pending.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

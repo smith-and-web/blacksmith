@@ -105,6 +105,7 @@ class UnitAttemptState(TypedDict, total=False):
     Review receipt structure is hardened in S12; it starts absent for every unit.
     """
 
+    unit_failed_stage: str
     current_unit_id: str
     unit_base_commit: str | None
     attempt_base_commit: str | None
@@ -134,6 +135,7 @@ class UnitAttemptState(TypedDict, total=False):
 
 
 class UnitOutcome(TypedDict):
+    failed_stage: str | None
     unit_id: str
     title: str
     ok: bool
@@ -185,6 +187,7 @@ class BlacksmithState(UnitAttemptState, total=False):
     # engine walks these in order and, within each level, builds the units sequentially in
     # declaration order. Flattening them in order yields ``work_units`` (topo order).
     execution_levels: list[list[WorkUnit]]
+    recovery_version: int
     join_graph_version: int
     prepared_level: int | None
     level_bases: dict[str, str]

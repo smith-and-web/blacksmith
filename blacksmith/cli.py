@@ -988,6 +988,12 @@ def _resume(argv: list[str] | None = None) -> int:
                     "legacy_planning_requires_manual_recovery: approved plan hashes absent; "
                     "checkpoints/artifacts/budgets retained"
                 )
+            from blacksmith.recovery import protect_run
+            from blacksmith.recovery import validate as validate_recovery
+            if values.get("recovery_version") != 1:
+                raise ResumeError("legacy_recovery_requires_manual_recovery: no artifact index")
+            validate_recovery(context)
+            stack.enter_context(protect_run(context, checkpointer))
             # Saved models, limits and target survive local config changes.
             config = context.execution_config()
             graph = build_graph_for(config, checkpointer)
@@ -1016,6 +1022,42 @@ def _resume(argv: list[str] | None = None) -> int:
     except (ResumeError, RunContextError, ConfigError, ContractError, CommandError,
             GateError, ReceiptError, OSError) as exc:
         print(f"resume: {exc}", file=sys.stderr)
+        return 1
+
+
+def _recovery(argv=None):
+    """Read-only inspection uses SQLite's read-only connection and never builds an executor."""
+    from urllib.parse import quote
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    from blacksmith.graph import blacksmith_serde
+    from blacksmith.recovery import inspect
+
+    parser = argparse.ArgumentParser(prog="blacksmith recovery")
+    parser.add_argument("action", choices=["inspect"])
+    parser.add_argument("--thread-id", required=True)
+    parser.add_argument("--config", default=None)
+    args = parser.parse_args(argv)
+    try:
+        config = _load_config(args.config)
+        path = config.checkpointer.db_path
+        connection = sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True,
+                                     check_same_thread=False)
+        try:
+            saver = SqliteSaver(connection, serde=blacksmith_serde())
+            saved = saver.get_tuple({"configurable": {"thread_id": args.thread_id}})
+            if saved is None:
+                raise ResumeError("no checkpoint for recovery inspection")
+            context = context_from_state(saved.checkpoint["channel_values"])
+            result = inspect(context)
+            print(json.dumps(result, indent=2))
+        finally:
+            connection.close()
+        return 0
+    except (ReceiptError, ResumeError, RunContextError, ConfigError, OSError, sqlite3.Error) as exc:
+        print(f"recovery: {exc}; original evidence retained; no executor constructed",
+              file=sys.stderr)
         return 1
 
 
@@ -1259,6 +1301,8 @@ def main(argv: list[str] | None = None) -> int:
         return _validate(argv[1:])
     if argv and argv[0] == "resume":
         return _resume(argv[1:])
+    if argv and argv[0] == "recovery":
+        return _recovery(argv[1:])
     if argv and argv[0] == "respond":
         return _respond(argv[1:])
     if argv and argv[0] == "costs":
@@ -1343,6 +1387,8 @@ def main(argv: list[str] | None = None) -> int:
             context = create_run_context(config, prd, args.thread_id)
             stack.enter_context(context.lock())
             stack.enter_context(command_scope(context, stage="cli"))
+            from blacksmith.recovery import protect_run
+            stack.enter_context(protect_run(context, checkpointer))
             graph = build_graph_for(context.execution_config(), checkpointer)
             renderer = _build_renderer(args)
             approval_wait = 0.0

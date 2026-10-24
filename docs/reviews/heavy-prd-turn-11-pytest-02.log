@@ -1,0 +1,156 @@
+........................................................................ [  6%]
+........................................................................ [ 13%]
+........................................................................ [ 20%]
+........................................................................ [ 27%]
+........................................................................ [ 34%]
+........................................................................ [ 41%]
+........................................................................ [ 48%]
+........................................................................ [ 55%]
+........................................................................ [ 62%]
+...........................................FFFF......................... [ 69%]
+........................................................................ [ 76%]
+........................................................................ [ 83%]
+........................................................................ [ 90%]
+........................................................................ [ 97%]
+........................                                                 [100%]
+=================================== FAILURES ===================================
+________ test_bootstrap_intent_failure_prevents_planning_clone_and_sdk _________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_bootstrap_in...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c459250>
+capsys = <_pytest.capture.CaptureFixture object at 0x10c45b080>
+
+    def test_bootstrap_intent_failure_prevents_planning_clone_and_sdk(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_bootstrap BEFORE INSERT ON operations "
+            "WHEN NEW.kind='git.planning_snapshot' BEGIN "
+            "SELECT RAISE(ABORT,'critical write unavailable'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config)]) == 1
+        path = database(project)
+>       assert operations(path) == [("recovery.initialize", "completed")]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert [('recovery.i... 'completed')] == []
+E         
+E         Left contains one more item: ('recovery.initialize', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:51: AssertionError
+----------------------------- Captured stderr call -----------------------------
+blacksmith: preflight snapshot failed; retained artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_bootstrap_intent_failure_0/.blacksmith/runs/c2efcfb1-d7bd-401c-a493-115d70d8fbf4
+_____________ test_sdk_intent_failure_prevents_first_provider_call _____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_intent_f...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c45a5d0>
+capsys = <_pytest.capture.CaptureFixture object at 0x10c45a510>
+
+    def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_sdk BEFORE INSERT ON operations "
+            "WHEN NEW.kind LIKE 'model.%' BEGIN SELECT RAISE(ABORT,'no receipt'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
+        assert calls == []
+        path = database(project)
+>       rows = operations(path)
+E       AssertionError: assert [('recovery.i...pleted'), ...] == [('git.planni...pleted'), ...]
+E         
+E         At index 0 diff: ('recovery.initialize', 'completed') != ('git.planning_snapshot', 'completed')
+E         Left contains 10 more items, first extra item: ('command:8:bootstrap:git', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:70: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 6319e6d9-d798-4fa1-9ec7-1f4c9c269244: selected committed HEAD e95537b490e9cc6fa37f4f820d44f9ae1d9468cb
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_intent_failure_preven0/.blacksmith/runs/6319e6d9-d798-4fa1-9ec7-1f4c9c269244
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_intent_failure_preven0/.blacksmith/runs/6319e6d9-d798-4fa1-9ec7-1f4c9c269244/recovery/d68d6105-9883-4582-b7a7-01cd6e1612bf/manifest.json
+Next action: blacksmith recovery inspect --thread-id run
+blacksmith: critical journal read/write failed: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_intent_failure_preven0/.blacksmith/runs/6319e6d9-d798-4fa1-9ec7-1f4c9c269244/operations.sqlite
+______ test_sdk_outcome_failure_rolls_back_cost_and_resume_cannot_rebill _______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_outcome_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c459970>
+capsys = <_pytest.capture.CaptureFixture object at 0x10c8bcf20>
+
+        assert (path.parent / "planning").is_dir()
+        assert not (path.parent / "workspace").exists()
+        assert "critical journal read/write failed" in capsys.readouterr().err
+    
+    
+    def test_sdk_outcome_failure_rolls_back_cost_and_resume_cannot_rebill(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_cost BEFORE INSERT ON events BEGIN "
+>           "SELECT RAISE(ABORT,'cost storage unavailable'); END",
+        )
+E       AssertionError: assert ('command:8:r..., 'completed') == ('model.plan', 'intent')
+E         
+E         At index 0 diff: 'command:8:recovery_capture:git' != 'model.plan'
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:90: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 1a8c4c87-7b20-4aec-a7f9-eab7001f3e9c: selected committed HEAD 2102cf68d23746a9aa244f1f98bbdbb537bc14f2
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_outcome_failure_rolls0/.blacksmith/runs/1a8c4c87-7b20-4aec-a7f9-eab7001f3e9c
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_outcome_failure_rolls0/.blacksmith/runs/1a8c4c87-7b20-4aec-a7f9-eab7001f3e9c/recovery/4227a03c-ac5d-4205-bc16-10dbe4a8d810/manifest.json
+Next action: blacksmith recovery inspect --thread-id cost
+blacksmith: critical journal read/write failed: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_sdk_outcome_failure_rolls0/.blacksmith/runs/1a8c4c87-7b20-4aec-a7f9-eab7001f3e9c/operations.sqlite
+_____ test_checkpoint_replay_reuses_completed_plan_response_and_cost_event _____
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_checkpoint_r...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c9db2c0>
+
+        with sqlite3.connect(path) as connection:
+            assert connection.execute("SELECT count(*) FROM events").fetchone()[0] == 0
+        assert cli.main(["resume", "--config", str(config), "--thread-id", "cost"]) == 1
+        assert len(calls) == 1  # provider response lost at journal boundary; never guess/repeat
+        assert "interrupted_attempt_requires_resume" in capsys.readouterr().err
+        assert (path.parent / "planning").is_dir()
+    
+    
+    def test_checkpoint_replay_reuses_completed_plan_response_and_cost_event(project, monkeypatch):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        original = plan_module.cost_event
+    
+        def crash_after_receipt(node, unit_id, result):
+>           raise KeyboardInterrupt("injected exit after SDK receipt, before graph checkpoint")
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AssertionError: assert ('command:8:r..., 'completed') == ('model.plan', 'completed')
+E             
+E             At index 0 diff: 'command:8:recovery_capture:git' != 'model.plan'
+E             Use -v to get more diff
+
+tests/test_receipt_wiring.py:114: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run b14f8b77-7ca0-4d85-b80f-ff3573c38a90: selected committed HEAD 4f47ecf13a0591cc523ae9e383ad758dd79b976a
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_checkpoint_replay_reuses_0/.blacksmith/runs/b14f8b77-7ca0-4d85-b80f-ff3573c38a90
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-112/test_checkpoint_replay_reuses_0/.blacksmith/runs/b14f8b77-7ca0-4d85-b80f-ff3573c38a90/recovery/6297a08e-7535-48a6-8167-e36285b0dbe6/manifest.json
+Next action: blacksmith recovery inspect --thread-id replay
+=========================== short test summary info ============================
+FAILED tests/test_receipt_wiring.py::test_bootstrap_intent_failure_prevents_planning_clone_and_sdk
+FAILED tests/test_receipt_wiring.py::test_sdk_intent_failure_prevents_first_provider_call
+FAILED tests/test_receipt_wiring.py::test_sdk_outcome_failure_rolls_back_cost_and_resume_cannot_rebill
+FAILED tests/test_receipt_wiring.py::test_checkpoint_replay_reuses_completed_plan_response_and_cost_event
+4 failed, 1028 passed in 655.99s (0:10:55)

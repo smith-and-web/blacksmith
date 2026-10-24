@@ -820,8 +820,8 @@ def cleanup_worktree(
             sandbox.stop()
         except SandboxError:
             pass
-    if state.get("status") == Status.HALTED:
-        return {}  # Failed joins/gates retain shared and sibling evidence for recovery.
+    if state.get("run_context") or state.get("status") == Status.HALTED:
+        return {}  # Versioned runs retain every workspace; collection is explicit future work.
     if worktree_manager is None:
         return {}
     _cleanup_builds([row for row in (state.get("unit_outcomes") or {}).values()
@@ -995,6 +995,7 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
             {
                 "prd": state.get("prd"),
                 "state_version": state.get("state_version"),
+                "recovery_version": state.get("recovery_version"),
                 "run_id": state.get("run_id"),
                 "run_context": state.get("run_context"),
                 "selected_unit": unit,

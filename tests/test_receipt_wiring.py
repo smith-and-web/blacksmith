@@ -48,7 +48,7 @@ def test_bootstrap_intent_failure_prevents_planning_clone_and_sdk(project, monke
     )
     assert cli.main([str(prd), "--config", str(config)]) == 1
     path = database(project)
-    assert operations(path) == []
+    assert operations(path) == [("recovery.initialize", "completed")]
     assert not (path.parent / "planning").exists()
     assert (path.parent / "manifest.json").is_file()
     assert calls == []
@@ -67,9 +67,14 @@ def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, c
     assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
     assert calls == []
     path = database(project)
-    assert operations(path) == [("git.planning_snapshot", "completed")] + [
-        (f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)
+    rows = operations(path)
+    assert rows[:10] == [
+        ("recovery.initialize", "completed"), ("git.planning_snapshot", "completed"),
+    ] + [(f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)]
+    assert rows[10:] == [("recovery.capture", "completed")] + [
+        (f"command:{i}:recovery_capture:git", "completed") for i in range(1, 9)
     ]
+    assert not any(kind.startswith("model.") for kind, _ in rows)
     assert (path.parent / "planning").is_dir()
     assert not (path.parent / "workspace").exists()
     assert "critical journal read/write failed" in capsys.readouterr().err
@@ -87,7 +92,10 @@ def test_sdk_outcome_failure_rolls_back_cost_and_resume_cannot_rebill(project, m
     assert cli.main([str(prd), "--config", str(config), "--thread-id", "cost"]) == 1
     path = database(project)
     assert len(calls) == 1
-    assert operations(path)[-1] == ("model.plan", "intent")
+    assert [r for r in operations(path) if r[0].startswith("model.")] == [
+        ("model.plan", "intent"),
+    ]
+    assert operations(path).count(("recovery.capture", "completed")) == 1
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT count(*) FROM events").fetchone()[0] == 0
     assert cli.main(["resume", "--config", str(config), "--thread-id", "cost"]) == 1
@@ -111,7 +119,9 @@ def test_checkpoint_replay_reuses_completed_plan_response_and_cost_event(project
     assert len(calls) == 1
     values = saved_values(config, "replay")
     context = context_from_state(values)
-    assert operations(context.journal().path)[-1] == ("model.plan", "completed")
+    rows = operations(context.journal().path)
+    assert [r for r in rows if r[0].startswith("model.")] == [("model.plan", "completed")]
+    assert rows.count(("recovery.capture", "completed")) == 1
     monkeypatch.setattr(plan_module, "cost_event", original)
     monkeypatch.setattr(
         cli, "_resolve_approver", lambda args, renderer: lambda payload, values: False
