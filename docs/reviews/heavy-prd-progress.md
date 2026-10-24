@@ -19,6 +19,7 @@
 - S10 implementation commit: `07965ca` (local only).
 - S11 foundation commit: `68a80c3` (local only; partial at turn 11).
 - S11 controller commit: `03d4308` (local only; partial at turn 12).
+- S11 completion commit: `2e97459` (local only; turn 13 full proof passed).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
@@ -58,7 +59,7 @@ See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results,
 
 S01-S11 are complete under the scoped offline acceptance audit in `heavy-prd-evidence.md`. Full S01-S19 goal remains active at counter **13/30**. Do not increment on compaction. S12-S19 and all live gates remain outstanding. No subagents. Original specification/probe remain unchanged/untracked.
 
-Final full-03 handle **52548 is terminal, exit 0: 1084 passed in 837.99 seconds**. No skips, xfails or warnings in this final run. All other test/commit handles must also be terminal before the turn ends. Final ruff passes. All **136 Python source file hashes and the full source-file set** match the pre-run environment record. Final log/ruff/deviation hashes are recorded in `heavy-prd-turn-13-environment.json`. No dependency/lockfile change, weakened assertion, paid canary, merge or successful publication. The failed unintended test push and correction below remain part of acceptance evidence.
+Final full-03 handle **52548 is terminal, exit 0: 1084 passed in 837.99 seconds**. No skips, xfails or warnings in this final run. All test, lint and implementation-commit handles were explicitly polled terminal. Final ruff passes. All **136 Python source file hashes and the full source-file set** match the pre-run environment record. Final log/ruff/deviation hashes are recorded in `heavy-prd-turn-13-environment.json`. No dependency/lockfile change, weakened assertion, paid canary, merge or successful publication. The failed unintended test push and correction below remain part of acceptance evidence.
 
 Implemented in turn 13: critical capture/verification seals before final artifacts, observed repair or retained-partial evidence without changing original receipt status, no-checkpoint/run-directory and legacy completed inspection, bootstrap capture and supported absolute next action, exact staged/committed formatter/implementation/squash recovery, original effect identities, flat outcome generations, saved child consumption across a lost parent barrier, genuinely unstarted siblings at the saved level base, join generation/rollback recovery reusing exact destination objects (including valid orphans), staged pick completion, lost restore outcome reconciliation, fresh PR rejection/depleted continuation/single-amendment/corruption/native-unknown boundaries. Helper modules: `recovery_repair.py`, `formatter_recovery.py`, `join_recovery.py`.
 
@@ -76,6 +77,12 @@ Budget identity fix: unrelated retained-partial captures must not change the ide
 A missed test injection patched `impl._git` rather than real `impl.run_command`, so its child reached legacy publication and attempted a real push to a synthetic GitHub fixture remote. The critical receipt failed **128 before authentication**, verified stderr could not read a GitHub username because no device was configured; no `gh` command or successful publication occurred. Exact receipt/hash/log paths and stderr are in `heavy-prd-turn-13-unexpected-push.json`; failed test log retained. Do not claim no push attempt occurred in turn 13.
 
 Correction: changed injection target, guarded publication in every new child and limited approval to plan. The pytest environment now blocks native network Git transports (local scratch file allowed), isolates gh config and empties publication token variables to stop dotenv restoring real credentials. Host settings unchanged. Only paid SDK transport is replaced; no live model bill/cancellation or canary claim.
+
+## Turn 13 durable closeout
+
+- Local implementation commit: `2e974598304dceccfcd39586fc630f33baf0fed6`; host pre-commit checks passed. Post-commit source-file set/hashes and final verification receipt hashes match. Source/docs `git show --check` passed, excluding verbatim raw `.log` receipts. Only the two original untracked inputs remained after implementation commit.
+- Brain hub `Projects/blacksmith.md` updated through MCP with S11 completion, turn 13/30, full proof, failed-push exception/correction and S12-S19/live boundaries. Targeted lint: 0 errors/0 warnings. After 77 seconds, index lastRun.errors=0 and invalidFrontmatter.count=0. Semantic retrieval and exact full-note readback verified counter/proof/remaining scope/deviation (`458630b0-4f3d-4504-a370-9bfe8d9ba8ab`); positive search feedback recorded once.
+- No running test processes remain. The native full goal remains active; this checkpoint does not complete or pause S01-S19.
 
 ## Next action: automatic goal turn 14
 
