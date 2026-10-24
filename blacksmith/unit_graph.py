@@ -48,6 +48,8 @@ def _tag(state, phase, update):
     if "review_current_findings" in update and "review_findings" in update:
         update["review_current_findings"] = update["review_findings"]
     update["unit_stage"] = phase
+    if phase == "audit_commit" and update.get("status") != Status.HALTED:
+        update["implementation_attempt_id"] = attempt_identity(state)
     if update.get("status") == Status.HALTED and phase != "finalize_unit":
         update["unit_failed_stage"] = phase
     return update
@@ -146,8 +148,11 @@ def build_unit_graph(deps, worktree_manager=None):
             elif gm._will_escalate(state) and gm._within_budget(state):
                 action = "escalate"
             else:
-                return {"recovery_action": action, "status": Status.HALTED,
-                        "unit_failed_stage": phase}
+                return {
+                    "recovery_action": action,
+                    "status": Status.HALTED,
+                    "unit_failed_stage": phase,
+                }
         elif phase == "review" and not state.get("review_clean"):
             action = (
                 "prepare_review_revision" if gm._can_review_revise(state) else "finalize_review"
@@ -201,6 +206,10 @@ def build_unit_graph(deps, worktree_manager=None):
             if not ok
             else "",
         }
+        if previous := state.get("recovery_previous_outcome"):
+            result["recovery_generation"] = state.get("recovery_generation", 0)
+            result["recovery_history"] = [*previous.get("recovery_history", []), previous]
+            result["recovery_amendment_id"] = state.get("recovery_amendment_id")
         return {"unit_outcome": result, "status": Status.TESTING if ok else Status.HALTED}
 
     g = StateGraph(BlacksmithState)
@@ -227,7 +236,7 @@ def build_unit_graph(deps, worktree_manager=None):
     )
     g.add_node("finalize_review", wrap("finalize_review", gm.finalize_review))
     g.add_node("finalize_unit", wrap("finalize_unit", finalize))
-    g.add_edge(START, "prepare_attempt")
+    g.add_conditional_edges(START, lambda s: s.get("recovery_entry") or "prepare_attempt")
     g.add_conditional_edges(
         "prepare_attempt", lambda s: "finalize_unit" if s.get("unit_human") else "implement"
     )
@@ -318,7 +327,12 @@ def unit_runner(unit_graph):
 
     def execute(state):
         selected = state.get("selected_unit")
-        parallel = bool(state.get("shared_clone_path"))
+        recovered = (state.get("recovery_units") or {}).get(selected.id if selected else "")
+        parallel = (
+            recovered.get("unit_mode") == "parallel"
+            if recovered
+            else bool(state.get("shared_clone_path"))
+        )
         keep = {
             "prd",
             "state_version",
@@ -345,6 +359,7 @@ def unit_runner(unit_graph):
             "review_panel_size",
             "shared_clone_path",
             "level_cursor",
+            "recovery_call_overrides",
         }
         seed = {key: state[key] for key in keep if key in state}
         seed.update({key: state[key] for key in UnitAttemptState.__annotations__ if key in state})
@@ -363,6 +378,15 @@ def unit_runner(unit_graph):
             if parallel
             else sum(float(e.get("cost_usd") or 0) for e in state.get("cost_events") or []),
         )
+        if recovered:
+            seed = {**recovered, "limits": state["limits"], "unit_initialized": True}
+            # Include all run spend once, excluding the unit events already in this seed.
+            known = {e.get("event_id") for e in seed.get("cost_events", [])}
+            seed["run_cost_base"] = sum(
+                float(e.get("cost_usd") or 0)
+                for e in state.get("cost_events", [])
+                if e.get("event_id") not in known
+            )
         # Sync durability commits an attempt/cost checkpoint before the next effect.
         try:
             parent_writer = get_stream_writer()
@@ -390,6 +414,9 @@ def unit_runner(unit_graph):
             "unresolved_review_findings": result.get("unresolved_review_findings") or [],
             "review_revisions_total": result.get("review_revisions_total", 0),
         }
+        if recovered:
+            output["recovery_queue"] = state["recovery_queue"][1:]
+            output["status"] = Status.TESTING if outcome["ok"] else Status.HALTED
         if not parallel:
             output.update(
                 {key: result[key] for key in UnitAttemptState.__annotations__ if key in result}

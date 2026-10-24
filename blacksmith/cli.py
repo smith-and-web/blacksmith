@@ -912,6 +912,23 @@ def _resume(argv: list[str] | None = None) -> int:
         prog="blacksmith resume",
         description="Continue an interrupted run from its SQLite checkpoint (by thread-id).",
     )
+    recovery_modes = parser.add_mutually_exclusive_group()
+    recovery_modes.add_argument(
+        "--retry-stage",
+        action="store_true",
+        help="Explicitly retry the recorded failed deterministic stage.",
+    )
+    recovery_modes.add_argument(
+        "--continue-attempt",
+        action="store_true",
+        help="Acknowledge an interrupted model and use remaining continuation allowance.",
+    )
+    parser.add_argument("--unit-id", help="Recover only this recorded failed unit.")
+    parser.add_argument(
+        "--add-budget-usd",
+        type=float,
+        help="Record a positive finite addition to the saved run budget.",
+    )
     parser.add_argument(
         "--thread-id", required=True, help="Thread id of the run to resume."
     )
@@ -994,9 +1011,26 @@ def _resume(argv: list[str] | None = None) -> int:
                 raise ResumeError("legacy_recovery_requires_manual_recovery: no artifact index")
             validate_recovery(context)
             stack.enter_context(protect_run(context, checkpointer))
+            from blacksmith.recovery_control import prepare as prepare_recovery
+
+            amendment = prepare_recovery(
+                context,
+                checkpointer,
+                saved,
+                retry_stage=args.retry_stage,
+                continue_attempt=args.continue_attempt,
+                unit_id=args.unit_id,
+                add_budget_usd=args.add_budget_usd,
+            )
             # Saved models, limits and target survive local config changes.
             config = context.execution_config()
             graph = build_graph_for(config, checkpointer)
+            if amendment is not None:
+                graph.update_state(
+                    {"configurable": {"thread_id": args.thread_id}},
+                    amendment,
+                    as_node="recovery_prepare",
+                )
             renderer = _build_renderer(args)
             approval_wait = 0.0
 

@@ -15,7 +15,7 @@ CONTINUATION_FEEDBACK = (
 
 def _identity(state):
     # Preserve S04's call/commit identities for checkpoints created before this slice.
-    return encoded(
+    value = encoded(
         [
             state["fix_attempts"],
             state["escalated"],
@@ -23,6 +23,8 @@ def _identity(state):
             state["implement_continuations"],
         ]
     )
+    generation = state.get("recovery_generation", 0)
+    return value + (f":recovery:{generation}" if generation else "")
 
 
 def new_unit_attempt(unit_id: str, base_commit: str | None) -> UnitAttemptState:
@@ -30,6 +32,11 @@ def new_unit_attempt(unit_id: str, base_commit: str | None) -> UnitAttemptState:
     if not unit_id.strip():
         raise ValueError("unit identity cannot be empty")
     state: UnitAttemptState = {
+        "recovery_generation": 0,
+        "recovery_entry": "",
+        "recovery_previous_outcome": None,
+        "recovery_amendment_id": "",
+        "implementation_attempt_id": "",
         "unit_failed_stage": "",
         "current_unit_id": unit_id,
         "unit_base_commit": base_commit,
@@ -97,6 +104,7 @@ def next_attempt(
             "test_results": None,
             "implementation": {},
             "pending_implementation": None,
+            "implementation_attempt_id": "",
             "review_clean": False,
             "review_current_findings": [],
             "implement_error_kind": "",

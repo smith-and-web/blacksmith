@@ -39,6 +39,7 @@ add a dependency without adding it to `pyproject.toml`.
 - `blacksmith/joins.py` — saved level bases, exact-source picks and critical Git reconciliation.
 - `blacksmith/integration.py` — complete unit outcomes and exact-candidate layer-union gates.
 - `blacksmith/recovery.py` — immutable recovery snapshots and read-only artifact inspection.
+- `blacksmith/recovery_control.py` — sealed explicit recovery amendments and stage selection.
 - `blacksmith/plan_artifacts.py` — per-unit immutable plans and exact PRD/plan approval bindings.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).

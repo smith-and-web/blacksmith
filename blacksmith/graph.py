@@ -217,6 +217,8 @@ def prepare_worktree(
         }
         update["fix_attempts"] = 0
         update["implement_continuations"] = 0
+        if limits.max_run_cost_usd is not None:
+            update["limits"]["max_run_cost_usd"] += state.get("budget_amendment_usd", 0)
     # Seed the review loop's on/off switch (and its panel size, WU-REVIEW-PANEL-NODE) into
     # state ONCE (WU-REVIEW-LOOP), same pattern as ``limits`` above: only when the graph is
     # wired with a ReviewConfig (production). A graph compiled without one leaves
@@ -1076,6 +1078,8 @@ def route_after_unit(state: BlacksmithState) -> str:
     """Parents select/consume outcomes; all attempt recovery lives in the child."""
     if state.get("status") == Status.HALTED:
         return "human_halt"
+    if state.get("recovery_queue"):
+        return "recovery_dispatch"
     if _is_fanout_level(state, state.get("level_cursor", 0)):
         return "join_level"
     unit = state.get("selected_unit")
@@ -1241,6 +1245,11 @@ def build_graph(
     )
     child = build_unit_graph(unit_deps, worktree_manager)
     graph.add_node("execute_unit", unit_runner(child))
+    from blacksmith.recovery_control import dispatch, route_dispatch
+    graph.add_node("recovery_dispatch", dispatch)
+    graph.add_conditional_edges("recovery_dispatch", route_dispatch)
+    graph.add_node("recovery_prepare", lambda state: {})
+    graph.add_edge("recovery_prepare", "recovery_dispatch")
     from blacksmith.integration import final_gate, integration_gate
     from blacksmith.joins import prepare_level
 

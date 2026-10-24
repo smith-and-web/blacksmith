@@ -489,7 +489,18 @@ def merge_unit_outcomes(left: dict, right: dict) -> dict:
         if outcome.get("unit_id") != unit_id:
             raise ReceiptError("unit outcome key/identity mismatch")
         if unit_id in result and result[unit_id] != outcome:
-            raise ReceiptError("conflicting terminal unit outcome; explicit recovery required")
+            previous = result[unit_id]
+            if previous in outcome.get("recovery_history", []):
+                history = outcome["recovery_history"]
+                if (previous.get("ok") or history[-1] != previous
+                        or not outcome.get("recovery_amendment_id")
+                        or outcome.get("recovery_generation")
+                        != previous.get("recovery_generation", 0) + 1):
+                    raise ReceiptError("invalid unit recovery outcome chain")
+            elif outcome in previous.get("recovery_history", []):
+                continue  # A delayed checkpoint of the retained original outcome.
+            else:
+                raise ReceiptError("conflicting terminal unit outcome; explicit recovery required")
         result[unit_id] = outcome
     return result
 
@@ -512,12 +523,15 @@ class CallContext:
     context_hash: str
     unit_id: str
     attempt_id: str
+    key_overrides: dict[str, str] | None = None
 
     def journal(self) -> OperationJournal:
         return OperationJournal(self.journal_path, self.run_id, self.context_hash)
 
     def key(self, kind: str) -> OperationKey:
-        return OperationKey(self.run_id, self.unit_id, self.attempt_id, kind)
+        identity = encoded([self.unit_id, self.attempt_id, kind])
+        attempt = (self.key_overrides or {}).get(identity, self.attempt_id)
+        return OperationKey(self.run_id, self.unit_id, attempt, kind)
 
 
 def call_context_for(
@@ -540,4 +554,5 @@ def call_context_for(
         journal.context_hash,
         unit_id,
         attempt_id or attempt_identity(state),
+        state.get("recovery_call_overrides"),
     )

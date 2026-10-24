@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import sqlite3
 import sys
@@ -115,6 +116,12 @@ def _validate(context, *, allow_pending=False):
             except OSError as exc:
                 raise RecoveryError(f"unreadable recovery file: {artifact}") from exc
     for operation in journal.operations():
+        if operation.key.kind == "recovery.amend":
+            if operation.status != "completed":
+                raise RecoveryError("incomplete recovery amendment; retained for inspection")
+            patch = owned_file(root, operation.outcome["patch"])
+            if file_hash(patch) != operation.outcome["sha256"]:
+                raise RecoveryError("changed recovery amendment")
         if operation.key.kind == "recovery.capture":
             if operation.status == "completed" and operation.key.attempt_id not in seen:
                 raise RecoveryError("recovery index is missing a completed capture")
@@ -317,13 +324,16 @@ def inspect(context):
 @contextmanager
 def protect_run(context, checkpointer):
     """Capture before releasing the run lock, on terminal failure or raised exception."""
+    command = ["blacksmith", "recovery", "inspect", "--thread-id", context.thread_id]
+    if context.runtime_config_path:
+        command += ["--config", context.runtime_config_path]
+    action = shlex.join(command)
     try:
         yield
     except BaseException as exc:
         try:
             path = capture(context, checkpointer, reason=f"{type(exc).__name__}: {exc}")
-            print(f"Recovery manifest: {path}\nNext action: blacksmith recovery inspect "
-                  f"--thread-id {context.thread_id}", file=sys.stderr)
+            print(f"Recovery manifest: {path}\nNext action: {action}", file=sys.stderr)
         except BaseException as capture_error:
             print(f"Critical recovery capture failed: {capture_error}; retained: "
                   f"{_directory(context)}", file=sys.stderr)
@@ -336,5 +346,4 @@ def protect_run(context, checkpointer):
         if values.get("status") == Status.HALTED:
             path = capture(context, checkpointer,
                            reason=values.get("errors") or "approval rejected")
-            print(f"Recovery manifest: {path}\nNext action: blacksmith recovery inspect "
-                  f"--thread-id {context.thread_id}", file=sys.stderr)
+            print(f"Recovery manifest: {path}\nNext action: {action}", file=sys.stderr)

@@ -468,15 +468,52 @@ blacksmith recovery inspect --thread-id my-run --config /path/to/blacksmith.conf
 
 Inspection uses a SQLite read-only connection. Supply the original config selection
 when it was explicit. Missing/corrupt evidence produces a diagnostic; it is not
-silently regenerated. The currently printed next action is inspection; a full
-failed-stage recovery CLI and contextual command reporting remain S11 work.
+silently regenerated. The printed inspection command quotes the saved thread ID
+and includes the original explicit config path.
 
 An SDK call killed without terminal evidence remains uncertain. Ordinary resume
 refuses it with `interrupted_attempt_requires_resume`, preserving partial binary
 and untracked files in a capture and leaving the original model receipt unchanged.
-Explicit continuation under the remaining continuation budget is not implemented
-by this foundation. Likewise a terminal rejection does not yet schedule a new
-approval interrupt, and ordinary resume cannot restore a terminal failed stage.
+Explicit recovery now uses a sealed critical amendment, then schedules the saved
+stage through the same compiled unit graph. It does not recreate the worker or
+reset counters, model tier, bases, approved plans or costs. Successful siblings
+stay unchanged. Replaced failed outcomes retain their original generation history.
+
+```sh
+blacksmith resume --thread-id my-run --config /path/to/blacksmith.config.toml --retry-stage
+blacksmith resume --thread-id my-run --config /path/to/blacksmith.config.toml --continue-attempt
+blacksmith resume --thread-id my-run --config /path/to/blacksmith.config.toml --add-budget-usd 10
+```
+
+`--retry-stage` explicitly retries a recorded deterministic failed unit stage or
+integration/final gate. An optional `--unit-id` selects one failed unit; otherwise
+recorded failed siblings enter a finite queue. Model work requires
+`--continue-attempt`, which acknowledges the original uncertain receipt and consumes
+remaining continuation allowance. The new call has a new receipt; the old receipt
+and partial files remain. Planning/critic recovery reuses completed roles and
+changes only the acknowledged uncertain call key. Review-panel recovery reuses
+completed seats, preserves the gated candidate and consumes continuation allowance.
+
+A positive finite `--add-budget-usd` adds to the frozen run cap, never substitutes
+the local config or clears spend. The critical amendment is durable before graph
+scheduling; repeated preparation of the same checkpoint/request reuses its sealed
+patch. Original cost events are preserved by call ID; missing completed checkpoint
+events are reconciled from child/journal evidence. This is not the global admission
+reservation/accounting service required by S15. Unknown provider usage remains
+unknown; offline tests do not prove invoice or cancellation behavior.
+
+Ordinary terminal failure resume refuses without an explicit recovery action.
+Plan/PR rejection resume schedules a fresh approval interrupt. Workspace bytes,
+index and HEAD are bound to the amendment and checked again at dispatch. Missing
+workers, changed successful siblings, unknown candidate commits, depleted
+continuations and corrupt amendment files stop before further paid work.
+
+S11 remains incomplete: generic pending formatter/gate/squash/staged-join
+reconciliation, complete join-failure recovery, interruption before an unscheduled
+sibling starts, no-checkpoint/old-run inspection and interrupted-capture repair
+still need verification and implementation. Unknown deterministic effects continue
+to hold for inspection. Do not infer those cases from the supported unit-gate and
+model-continuation drills.
 
 Implementation commits now persist staged-tree intent before the Git commit. If
 a process exits after committing but before outcome/checkpoint, resume verifies
@@ -511,8 +548,9 @@ authoritative; changing the local config does not silently replace them on resum
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call
 refusal are in place. Artifact capture and implementation-commit reconciliation
-are present; complete terminal-stage recovery remains S11 work. These slices do not establish exactly-once
-billing across a killed provider process or recovery of terminal policy/gate failures.
+and explicit saved-unit recovery amendments are present; the remaining S11 cases
+are listed above. These slices do not establish exactly-once billing across a killed
+provider process or complete generic stage recovery.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing
 history tools. Execution-resume refuses them with

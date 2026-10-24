@@ -312,3 +312,47 @@ Contract schema edits require explicit human review before merge (spec §3.2). N
 
 - S11 foundation committed locally as `68a80c3` (`feat: retain verifiable recovery snapshots and reconcile committed effects`); host pre-commit and source/docs `git show --check` passed, excluding verbatim log receipts. S11 remains incomplete. Only original specification/probe remain untracked and unchanged. No push.
 - Brain capture: updated existing `Projects/blacksmith.md` through MCP with final 1035-test proof, goal turn 11/30 and explicit incomplete S11-S19/live boundary. Targeted lint: 0 errors/0 warnings. After >70 seconds, index lastRun.errors=0 and invalidFrontmatter.count=0; semantic search and readback verified counter/proof/remaining boundary (`525d6d4e-6c2b-4ef3-9eb5-202df91d0c93`).
+
+
+## Turn 12: S11 explicit recovery controller and amendments (slice still incomplete)
+
+- Goal counter advanced 11 -> 12 exactly once after reading objective/repository instructions and `Projects/blacksmith.md`. Prior turn classified progress: local foundation `68a80c3`/handoff `a5a7732`, 1035 tests/ruff. Branch and original untracked inputs preserved. No subagents, paid call, push/publication/merge or Docker/remote canary.
+- Added sealed critical recovery amendments and graph dispatch into the existing shared unit state machine, preserving exact worker and consumed counters/bases/tier/plans/cost IDs. Failed outcome generations retain original history/amendment identity; successful siblings are validated and reused. Dispatch rechecks amendment hash and workspace bytes/index/HEAD.
+- CLI supports explicit failed-stage retry, per-unit selection, acknowledged remaining-allowance model continuation and positive finite budget additions to the saved cap. Planner/critic and panel recovery reuse completed roles/seats with selective call-key replacement. Plan/PR rejection schedules a fresh approval interrupt. Original uncertain receipts remain immutable; missing completed checkpoint costs reconcile from critical events without changing existing event payloads. Printed next actions quote original config/thread. Normal runs add no model calls; explicitly requested continuation/recovery may spend remaining allowance.
+- S11 remains unchecked: generic deterministic effect/join reconciliation, unscheduled sibling handling and no-checkpoint/old-run/incomplete capture/amendment diagnostics/repair remain. This partial controller does not establish S12 review correctness or S15 global admission/reservations/unknown accounting, live invoice/cancellation or general readiness.
+- Control-01: 7 passed/41.70 s. Control-02: 9/35.66 s (14 pytest cleanup warnings). Control-03: 9/28.17 s. Control-04: 10/37.04 s (7 cleanup warnings). Control-05: 38/73.33 s. Regression-01: 75/131.07 s (134 cleanup warnings). Warnings come from pytest attempting to remove old read-only planning temp directories, not failed assertions or product cleanup. No warning suppression added.
+- Model-recovery-01: 1 passed/1 failed/9 deselected, 7.86 s. The new critic test incorrectly expected a nonexistent `approach` plan key; fixed to assert exact `steps == RETAINED_PLAN`. Production behavior unchanged. Intermediate logs retained verbatim. No assertions weakened, skips/xfails or dependency changes. Final full pytest/ruff pending.
+
+- Budget-policy-01: 1 passed/1 failed/10 deselected, 6.86 s. The new parallel fixture incorrectly assumed each worker saw a sibling's newly spent cost; existing stale fan-out totals allow one extra retry and remain an explicitly open S15 global-admission defect. The recovery-policy test now uses sequential scheduling to verify exact original remaining retry counters and saved-budget amendment, preserving all numeric/cost assertions. Budget-policy-02: 1 passed/11 deselected, 10.54 s, including new paid-call receipt only for B's remaining same-model fix; A and all original cost payloads stay unchanged. This is not proof of concurrent admission.
+- Model critic reuse passed in budget-policy-01 after the exact plan-field correction. Full-01 is intermediate (started before final metadata/finite-cap/unit-id guards and topology/budget-policy test); full-02 covers final source. No source changes planned while final verification runs.
+
+- Intermediate full-01: **1046 passed in 680.61 seconds**, exit 0 (`heavy-prd-turn-12-pytest-01.log`). It predates final guards/topology/budget-policy coverage, so full-02 remains the required final-source proof. Ruff currently passes.
+
+- Added a stronger interrupted-panel assertion comparing child policy spend (`run_cost_base + cost_events`) with the authoritative deduplicated run total. Cost-reconcile-01 failed with 0.06 versus 0.05, confirming a completed panel seat recovered only from the journal could count in both the child base and cached-seat events. Recovery seeds now include all known costs for that unit before the run base is computed; cached call-ID replay remains idempotent. The assertion is unchanged. Full-02 predates this final fix; full-03 is now the final-source proof.
+
+### S11 acceptance status after turn 12
+
+| Requirement | Current evidence | Status |
+|---|---|---|
+| Binary staged/unstaged/untracked bytes and orphan commits survive failure | `test_recovery_artifacts.py`: independent bundle/patch restoration, orphan Git object and symlink tests | Offline proved in turn 11 and control-05 |
+| Corrupt files prevent executor/admission | Artifact schema/hash/provider-zero tests; sealed-amendment tamper test | Offline proved for covered artifacts; complete old/no-checkpoint diagnostics pending |
+| A killed model remains explicit and original receipt stays unchanged | Real child exit 93 + acknowledged continuation test; new call ID, same partial bytes, one remaining allowance | Offline proved; live billing/cancellation unrun; S15 reservation accounting pending |
+| A failed worker resumes at its saved stage | Failed parallel B gate retries with A SHA/outcome/calls unchanged, counters unchanged | Offline proved for clean failed unit gate |
+| Review/planning reuse completed paid roles | Real exits 95/96, completed panel seat and original plan reused, old uncertain receipts immutable | Offline proved for covered interruption points; S12 review semantics pending |
+| Restored child policy spend equals run spend | Stronger panel assertion initially failed at .06 versus .05; reconciled unit seed costs fix it | Control-06 12/45.77 s and final full-03 1047/672.62 s passed |
+| Explicit budget addition preserves frozen cap/counters/events | Saved .01 cap plus .02 despite changed local config; sequential exhausted worker .04 plus .10 retains remaining cheap fix | Offline proved; concurrent admission remains S15 |
+| Rejection requires a new approval | Plan rejection resumes to fresh interrupt without replanning; PR uses same dispatch path | Plan drill proved; explicit PR rejection drill still required |
+| Original implementation commit survives lost outcome | Real process exit/KeyboardInterrupt after commit, same SHA/one commit/zero SDK replay | Offline proved in turn 11; generic formatter/squash/staged-pick cases pending |
+| All remaining failure paths support recovery | Parent join rollback, unscheduled siblings, pending deterministic stages, preflight/legacy/no-checkpoint and incomplete capture/amendment repair | Incomplete; S11 stays unchecked |
+
+No row claims a live provider, remote publication, Docker or production recovery gate. Source wiring plus bounded offline drills do not prove the remaining rows.
+
+- Intermediate full-02: **1047 passed in 695.02 seconds**, exit 0, before the stronger recovered-seat spend assertion/fix. Cost-reconcile-01: 1 failed/11 deselected in 30.09 s; unchanged stronger assertion now passes in control-06: **12 passed in 45.77 s**. Final full-03 includes all final code and assertions; ruff passed after the fix.
+
+
+### Turn 12 controller closeout (S11 incomplete)
+
+- Final command: `uv run pytest -q > docs/reviews/heavy-prd-turn-12-pytest-03.log 2>&1`, exit 0: **1047 passed in 672.62 seconds**. Includes all final source, 12 controller cases and the stronger unchanged child/run spend assertion.
+- `uv run ruff check > docs/reviews/heavy-prd-turn-12-ruff.log 2>&1`, exit 0: **All checks passed!** Source/docs whitespace clean excluding verbatim logs. All 129 source hashes matched `heavy-prd-turn-12-environment.json` after final execution. All handles, including failed intermediate checks, were polled terminal. No dependency or lockfile changes.
+- Environment artifact records base revision `a5a773246f6e9307aafda8fc469d477d2453527e`, source hashes and Python/dependency versions. Original spec/probe hashes remain unchanged and untracked/unstaged.
+- S11 remains unchecked. Remaining reconciliation, join/unscheduled sibling and migration/repair cases are in the acceptance table/progress handoff. S12-S19 and live release gates remain incomplete. Full native goal remains active at turn 12/30; no smaller completion claim. No push, publication, merge, paid Blacksmith canary, Docker or remote smoke.

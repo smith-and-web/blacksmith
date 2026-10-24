@@ -106,6 +106,11 @@ class UnitAttemptState(TypedDict, total=False):
     """
 
     unit_failed_stage: str
+    recovery_generation: int
+    recovery_entry: str
+    recovery_previous_outcome: dict[str, Any] | None
+    recovery_amendment_id: str
+    implementation_attempt_id: str
     current_unit_id: str
     unit_base_commit: str | None
     attempt_base_commit: str | None
@@ -188,6 +193,14 @@ class BlacksmithState(UnitAttemptState, total=False):
     # declaration order. Flattening them in order yields ``work_units`` (topo order).
     execution_levels: list[list[WorkUnit]]
     recovery_version: int
+    recovery_target: str
+    recovery_units: dict[str, dict[str, Any]]
+    recovery_queue: list[str]
+    recovery_fingerprints: dict[str, dict[str, Any]]
+    recovery_call_overrides: dict[str, str]
+    recovery_plan_continuations: dict[str, int]
+    recovery_acknowledged_calls: list[str]
+    budget_amendment_usd: float
     join_graph_version: int
     prepared_level: int | None
     level_bases: dict[str, str]

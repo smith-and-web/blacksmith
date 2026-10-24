@@ -57,6 +57,7 @@ def test_graph_compiles(tmp_path):
     compiled = compile_graph(saver)
     node_ids = set(compiled.get_graph().nodes)
     assert EXPECTED_NODES <= node_ids
+    assert {"recovery_prepare", "recovery_dispatch"} <= node_ids
     children = dict(compiled.get_subgraphs())
     assert "execute_unit" in children
     assert {

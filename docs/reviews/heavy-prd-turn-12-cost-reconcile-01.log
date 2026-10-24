@@ -1,0 +1,68 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__ test_interrupted_review_reuses_completed_panel_seat_and_original_candidate __
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-130/test_interrupted_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1093e09e0>
+
+    def test_interrupted_review_reuses_completed_panel_seat_and_original_candidate(
+        project, monkeypatch,
+    ):
+        from blacksmith.executor import Executor, ExecutorResult
+        project[1].write_text(project[1].read_text() + "[review]\npanel_size=3\n")
+        child = subprocess.run([sys.executable, "-c", CRASH_REVIEW, str(Path(__file__).parent),
+                                str(project[2]), str(project[1])], capture_output=True,
+                               text=True, timeout=40)
+        assert child.returncode == 95, child.stderr
+        state = saved_values(project[1], "review-kill")
+        context = context_from_state(state)
+        head = git(context.workspace_path, "rev-parse", "HEAD")
+        original = [o for o in context.journal().operations() if o.key.kind == "model.review"]
+        assert len(original) == 2 and {o.status for o in original} == {"completed", "intent"}
+        calls = []
+    
+        async def review(self, prompt, options, *, emit_findings=False):
+            assert emit_findings and git(context.workspace_path, "rev-parse", "HEAD") == head
+            calls.append(prompt)
+            return ExecutorResult('{"verdict":"clean","findings":[]}', options.model,
+                                  False, 1, .01, {}, "offline")
+    
+        monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "unused-offline")
+        monkeypatch.setattr(Executor, "_collect", review)
+        stop_at_pr(monkeypatch)
+        with pytest.raises(KeyboardInterrupt, match="no publication"):
+            cli.main(resume_args(project, "review-kill", "--continue-attempt"))
+        after = saved_values(project[1], "review-kill")
+        assert len(calls) == 2 and after["implement_continuations"] == 1
+        assert git(context.workspace_path, "rev-parse", "HEAD") == head
+        assert after["final_gate_receipt"].outcome == "passed"
+        assert all(context.journal().get(o.key) == o for o in original)
+        assert len(after["cost_events"]) == 5
+        from blacksmith.recovery import latest_checkpoints
+        saver = build_checkpointer(context.execution_config().checkpointer.db_path)
+        try:
+            unit = next(value for config, value in latest_checkpoints(saver, context)
+                        if config["configurable"]["checkpoint_ns"])
+>           assert unit["run_cost_base"] + sum(e["cost_usd"] for e in unit["cost_events"]) \
+                == pytest.approx(sum(e["cost_usd"] for e in after["cost_events"]))
+E               assert 0.06 == 0.05 ± 5.0e-08
+E                 
+E                 comparison failed
+E                 Obtained: 0.06
+E                 Expected: 0.05 ± 5.0e-08
+
+tests/test_recovery_control.py:253: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Resuming run a8565b97-fea1-451f-bbcf-f47ca728bfe9, base ea027183a92101b47dfec2d37c892e90e991de97, saved configuration
+----------------------------- Captured stderr call -----------------------------
+blacksmith: recovery_dispatch
+blacksmith: execute_unit
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: approve_pr
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-130/test_interrupted_review_reuses0/.blacksmith/runs/a8565b97-fea1-451f-bbcf-f47ca728bfe9/recovery/a6afdf11-73bc-4322-a32d-1d284ce616bd/manifest.json
+Next action: blacksmith recovery inspect --thread-id review-kill --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-130/test_interrupted_review_reuses0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_recovery_control.py::test_interrupted_review_reuses_completed_panel_seat_and_original_candidate
+1 failed, 11 deselected in 30.09s
