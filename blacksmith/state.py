@@ -15,6 +15,7 @@ from enum import StrEnum
 from typing import Annotated, Any, TypedDict
 
 from blacksmith.contract import PRD, WorkUnit
+from blacksmith.gate_receipts import FixReceipt, GateReceipt
 from blacksmith.receipts import merge_events
 
 
@@ -79,6 +80,7 @@ class LevelBuild(TypedDict, total=False):
     files_touched: list[str]
     diff_summary: str
     test_command: str
+    gate_receipt: GateReceipt | None
     ok: bool
     error: str
 
@@ -94,6 +96,7 @@ class UnitResult(TypedDict, total=False):
     files_touched: list[str]
     diff_summary: str
     test_command: str
+    gate_receipt: GateReceipt | None
 
 
 class BlacksmithState(TypedDict, total=False):
@@ -154,6 +157,8 @@ class BlacksmithState(TypedDict, total=False):
     # in which case the gate's payload carries no diff_text exactly as before.
     pr_base_ref: str
     implementation: dict[str, Any]
+    gate_receipt: GateReceipt | None
+    fix_receipt: FixReceipt | None
     # Escalation (WU-ESCALATE-ON-FAIL): a gate failure discards the failed attempt and
     # re-implements the SAME unit once with the stronger model. ``pre_implement_ref`` is the
     # shared worktree's HEAD captured just before THIS unit's implement attempt, so resetting

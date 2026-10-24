@@ -45,6 +45,7 @@ from blacksmith.context import selected_plan
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
 from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
+from blacksmith.gate_receipts import FixReceipt, GateCommandReceipt, GateLayerReceipt, GateReceipt
 from blacksmith.memory import current_store, record_lesson
 from blacksmith.nodes.hitl import approve_plan, approve_pr
 from blacksmith.nodes.implement import conventional_commit_message, implement
@@ -53,10 +54,12 @@ from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
 from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
 from blacksmith.planner import execution_levels
+from blacksmith.receipts import ReceiptError
 from blacksmith.run_context import RunContextError, context_from_state
 from blacksmith.sandbox import SandboxError, SandboxManager
 from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
 from blacksmith.state import BlacksmithState, Status
+from blacksmith.verification import fix_candidate, run_candidate_gate
 from blacksmith.worktree import (
     Clone,
     CloneManager,
@@ -266,16 +269,31 @@ def prepare_worktree(
 
 
 def auto_fix(state: BlacksmithState, *, fix: FixFn | None = None) -> dict:
-    """Deterministic, model-free formatting/auto-fix run between implement and the gate.
+    """Run frozen formatters on the attempt's owned commit before verification.
 
-    Runs the target's ``fix_cmd`` (if configured) in the shared worktree and folds the
-    result into the unit's commit BEFORE ``test_gate`` verifies it — so a mechanical
-    ``cargo fmt --check`` / ``prettier --check`` failure is fixed for free instead of
-    triggering a model retry and escalation. It mutates the worktree but reports no state
-    update: the (possibly amended) commit is the only effect, and the gate that follows is
-    the verdict. Best-effort — a missing ``fix_cmd`` or a failing fixer is a no-op that flows
-    straight on. Without a ``fix`` injected (skeleton / deterministic tests) it is a pure
-    pass-through, so the gate runs on exactly the agent's commit as before."""
+    Version-2 execution persists ownership/formatter evidence and halts on dirty or
+    infrastructure failures. A clean nonzero formatter exit may proceed to the gate.
+    Legacy injected helpers retain their two-argument API.
+    """
+    if state.get("run_context"):
+        try:
+            receipt = fix_candidate(state)
+            update = {"fix_receipt": receipt}
+            if receipt.eligible:
+                update["implementation"] = {
+                    **(state.get("implementation") or {}),
+                    "candidate_commit": receipt.candidate_commit,
+                }
+                return update
+            result = run_candidate_gate({**state, **update}, failure=receipt.message,
+                                        failure_outcome="timeout" if receipt.outcome == "timeout"
+                                        else "dirty" if receipt.outcome == "dirty" else "error")
+        except GateError as exc:
+            result = run_candidate_gate(state, failure=str(exc))
+            update = {}
+        return {**update, "gate_receipt": result.receipt,
+                "test_results": result.as_test_results(), "status": Status.HALTED,
+                "errors": [{"node": "auto_fix", "message": result.output}]}
     if fix is None:
         return {}
     worktree_path = state.get("worktree_path")
@@ -309,7 +327,7 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
     if state.get("status") == Status.HALTED:
         return {"status": Status.HALTED,
                 "test_results": {"passed": False, "output": "attempt halted", "command": ""}}
-    if gate is None:
+    if gate is None and not state.get("run_context"):
         return {"status": Status.TESTING}  # skeleton pass-through
     worktree_path = state.get("worktree_path")
     unit = state.get("selected_unit")
@@ -318,13 +336,33 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
             "status": Status.HALTED,
             "errors": [{"node": "test_gate", "message": "no worktree_path/selected_unit"}],
         }
-    layer = unit.layers[0] if unit.layers else None
     try:
-        result = gate(worktree_path, layer)
-    except GateError as exc:
-        return {"status": Status.HALTED, "errors": [{"node": "test_gate", "message": str(exc)}]}
+        if state.get("run_context"):
+            result = run_candidate_gate(state)
+        else:
+            layers = list(dict.fromkeys(unit.layers)) or [None]
+            results = []
+            for layer in layers:
+                result = gate(worktree_path, layer)
+                results.append(result)
+                if not result.passed:
+                    break
+            result = GateResult(all(r.passed for r in results),
+                                "\n".join(r.output for r in results),
+                                " && ".join(r.command for r in results))
+    except ReceiptError:
+        raise
+    except Exception as exc:
+        return {"status": Status.HALTED,
+                "test_results": {"passed": False, "output": str(exc), "command": ""},
+                "gate_receipt": None,
+                "errors": [{"node": "test_gate", "message": str(exc)}]}
     impl = state.get("implementation") or {}
     update: dict = {"test_results": result.as_test_results(), "status": Status.TESTING}
+    if result.receipt is not None:
+        update["gate_receipt"] = result.receipt
+        if result.receipt.outcome in {"error", "timeout", "dirty"}:
+            update["status"] = Status.HALTED
     if not result.passed:
         # Name the failed unit so the halt message identifies which unit broke the run.
         update["errors"] = [
@@ -360,6 +398,8 @@ def test_gate(state: BlacksmithState, *, gate: GateFn | None = None) -> dict:
                 "test_command": result.command,
             }
         ]
+    if result.receipt is not None and update.get("unit_results"):
+        update["unit_results"][0]["gate_receipt"] = result.receipt
     return update
 
 
@@ -868,7 +908,16 @@ def build_unit(
         if fixed.get("status") == Status.HALTED:
             record.update(ok=False, error=fixed["errors"][0]["message"])
             return {"level_builds": [record], "cost_events": cost_events}
+        sub.update(fixed)
         gate_update = test_gate(sub, gate=deps.gate)
+        sub.update(gate_update)
+        if gate_update.get("status") == Status.HALTED:
+            errors = gate_update.get("errors") or [{"message": "gate infrastructure failure"}]
+            record.update(ok=False, error=errors[0]["message"],
+                          gate_receipt=gate_update.get("gate_receipt"))
+            return {"level_builds": [record], "cost_events": cost_events}
+        if gate_update.get("gate_receipt"):
+            record["gate_receipt"] = gate_update["gate_receipt"]
         results = gate_update.get("test_results") or {}
         record["test_command"] = results.get("command", "")
         if results.get("passed"):
@@ -1623,7 +1672,10 @@ def blacksmith_serde() -> JsonPlusSerializer:
     hazard for pause/resume (AC-2) once the graph persists rich state (WU-09+).
     Registering them explicitly keeps the allowlist tight (only blacksmith's types).
     """
-    return JsonPlusSerializer(allowed_msgpack_modules=[Status, PRD, PRDContract, WorkUnit])
+    return JsonPlusSerializer(allowed_msgpack_modules=[
+        Status, PRD, PRDContract, WorkUnit, GateReceipt, FixReceipt,
+        GateCommandReceipt, GateLayerReceipt,
+    ])
 
 
 def build_checkpointer(db_path: str | Path) -> SqliteSaver:

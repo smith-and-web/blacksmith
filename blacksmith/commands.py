@@ -33,6 +33,10 @@ GIT_TIMEOUT_S = 120
 class CommandError(RuntimeError):
     """A native command failed; its bounded logs are retained."""
 
+    def __init__(self, message, *, result=None):
+        super().__init__(message)
+        self.result = result
+
 
 @dataclass(frozen=True)
 class CommandScope:
@@ -148,7 +152,7 @@ class CommandResult:
                 if self.cancelled
                 else str(self.returncode)
             )
-            raise CommandError(f"command failed ({reason}); logs: {self.log_dir}")
+            raise CommandError(f"command failed ({reason}); logs: {self.log_dir}", result=self)
         return self
 
     def require_complete_output(self):
@@ -367,6 +371,7 @@ def run_command(
         )
         scope.journal.finish(receipt.key, status, outcome)
     if error:
+        error.command_log_dir = log_dir
         raise error
     outputs = [c.output() for c in captures]
     tails = [bytes(c.tail).decode("utf-8", errors="replace") for c in captures]

@@ -1,0 +1,19 @@
+..........F........................                                      [100%]
+=================================== FAILURES ===================================
+_____ test_old_green_receipt_never_passes_dirty_different_commit_or_layer ______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-62/test_old_green_rec...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_old_green_receipt_never_passes_dirty_different_commit_or_layer(project):
+        _, state = prepare(project, layers=["a", "b"])
+        receipt = run_candidate_gate(state).receipt
+>       with pytest.raises(GateError, match="does not match"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'does not match'
+E         Actual message: 'unit gate layers differ from immutable required layers'
+
+tests/test_gate_integrity.py:178: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_gate_integrity.py::test_old_green_receipt_never_passes_dirty_different_commit_or_layer
+1 failed, 34 passed in 74.23s (0:01:14)

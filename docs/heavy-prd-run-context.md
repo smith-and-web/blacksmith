@@ -33,8 +33,8 @@ parallel worker gets its own run-owned clone. The original checkout is not modif
 
 Clones isolate Git state and guarded file writes. They are not OS sandboxes;
 authoritative generated tests execute on the host. Native commands now have bounded
-execution and toolchain credential filtering, described below. Exact gate receipts
-remain a subsequent remediation slice. General use on untrusted repositories is not
+execution and toolchain credential filtering, described below. Unit gates now record exact-candidate evidence; combined join/final union gates
+remain S10 work. General use on untrusted repositories is not
 established by these offline tests.
 
 ## Paths and ownership
@@ -60,6 +60,8 @@ Each fresh run has a UUID and these paths under the config directory:
   operations.sqlite
   execution.lock
   commands/<operation-id>/{intent.json,stdout.log,stderr.log,outcome.json}
+  fixes/<operation-id>.json
+  gates/<operation-id>.json
   planning/
   workspace/
   units/<sha256-of-raw-unit-id>/workspace/
@@ -100,8 +102,9 @@ Implementation commits carry `Blacksmith-Operation-Id: <id>` trailers. Completed
 commit reuse requires the recorded HEAD, a matching trailer and a clean workspace;
 unknown extra changes stop for inspection. An interrupted commit intent still
 requires stage-specific reconciliation in S11. Native commands now record individual
-intent/outcome receipts. Semantic fixer/squash/join/publication reconciliation and full
-artifact recovery remain later slices; a command receipt alone does not make an
+intent/outcome receipts. Completed formatter receipts can reuse an already amended, clean owned candidate.
+Interrupted formatter/squash/join/publication reconciliation and full artifact recovery
+remain later slices; a command receipt alone does not make an
 interrupted multi-command stage safe to repeat.
 
 Cost events use call IDs and keyed reduction so a replayed update cannot add the
@@ -152,6 +155,50 @@ outcome persistence follows process cleanup. An uncertain outcome stays availabl
 for its owning stage to reconcile. Native commands are never automatically retried
 by this service. Failed add, amend, reset, clean, squash and other required Git
 operations stop execution rather than silently accepting incomplete work.
+
+## Trusted exact-candidate unit gates
+
+Version-2 production uses the immutable preflight toolchain, including its exact text
+hash, rather than reloading the implementation clone's `blacksmith.toml`. Each unit
+runs every distinct declared auto layer in declaration order. Identical resolved
+command tuples may run once, with all covered layers recorded. The first failing
+tuple stops execution; remaining unexecuted layers/commands are explicitly `not_run`.
+
+A typed `GateReceipt` binds run/scope/attempt, candidate commit and tree, trusted
+config hash, ordered layers and coverage, actual commands/exit codes/timestamps,
+output artifact paths/hashes, diagnostic and `passed|failed|error|timeout|dirty`.
+Its JSON artifact and critical journal outcome must persist before success returns.
+The checkpointer explicitly permits the new receipt types. Unit results/worker
+outcomes retain their own receipts rather than relying solely on the latest channel.
+
+Setup/test/lint must leave HEAD, tree, index and nonignored source clean. Ignored
+build/dependency output is permitted. Mutation returns `dirty`, even when the command
+exits zero. Exceptions produce fresh nonpassing evidence; errors/timeouts/dirty
+results halt before retry/review/publication routing can use old passing state.
+Ordinary test failures retain the existing bounded recovery policy, pending S08.
+Per-command output is capped and multi-layer graph feedback has a 32 KiB aggregate
+tail, with complete links to the retained capped command artifacts.
+
+Reuse checks current HEAD/tree, source cleanliness, run identity, required layer
+order, trusted config hash, critical journal outcome, receipt JSON and hashes of
+command stdout/stderr/outcome artifacts. A changed candidate, layer set, missing or
+corrupt artifact cannot reuse a passing receipt. `verify_gate_receipt` is the common
+primitive for subsequent join/final/publication guards; their scheduling and exact
+approval behavior are not yet implemented by S06.
+
+Formatters require this attempt's completed implementation-commit receipt and
+operation trailer. They cannot amend a prior unit when the implementer produced
+no commit. Every required distinct formatter uses the frozen config, is audited
+before checked staging/amend, and must leave a clean owned commit. A nonzero exit
+may proceed only with unchanged HEAD and no tracked/index/nonignored source edits;
+its failed command remains visible in a `clean_failure` formatter receipt. Partial
+failed edits, protected-path edits, Git/staging/amend errors and timeout halt with
+nonpassing gate evidence. Completed formatter receipts reconcile the amended SHA
+without another amend; uncertain pending stages still require S11 recovery.
+
+This proves unit verifier integrity for the recorded commands. It does not prove
+the full natural-language test contract, merged/final integration coverage, honest
+patch review or publication approval. S07-S19 and live release gates remain open.
 
 ## Execution validation and archived PRDs
 

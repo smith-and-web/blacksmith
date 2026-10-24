@@ -378,6 +378,7 @@ def implement(
         "implementation": {
             "files_touched": files,
             "diff_summary": diff_summary,
+            "candidate_commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
             "blocked": list(guard.blocked),
             "cost_usd": result.cost_usd,
             "usage": usage_breakdown(result.usage),

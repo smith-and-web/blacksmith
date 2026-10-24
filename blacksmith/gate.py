@@ -1,4 +1,8 @@
-"""Toolchain-aware test gate (PRD §4 node 6, §5).
+"""Low-level single-layer toolchain helpers (PRD §4 node 6, §5).
+
+Version-2 production execution uses ``verification.py`` with the immutable trusted
+toolchain and typed exact-candidate receipts. These standalone helpers preserve the
+legacy API, including use in directories without Git metadata.
 
 Reads the target repo's own ``blacksmith.toml`` — the per-repo toolchain config,
 distinct from blacksmith's runtime ``blacksmith.config.toml`` — and runs the optional
@@ -35,6 +39,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from blacksmith.commands import run_command
+from blacksmith.gate_receipts import GateReceipt
 from blacksmith.state import TestResults
 
 CONFIG_FILENAME = "blacksmith.toml"
@@ -83,6 +88,7 @@ class GateResult:
     passed: bool
     output: str
     command: str
+    receipt: GateReceipt | None = None
 
     def as_test_results(self) -> TestResults:
         """Project into the state's test_results shape (PRD §4)."""
@@ -151,12 +157,11 @@ def run_gate(
 
 @dataclass(frozen=True)
 class FixResult:
-    """Outcome of the deterministic auto-fix step (model-free).
+    """Low-level formatter outcome: configured, committed changes, command exit status.
 
-    ``applied`` — a ``fix_cmd`` was configured and ran. ``changed`` — the fixer produced
-    changes that were folded into the unit's commit (``git commit --amend``). ``ok`` — the
-    fixer exited 0; a non-zero exit is recorded but never halts the run (best-effort), since
-    the gate that follows is the real verdict.
+    A nonzero exit may proceed only when source remains clean; partial failed edits
+    raise GateError and are left uncommitted. Production adds journal ownership and
+    complete layer coverage through ``verification.fix_candidate``.
     """
 
     applied: bool
@@ -172,18 +177,11 @@ def run_fix(
     *,
     toolchain: TargetToolchain | None = None,
 ) -> FixResult:
-    """Run the target's optional ``fix_cmd`` in the worktree and fold any change into the
-    unit's existing commit (``git add -A && git commit --amend --no-edit``), BEFORE the gate.
+    """Run an explicitly supplied/configured formatter and check staging/amend.
 
-    This is the deterministic answer to mechanical, zero-correctness gate failures
-    (``cargo fmt --check``, ``prettier --check``): the formatter the agent is worst at
-    reproducing by hand is the one blacksmith can run perfectly for free. When ``fix_cmd`` is
-    unset this is a no-op (``applied=False``) and the gate runs on exactly the agent's commit.
-
-    Best-effort by design: a non-zero ``fix_cmd`` exit is captured in ``ok`` but does not
-    halt — whatever it managed to fix is still committed, and an unfixable problem simply
-    fails the gate and routes to the existing escalate/halt path. The amend only happens when
-    the fixer actually changed tracked content, so a no-op fixer leaves the commit untouched.
+    Successful edits are amended. A failed clean formatter is reported in ``ok``;
+    a failed formatter leaving source changes raises and retains those edits. The
+    version-2 graph uses its journal-owned formatter service instead of this helper.
     """
     path = Path(worktree_path)
     toolchain = toolchain or load_toolchain(path)
@@ -191,7 +189,12 @@ def run_fix(
     if not fix_cmd:
         return FixResult(applied=False, changed=False, ok=True, output="", command="")
     ok, output = _run(fix_cmd, path)
-    changed = _amend_if_changed(path)
+    if (
+        not ok
+        and run_command(["git", "-C", str(path), "status", "--porcelain", "-z"], check=True).stdout
+    ):
+        raise GateError("failed formatter left source changes; retained without staging/amend")
+    changed = _amend_if_changed(path) if ok else False
     return FixResult(applied=True, changed=changed, ok=ok, output=output, command=fix_cmd)
 
 

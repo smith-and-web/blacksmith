@@ -1,0 +1,955 @@
+FFFFFFFFFFFFFFFFFFFFFFFFF.                                               [100%]
+=================================== FAILURES ===================================
+_________ test_second_auto_layer_fails_and_remaining_layer_is_not_run __________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_second_auto_l...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_second_auto_layer_fails_and_remaining_layer_is_not_run(project):
+>       context, state = prepare(
+            project,
+            'test_cmd="true"\n[layers.second]\ntest_cmd="false"\n'
+            '[layers.third]\ntest_cmd="touch .checks/must-not-run"\n',
+            layers=["first", "second", "third"],
+        )
+
+tests/test_gate_integrity.py:85: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'cf71b7e5-295b-4d37-9e4d-f3e095298c05', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_second_auto_layer_fails_a0/.blacksmith/runs/cf71b7e5-295b-4d37-9e4d-f3e095298c05/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_______ test_identical_resolved_tuples_execute_once_and_cover_all_layers _______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_identical_res...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_identical_resolved_tuples_execute_once_and_cover_all_layers(project):
+>       context, state = prepare(
+            project, 'test_cmd="mkdir -p .checks; printf x >> .checks/count"\n', layers=["a", "b", "a"]
+        )
+
+tests/test_gate_integrity.py:107: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'f32ea531-a5c0-4fda-81f3-6edeeabb1315', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_identical_resolved_tuples0/.blacksmith/runs/f32ea531-a5c0-4fda-81f3-6edeeabb1315/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_____________ test_clone_toolchain_cannot_replace_frozen_verifier ______________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_clone_toolcha...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109e0ac30>
+
+    def test_clone_toolchain_cannot_replace_frozen_verifier(project, monkeypatch):
+>       context, state = prepare(project, 'test_cmd="false"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'c8344883-d3dd-4651-95cd-97c0a0f5e900', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_clone_toolchain_cannot_re0/.blacksmith/runs/c8344883-d3dd-4651-95cd-97c0a0f5e900/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_gate_source_index_and_head_changes_are_dirty_and_halt[printf changed >> README.md] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_gate_source_i...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+command = 'printf changed >> README.md'
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "printf changed >> README.md",
+            "touch unknown.txt",
+            "rm README.md",
+            "printf changed >> README.md; git add README.md",
+            "git commit --allow-empty -m unexpected",
+        ],
+    )
+    def test_gate_source_index_and_head_changes_are_dirty_and_halt(project, command):
+>       context, state = prepare(project, f"test_cmd={json.dumps(command)}\n")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '826459fd-fad0-4456-95a5-d89f422472dd', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_gate_source_index_and_hea0/.blacksmith/runs/826459fd-fad0-4456-95a5-d89f422472dd/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_gate_source_index_and_head_changes_are_dirty_and_halt[touch unknown.txt] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_gate_source_i...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+command = 'touch unknown.txt'
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "printf changed >> README.md",
+            "touch unknown.txt",
+            "rm README.md",
+            "printf changed >> README.md; git add README.md",
+            "git commit --allow-empty -m unexpected",
+        ],
+    )
+    def test_gate_source_index_and_head_changes_are_dirty_and_halt(project, command):
+>       context, state = prepare(project, f"test_cmd={json.dumps(command)}\n")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'a4073437-bd6e-4452-b9e9-f7ca1e198607', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_gate_source_index_and_hea1/.blacksmith/runs/a4073437-bd6e-4452-b9e9-f7ca1e198607/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+___ test_gate_source_index_and_head_changes_are_dirty_and_halt[rm README.md] ___
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_gate_source_i...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+command = 'rm README.md'
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "printf changed >> README.md",
+            "touch unknown.txt",
+            "rm README.md",
+            "printf changed >> README.md; git add README.md",
+            "git commit --allow-empty -m unexpected",
+        ],
+    )
+    def test_gate_source_index_and_head_changes_are_dirty_and_halt(project, command):
+>       context, state = prepare(project, f"test_cmd={json.dumps(command)}\n")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '8bec3356-8fda-4c54-9a58-97dca0b2e95d', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_gate_source_index_and_hea2/.blacksmith/runs/8bec3356-8fda-4c54-9a58-97dca0b2e95d/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_gate_source_index_and_head_changes_are_dirty_and_halt[printf changed >> README.md; git add README.md] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_gate_source_i...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+command = 'printf changed >> README.md; git add README.md'
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "printf changed >> README.md",
+            "touch unknown.txt",
+            "rm README.md",
+            "printf changed >> README.md; git add README.md",
+            "git commit --allow-empty -m unexpected",
+        ],
+    )
+    def test_gate_source_index_and_head_changes_are_dirty_and_halt(project, command):
+>       context, state = prepare(project, f"test_cmd={json.dumps(command)}\n")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'b5dad7d5-4554-44aa-9084-68c03789382e', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_gate_source_index_and_hea3/.blacksmith/runs/b5dad7d5-4554-44aa-9084-68c03789382e/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_gate_source_index_and_head_changes_are_dirty_and_halt[git commit --allow-empty -m unexpected] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_gate_source_i...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+command = 'git commit --allow-empty -m unexpected'
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "printf changed >> README.md",
+            "touch unknown.txt",
+            "rm README.md",
+            "printf changed >> README.md; git add README.md",
+            "git commit --allow-empty -m unexpected",
+        ],
+    )
+    def test_gate_source_index_and_head_changes_are_dirty_and_halt(project, command):
+>       context, state = prepare(project, f"test_cmd={json.dumps(command)}\n")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:155: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '2b62c93e-67c4-4bd9-afca-d11f250335b5', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_gate_source_index_and_hea4/.blacksmith/runs/2b62c93e-67c4-4bd9-afca-d11f250335b5/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_setup_or_lint_source_mutation_is_not_hidden_by_passing_test[setup_cmd] __
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_setup_or_lint...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+stage = 'setup_cmd'
+
+    @pytest.mark.parametrize("stage", ["setup_cmd", "lint_cmd"])
+    def test_setup_or_lint_source_mutation_is_not_hidden_by_passing_test(project, stage):
+>       context, state = prepare(project, f'test_cmd="true"\n{stage}="touch unexpected"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'd063f94e-0b71-4c30-86ea-03daf3b3eeb5', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_setup_or_lint_source_muta0/.blacksmith/runs/d063f94e-0b71-4c30-86ea-03daf3b3eeb5/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+__ test_setup_or_lint_source_mutation_is_not_hidden_by_passing_test[lint_cmd] __
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_setup_or_lint...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+stage = 'lint_cmd'
+
+    @pytest.mark.parametrize("stage", ["setup_cmd", "lint_cmd"])
+    def test_setup_or_lint_source_mutation_is_not_hidden_by_passing_test(project, stage):
+>       context, state = prepare(project, f'test_cmd="true"\n{stage}="touch unexpected"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'c481c7ad-387a-4147-a753-1eb66dd11819', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_setup_or_lint_source_muta1/.blacksmith/runs/c481c7ad-387a-4147-a753-1eb66dd11819/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_____ test_old_green_receipt_never_passes_dirty_different_commit_or_layer ______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_old_green_rec...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_old_green_receipt_never_passes_dirty_different_commit_or_layer(project):
+>       _, state = prepare(project, layers=["a", "b"])
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '32aa072f-83d0-4c1c-bba4-63cfeb2948a6', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_old_green_receipt_never_p0/.blacksmith/runs/32aa072f-83d0-4c1c-bba4-63cfeb2948a6/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+____ test_gate_exception_after_green_unit_records_fresh_nonpassing_evidence ____
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_gate_exceptio...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109e25760>
+
+    def test_gate_exception_after_green_unit_records_fresh_nonpassing_evidence(project, monkeypatch):
+        units = [
+            {
+                "id": name,
+                "title": name,
+                "layers": ["python"],
+                "target_modules": [name + ".txt"],
+                "test_contract": "checks",
+                **({"depends_on": ["U1"]} if name == "U2" else {}),
+            }
+            for name in ("U1", "U2")
+        ]
+>       context, state = prepare(project, units=units)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:209: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '38b9f394-ce8f-41ec-9daf-a773052f15ab', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_gate_exception_after_gree0/.blacksmith/runs/38b9f394-ce8f-41ec-9daf-a773052f15ab/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+___________________ test_timeout_is_a_typed_nonpassing_gate ____________________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_timeout_is_a_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_timeout_is_a_typed_nonpassing_gate(project):
+>       context, state = prepare(project, 'test_cmd="sleep 60"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:230: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '87059a60-058c-4545-8144-4da4bfb73826', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_timeout_is_a_typed_nonpas0/.blacksmith/runs/87059a60-058c-4545-8144-4da4bfb73826/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+___________ test_formatter_amend_is_owned_audited_gated_and_replayed ___________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_formatter_ame...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_formatter_amend_is_owned_audited_gated_and_replayed(project):
+>       context, state = prepare(
+            project,
+            'test_cmd="grep -qx formatted result.txt"\nfix_cmd="printf \'formatted\\n\' > result.txt"\n',
+        )
+
+tests/test_gate_integrity.py:255: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '938d67ee-c154-4f56-97fe-1aea0c5449e3', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_formatter_amend_is_owned_0/.blacksmith/runs/938d67ee-c154-4f56-97fe-1aea0c5449e3/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_failed_or_protected_formatter_changes_are_retained_without_gate[printf changed >> result.txt; false] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_failed_or_pro...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+fix = 'printf changed >> result.txt; false'
+
+    @pytest.mark.parametrize(
+        "fix",
+        [
+            "printf changed >> result.txt; false",
+            "touch untracked; false",
+            "printf changed >> blacksmith.toml",
+        ],
+    )
+    def test_failed_or_protected_formatter_changes_are_retained_without_gate(project, fix):
+>       context, state = prepare(
+            project, f'test_cmd="touch gate-must-not-run"\nfix_cmd={json.dumps(fix)}\n'
+        )
+
+tests/test_gate_integrity.py:292: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '2df30086-17a1-4a71-9e67-0d518b1ab4ea', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_failed_or_protected_forma0/.blacksmith/runs/2df30086-17a1-4a71-9e67-0d518b1ab4ea/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_failed_or_protected_formatter_changes_are_retained_without_gate[touch untracked; false] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_failed_or_pro...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+fix = 'touch untracked; false'
+
+    @pytest.mark.parametrize(
+        "fix",
+        [
+            "printf changed >> result.txt; false",
+            "touch untracked; false",
+            "printf changed >> blacksmith.toml",
+        ],
+    )
+    def test_failed_or_protected_formatter_changes_are_retained_without_gate(project, fix):
+>       context, state = prepare(
+            project, f'test_cmd="touch gate-must-not-run"\nfix_cmd={json.dumps(fix)}\n'
+        )
+
+tests/test_gate_integrity.py:292: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '70eaeb00-397b-431b-90b7-d7218a5e4c13', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_failed_or_protected_forma1/.blacksmith/runs/70eaeb00-397b-431b-90b7-d7218a5e4c13/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_failed_or_protected_formatter_changes_are_retained_without_gate[printf changed >> blacksmith.toml] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_failed_or_pro...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+fix = 'printf changed >> blacksmith.toml'
+
+    @pytest.mark.parametrize(
+        "fix",
+        [
+            "printf changed >> result.txt; false",
+            "touch untracked; false",
+            "printf changed >> blacksmith.toml",
+        ],
+    )
+    def test_failed_or_protected_formatter_changes_are_retained_without_gate(project, fix):
+>       context, state = prepare(
+            project, f'test_cmd="touch gate-must-not-run"\nfix_cmd={json.dumps(fix)}\n'
+        )
+
+tests/test_gate_integrity.py:292: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'ba41733d-845e-4194-9bd6-abfdecef5046', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_failed_or_protected_forma2/.blacksmith/runs/ba41733d-845e-4194-9bd6-abfdecef5046/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+________ test_clean_formatter_failure_may_proceed_to_authoritative_gate ________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_clean_formatt...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_clean_formatter_failure_may_proceed_to_authoritative_gate(project):
+>       _, state = prepare(project, 'test_cmd="true"\nfix_cmd="false"\n')
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:307: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'b8a515bc-ab20-4def-97ff-496e453c2678', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_clean_formatter_failure_m0/.blacksmith/runs/b8a515bc-ab20-4def-97ff-496e453c2678/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_________ test_no_owned_implementation_commit_cannot_amend_prior_work __________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_no_owned_impl...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_no_owned_implementation_commit_cannot_amend_prior_work(project):
+>       context, state = prepare(project, 'test_cmd="true"\nfix_cmd="touch unrelated"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:317: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'b5b0fda0-5b25-4f6b-b4e3-146dcc932854', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_no_owned_implementation_c0/.blacksmith/runs/b5b0fda0-5b25-4f6b-b4e3-146dcc932854/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_____________ test_formatter_git_failure_never_becomes_a_pass[add] _____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_formatter_git...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+failure = 'add'
+
+    @pytest.mark.parametrize("failure", ["add", "amend"])
+    def test_formatter_git_failure_never_becomes_a_pass(project, failure):
+>       context, state = prepare(project, 'test_cmd="true"\nfix_cmd="printf formatted > result.txt"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:330: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '8b2c0ad8-9e79-422c-a7be-3b2e39b670af', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_formatter_git_failure_nev0/.blacksmith/runs/8b2c0ad8-9e79-422c-a7be-3b2e39b670af/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+____________ test_formatter_git_failure_never_becomes_a_pass[amend] ____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_formatter_git...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+failure = 'amend'
+
+    @pytest.mark.parametrize("failure", ["add", "amend"])
+    def test_formatter_git_failure_never_becomes_a_pass(project, failure):
+>       context, state = prepare(project, 'test_cmd="true"\nfix_cmd="printf formatted > result.txt"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:330: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': 'e0ac4134-33af-42d9-a170-97a5826c69bd', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_formatter_git_failure_nev1/.blacksmith/runs/e0ac4134-33af-42d9-a170-97a5826c69bd/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+__ test_critical_gate_receipt_failure_stops_before_downstream_effects[intent] __
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_critical_gate...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+stage = 'intent'
+
+    @pytest.mark.parametrize("stage", ["intent", "outcome"])
+    def test_critical_gate_receipt_failure_stops_before_downstream_effects(project, stage):
+>       context, state = prepare(project, 'test_cmd="mkdir -p .checks; touch .checks/ran"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:351: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '2fc3d95e-0615-4ffd-88e6-a4ca1b450cfd', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_critical_gate_receipt_fai0/.blacksmith/runs/2fc3d95e-0615-4ffd-88e6-a4ca1b450cfd/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+_ test_critical_gate_receipt_failure_stops_before_downstream_effects[outcome] __
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_critical_gate...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+stage = 'outcome'
+
+    @pytest.mark.parametrize("stage", ["intent", "outcome"])
+    def test_critical_gate_receipt_failure_stops_before_downstream_effects(project, stage):
+>       context, state = prepare(project, 'test_cmd="mkdir -p .checks; touch .checks/ran"\n')
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:351: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '3bd804b6-35b7-47fa-98e4-e1fbed87a881', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_critical_gate_receipt_fai1/.blacksmith/runs/3bd804b6-35b7-47fa-98e4-e1fbed87a881/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+____________ test_corrupt_gate_artifact_cannot_be_reused_as_a_pass _____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_corrupt_gate_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_corrupt_gate_artifact_cannot_be_reused_as_a_pass(project):
+>       _, state = prepare(project)
+                   ^^^^^^^^^^^^^^^^
+
+tests/test_gate_integrity.py:371: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_gate_integrity.py:48: in prepare
+    owned_commit(state)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'state_version': 2, 'run_id': '37b7431d-e711-4edb-b85f-f00960989dd7', 'run_context': {'state_version': 2, 'run_id': '...h.smith/pytest-55/test_corrupt_gate_artifact_can0/.blacksmith/runs/37b7431d-e711-4edb-b85f-f00960989dd7/planning', ...}
+name = 'result.txt', content = 'implemented\n'
+
+    def owned_commit(state, name="result.txt", content="implemented\n"):
+        path = Path(state["worktree_path"])
+        base = git(path, "rev-parse", "HEAD")
+        (path / name).write_text(content)
+        files, summary = _stage_and_commit(
+            str(path),
+            "test owned unit",
+>           call_context=call_context_for(state, state["selected_unit"].id),
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        )
+E       TypeError: call_context_for() takes 1 positional argument but 2 were given
+
+tests/test_gate_integrity.py:59: TypeError
+______ test_real_cli_multilayer_failure_never_reviews_or_publishes[False] ______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_real_cli_mult...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109e0bd10>
+parallel = False
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    def test_real_cli_multilayer_failure_never_reviews_or_publishes(project, monkeypatch, parallel):
+        root, config, prd, contract = project
+        contract["layers"] = {"first": "auto", "second": "auto"}
+        contract["work_units"][0]["layers"] = ["first", "second"]
+        if parallel:
+            contract["work_units"].append(
+                {**contract["work_units"][0], "id": "U2", "target_modules": ["other.txt"]}
+            )
+        write_prd(prd, contract)
+        config.write_text(config.read_text() + "[limits]\nmax_fix_attempts=0\n")
+        (root / "blacksmith.toml").write_text('test_cmd="true"\n[layers.second]\ntest_cmd="false"\n')
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "multilayer")
+        calls, publications = [], []
+        install_transport(monkeypatch, calls)
+    
+        def publish(**kwargs):
+            publications.append(kwargs)
+            pytest.fail("failed multilayer run reached publication")
+    
+        monkeypatch.setattr("blacksmith.nodes.pr.open_pull_request", publish)
+        assert (
+            cli.main([str(prd), "--config", str(config), "--thread-id", "layers", "--auto-approve"])
+            == 1
+        )
+        assert publications == []
+        assert not any(
+            call["prompt"].startswith("Review") or "adversarial" in call["prompt"].lower()
+            for call in calls
+            if not call["prompt"].startswith("Implement")
+        )
+        db = next(config.parent.glob(".blacksmith/runs/*/operations.sqlite"))
+        with sqlite3.connect(db) as conn:
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM operations WHERE kind LIKE 'model.review%'"
+                ).fetchone()[0]
+                == 0
+            )
+            receipts = [
+                GateReceipt.model_validate(json.loads(row[0])["receipt"])
+                for row in conn.execute("SELECT outcome_json FROM operations WHERE kind LIKE 'gate.%'")
+            ]
+        assert receipts and all(
+            r.outcome == "failed" and r.layers == ("first", "second") for r in receipts
+        )
+        values = saved_values(config, "layers")
+        assert values["status"] == Status.HALTED
+        if not parallel:
+>           assert isinstance(values["gate_receipt"], GateReceipt)
+E           AssertionError: assert False
+E            +  where False = isinstance({'schema_version': 1, 'receipt_id': '6af7e5d2f922bd7e1a3a9aa49532d979af8bafb7625957080bc796e86c58d7ac', 'run_id': 'f0a6aa6d-b477-430b-aff9-99a63971f6c3', 'scope': 'unit', ...}, GateReceipt)
+
+tests/test_gate_integrity.py:428: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run f0a6aa6d-b477-430b-aff9-99a63971f6c3: selected committed HEAD 9f05c016685a693356c828ca2c1cfa2a179b03f1
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-55/test_real_cli_multilayer_failu0/.blacksmith/runs/f0a6aa6d-b477-430b-aff9-99a63971f6c3
+[auto] gate 'plan': approved
+
+status: halted
+error [test_gate]: gate failed for unit U1
+error [test_gate]: gate failed for unit U1
+total cost: $0.03
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: implement
+blacksmith: auto_fix
+blacksmith: test_gate
+blacksmith: escalate
+blacksmith: implement
+blacksmith: auto_fix
+blacksmith: test_gate
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+------------------------------ Captured log call -------------------------------
+WARNING  langgraph.checkpoint.serde.jsonplus:jsonplus.py:79 Blocked deserialization of blacksmith.gate_receipts.GateReceipt - not in allowed_msgpack_modules. Add to allowed_msgpack_modules to allow: [('blacksmith.gate_receipts', 'GateReceipt')]
+WARNING  langgraph.checkpoint.serde.jsonplus:jsonplus.py:79 Blocked deserialization of blacksmith.gate_receipts.FixReceipt - not in allowed_msgpack_modules. Add to allowed_msgpack_modules to allow: [('blacksmith.gate_receipts', 'FixReceipt')]
+=========================== short test summary info ============================
+FAILED tests/test_gate_integrity.py::test_second_auto_layer_fails_and_remaining_layer_is_not_run
+FAILED tests/test_gate_integrity.py::test_identical_resolved_tuples_execute_once_and_cover_all_layers
+FAILED tests/test_gate_integrity.py::test_clone_toolchain_cannot_replace_frozen_verifier
+FAILED tests/test_gate_integrity.py::test_gate_source_index_and_head_changes_are_dirty_and_halt[printf changed >> README.md]
+FAILED tests/test_gate_integrity.py::test_gate_source_index_and_head_changes_are_dirty_and_halt[touch unknown.txt]
+FAILED tests/test_gate_integrity.py::test_gate_source_index_and_head_changes_are_dirty_and_halt[rm README.md]
+FAILED tests/test_gate_integrity.py::test_gate_source_index_and_head_changes_are_dirty_and_halt[printf changed >> README.md; git add README.md]
+FAILED tests/test_gate_integrity.py::test_gate_source_index_and_head_changes_are_dirty_and_halt[git commit --allow-empty -m unexpected]
+FAILED tests/test_gate_integrity.py::test_setup_or_lint_source_mutation_is_not_hidden_by_passing_test[setup_cmd]
+FAILED tests/test_gate_integrity.py::test_setup_or_lint_source_mutation_is_not_hidden_by_passing_test[lint_cmd]
+FAILED tests/test_gate_integrity.py::test_old_green_receipt_never_passes_dirty_different_commit_or_layer
+FAILED tests/test_gate_integrity.py::test_gate_exception_after_green_unit_records_fresh_nonpassing_evidence
+FAILED tests/test_gate_integrity.py::test_timeout_is_a_typed_nonpassing_gate
+FAILED tests/test_gate_integrity.py::test_formatter_amend_is_owned_audited_gated_and_replayed
+FAILED tests/test_gate_integrity.py::test_failed_or_protected_formatter_changes_are_retained_without_gate[printf changed >> result.txt; false]
+FAILED tests/test_gate_integrity.py::test_failed_or_protected_formatter_changes_are_retained_without_gate[touch untracked; false]
+FAILED tests/test_gate_integrity.py::test_failed_or_protected_formatter_changes_are_retained_without_gate[printf changed >> blacksmith.toml]
+FAILED tests/test_gate_integrity.py::test_clean_formatter_failure_may_proceed_to_authoritative_gate
+FAILED tests/test_gate_integrity.py::test_no_owned_implementation_commit_cannot_amend_prior_work
+FAILED tests/test_gate_integrity.py::test_formatter_git_failure_never_becomes_a_pass[add]
+FAILED tests/test_gate_integrity.py::test_formatter_git_failure_never_becomes_a_pass[amend]
+FAILED tests/test_gate_integrity.py::test_critical_gate_receipt_failure_stops_before_downstream_effects[intent]
+FAILED tests/test_gate_integrity.py::test_critical_gate_receipt_failure_stops_before_downstream_effects[outcome]
+FAILED tests/test_gate_integrity.py::test_corrupt_gate_artifact_cannot_be_reused_as_a_pass
+FAILED tests/test_gate_integrity.py::test_real_cli_multilayer_failure_never_reviews_or_publishes[False]
+25 failed, 1 passed in 24.20s
