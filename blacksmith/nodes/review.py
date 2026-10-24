@@ -64,8 +64,9 @@ from blacksmith.index import (
     index_tools_prompt_section,
 )
 from blacksmith.nodes.plan import cost_event
+from blacksmith.plan_artifacts import PlanIntegrityError, verify_approved_plan
 from blacksmith.receipts import attempt_identity, call_context_for
-from blacksmith.state import BlacksmithState
+from blacksmith.state import BlacksmithState, Status
 
 # Read-only tool surface (mirrors the plan node): the reviewer inspects the worktree's
 # already-committed diff but can never change it.
@@ -109,6 +110,12 @@ def review(
     unit = state.get("selected_unit")
     if prd is None or unit is None:
         return {"errors": [{"node": "review", "message": "missing prd/selected_unit"}]}
+
+    try:
+        verify_approved_plan(state, unit)
+    except PlanIntegrityError as exc:
+        return {"status": Status.HALTED, "review_clean": False,
+                "errors": [{"node": "review", "message": str(exc)}]}
 
     implementation = state.get("implementation") or {}
     panel_size = state.get("review_panel_size") or 1

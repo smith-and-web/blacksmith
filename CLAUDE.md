@@ -36,6 +36,7 @@ add a dependency without adding it to `pyproject.toml`.
 - `blacksmith/unit_graph.py` — the shared checkpointed unit topology: prepare attempt,
   implement, audit/commit, auto-fix, normalize parallel candidate, test gate, review,
   recovery decision and finalize. Both scheduling shapes invoke this same graph.
+- `blacksmith/plan_artifacts.py` — per-unit immutable plans and exact PRD/plan approval bindings.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).
 - `blacksmith/executor.py` — Claude Agent SDK invocation, tool grants, options.

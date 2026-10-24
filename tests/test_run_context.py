@@ -198,6 +198,11 @@ def test_custom_runtime_config_inside_source_is_a_hard_path_rule(project, monkey
         payloads.append(payload)
         return False
 
+    # Production approval now requires real completed plans and their run artifacts.
+    from test_plan import FakeExecutor
+
+    from blacksmith.nodes.plan import plan
+    state.update(plan(state, executor=FakeExecutor()))
     monkeypatch.setattr("blacksmith.nodes.hitl._decide", deny)
     assert approve_plan(state)["status"] == Status.HALTED
     assert "custom-runtime.toml" in payloads[0]["hard_path_rules"]

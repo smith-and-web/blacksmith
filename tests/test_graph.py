@@ -17,6 +17,7 @@ from blacksmith.graph import (
     build_graph,
     compile_graph,
     route_after_implement,
+    route_after_plan,
     route_after_test_gate,
 )
 from blacksmith.state import BlacksmithState, Status
@@ -69,6 +70,15 @@ def test_graph_compiles(tmp_path):
         "finalize_unit",
     } <= set(children["execute_unit"].get_graph().nodes)
     saver.conn.close()
+
+
+def test_planning_topology_reenters_one_unit_at_a_time_and_halt_wins():
+    assert route_after_plan({"planning_complete": False}) == "plan"
+    assert route_after_plan({"planning_complete": True}) == "approve_plan"
+    assert route_after_plan({"planning_complete": True, "status": Status.HALTED}) == "human_halt"
+    assert route_after_plan({"planning_complete": False, "status": Status.HALTED}) == "human_halt"
+    graph = build_graph().compile().get_graph()
+    assert ("plan", "plan") in {(edge.source, edge.target) for edge in graph.edges}
 
 
 def _with_test_results(passed: bool) -> BlacksmithState:

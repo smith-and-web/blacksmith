@@ -241,7 +241,9 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     interrupt = None
     starts: dict[str, float] = {}
     current_node: str | None = None
-    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+    for mode, chunk in graph.stream(
+        payload, config, stream_mode=["updates", "debug", "custom"], durability="sync",
+    ):
         if mode == "custom":
             if isinstance(chunk, dict) and chunk.get("kind") == "unit_stage" and on_node:
                 on_node(chunk["phase"])
@@ -970,6 +972,16 @@ def _resume(argv: list[str] | None = None) -> int:
                 raise ResumeError(
                     "legacy_unit_graph_requires_manual_recovery: execution topology changed; "
                     "run/checkpoints/artifacts retained for inspection"
+                )
+            from blacksmith.plan_artifacts import validate_plans, verify_approved_plan
+            if values.get("planning_version") == 1:
+                validate_plans(values, complete=bool(values.get("approvals", {}).get("plan")))
+                if values.get("approvals", {}).get("plan"):
+                    verify_approved_plan(values, values.get("selected_unit"))
+            elif values.get("plans") or values.get("worktree_path"):
+                raise ResumeError(
+                    "legacy_planning_requires_manual_recovery: approved plan hashes absent; "
+                    "checkpoints/artifacts/budgets retained"
                 )
             # Saved models, limits and target survive local config changes.
             config = context.execution_config()

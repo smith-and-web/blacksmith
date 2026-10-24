@@ -45,6 +45,7 @@ from blacksmith.path_policy import (
 from blacksmith.path_policy import (
     is_protected as is_protected,  # re-export the legacy helper
 )
+from blacksmith.plan_artifacts import PlanIntegrityError, verify_approved_plan
 from blacksmith.receipts import CallContext, ReceiptError, call_context_for
 from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
 from blacksmith.state import BlacksmithState, Status
@@ -202,6 +203,12 @@ def implement(
             "status": Status.HALTED,
             "errors": [{"node": "implement", "message": "missing prd/selected_unit/worktree_path"}],
         }
+
+    try:
+        verify_approved_plan(state, unit)
+    except PlanIntegrityError as exc:
+        return {"status": Status.HALTED, "implement_error_kind": "plan_integrity",
+                "errors": [{"node": "implement", "message": str(exc)}]}
 
     # A human-gated unit is verified by a human on the draft PR — not by the executor and not
     # by the automated gate (PRD §4 human-gated routing). It has nothing to implement: a

@@ -209,6 +209,14 @@ class BlacksmithState(UnitAttemptState, total=False):
     # plan and no approval. Human-gated units are absent (they get manual QA via a draft PR).
     plans: list[dict[str, Any]]
     plans_by_unit_id: dict[str, dict[str, Any]]
+    planning_version: int
+    planning_prd_sha256: str
+    plan_cursor: int
+    planning_complete: bool
+    planning_system_prompt: str
+    planning_prompt_sha256: str
+    plan_approval: dict[str, Any]
+    approved_plans_sha256: str
     selected_plan: dict[str, Any] | None
     planning_path: str
     worktree_path: str

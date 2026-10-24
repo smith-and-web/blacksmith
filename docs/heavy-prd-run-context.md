@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
-Heavy-PRD remediation is still in progress. This documents S03, not a readiness
-release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+Heavy-PRD remediation is still in progress. This documents completed runtime
+slices through S09, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -62,6 +62,9 @@ Each fresh run has a UUID and these paths under the config directory:
   commands/<operation-id>/{intent.json,stdout.log,stderr.log,outcome.json}
   fixes/<operation-id>.json
   gates/<operation-id>.json
+  plans/<sha256-of-raw-unit-id>.json
+  plans/approval-proposal.json
+  plans/approved.json
   planning/
   workspace/
   units/<sha256-of-raw-unit-id>/workspace/
@@ -76,6 +79,51 @@ A thread lock prevents competing fresh invocations; a run lock also covers resum
 using another config file. A second owner exits before graph construction. Lock
 files may remain on disk after exit; the kernel lock, not file existence, determines
 ownership.
+
+## Checkpointed plans and approval integrity
+
+The production parent graph plans one auto unit per `plan` invocation, recording
+`plans_by_unit_id`, an exact declaration-order prefix and `plan_cursor` after each
+unit. Only after the complete auto-unit bundle exists does the single `approve_plan`
+interrupt appear. Human QA has no model plan. The read-only planning snapshot and
+full original PRD/contract remain the context for initial plans and bounded advisory
+critic revisions. The static system prompt/repo map is checkpointed once and reused;
+each invocation binds read/index tools to the same saved planning clone.
+
+The CLI drives parent steps with synchronous checkpoint durability, so the next
+unit cannot begin before the previous unit's checkpoint commits. Critic revisions
+within a unit retain their deterministic S04 call identities and completed SDK
+receipts: an interruption before the node checkpoint can reuse paid responses
+without transport replay. A pending/uncertain SDK effect still refuses automatic
+retry. This is not exactly-once provider billing or live cancellation evidence.
+
+Each completed plan is atomically persisted under `plans/<unit-hash>.json`, bound
+to run ID, unit ID and the immutable PRD hash, with its own content hash. Existing
+artifacts cannot be overwritten with changed content. The plan approval proposal
+is persisted before displaying the interrupt and includes the run ID, PRD hash,
+bundle hash and per-unit hashes. Acceptance persists `approved.json` plus the same
+hash binding in checkpoint state; a substituted plan cannot reuse the earlier bool.
+Approval rejection does not create an approved artifact. Terminal rejection recovery
+and preservation of failed workspaces still require S11.
+
+Every implementation attempt (including continuation/fix/escalation/review revision)
+and reviewer validates the whole approved bundle, selected plan and immutable
+artifacts before admitting a model call. Missing/foreign/duplicate plans, mismatched
+PRD/unit/cursor, changed steps/hashes or missing/corrupt proposal/approval evidence
+halt. Full approval metadata and the selected plan cross both fan-out and child seed
+boundaries. Resume validates existing plan evidence before executor construction.
+Changing original source/config/PRD files during approval does not change the saved
+inputs. Legacy direct-node callers without a run context retain their in-memory API;
+that compatibility path is not the production approval contract.
+
+A v2 checkpoint already holding old plans without `planning_version=1` refuses
+execution with `legacy_planning_requires_manual_recovery` without rewriting paid
+work, budgets or checkpoints. An old active workspace may first hit the stricter
+S08 `legacy_unit_graph_requires_manual_recovery` guard. Runs interrupted before
+any plans were checkpointed may enter the new planner and reuse completed journal
+responses; uncertain responses still stop. Do not manufacture approval hashes for
+an old run. Inspect retained history/artifacts until explicit S11 migration/recovery
+is available, or start a new run with a new thread ID.
 
 ## Critical operation receipts
 
@@ -297,7 +345,7 @@ without another amend; uncertain pending stages still require S11 recovery.
 
 This proves unit verifier integrity for the recorded commands. It does not prove
 the full natural-language test contract, merged/final integration coverage, honest
-patch review or publication approval. S09-S19 and live release gates remain open.
+patch review or publication approval. S10-S19 and live release gates remain open.
 
 ## Execution validation and archived PRDs
 
@@ -323,7 +371,7 @@ authoritative; changing the local config does not silently replace them on resum
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call
 refusal are in place; full side-effect reconciliation and explicit terminal-stage
-recovery are still required by S06-S11. These slices do not establish exactly-once
+recovery remain S10-S11 work. These slices do not establish exactly-once
 billing across a killed provider process or recovery of terminal policy/gate failures.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing

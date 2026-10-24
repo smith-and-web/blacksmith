@@ -950,9 +950,16 @@ def cleanup_worktree(
 # --- conditional routing -----------------------------------------------------
 
 
+def route_after_plan(state: BlacksmithState) -> str:
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
+    return "plan" if state.get("planning_complete") is False else "approve_plan"
+
+
 def route_after_approve_plan(state: BlacksmithState) -> str:
     """Proceed only on plan approval; a rejection halts (PRD §4)."""
-    return "prepare_worktree" if state.get("approvals", {}).get("plan") else "human_halt"
+    return ("prepare_worktree" if state.get("status") != Status.HALTED
+            and state.get("approvals", {}).get("plan") else "human_halt")
 
 
 def route_after_approve_pr(state: BlacksmithState) -> str:
@@ -1082,6 +1089,11 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
                 "run_context": state.get("run_context"),
                 "selected_unit": unit,
                 "selected_plan": selected_plan(state, unit),
+                **{key: state[key] for key in (
+                    "plans", "plans_by_unit_id", "planning_version", "planning_prd_sha256",
+                    "plan_cursor", "planning_complete", "plan_approval", "approved_plans_sha256",
+                    "approvals",
+                ) if key in state},
                 "unit_results": state.get("unit_results") or [],
                 "planning_path": state.get("planning_path"),
                 "level_cursor": level,
@@ -1266,6 +1278,7 @@ def build_graph(
             index_config=index,
             repo_path=plan_repo_path,
             critic=critic,
+            checkpointed=True,
             max_prd_bytes=limits.max_prd_bytes if limits is not None else 262144,
         ),
     )
@@ -1306,8 +1319,13 @@ def build_graph(
         _node_with(cleanup_worktree, worktree_manager=worktree_manager, sandbox=sandbox),
     )
     graph.add_edge(START, "ingest_prd")
-    graph.add_conditional_edges("ingest_prd", _route_or_halt("plan"))
-    graph.add_conditional_edges("plan", _route_or_halt("approve_plan"))
+    graph.add_conditional_edges(
+        "ingest_prd", _route_or_halt("plan"), {"plan": "plan", "human_halt": "human_halt"},
+    )
+    graph.add_conditional_edges(
+        "plan", route_after_plan,
+        {"plan": "plan", "approve_plan": "approve_plan", "human_halt": "human_halt"},
+    )
     graph.add_conditional_edges("approve_plan", route_after_approve_plan)
     graph.add_conditional_edges("prepare_worktree", route_after_prepare)
     graph.add_conditional_edges("execute_unit", route_after_unit)

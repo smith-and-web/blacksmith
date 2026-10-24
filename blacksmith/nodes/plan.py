@@ -1,43 +1,8 @@
-"""Plan node — plan every auto-gated work unit up front (PRD §4 node 2).
+"""One auto unit per checkpointed planning invocation, then one shared approval.
 
-Produces an implementation plan for EACH auto-gated unit (WU-PLAN-ALL-UNITS), so a
-multi-unit PRD surfaces a plan for ALL of its units behind the single ``approve_plan``
-gate — not just the first (the prior behaviour, which left units 2..N building with no
-plan and no approval, undercutting the plan gate for multi-unit PRDs). Human-gated units
-are skipped: they get manual QA via a draft PR, so no implementation plan is needed (this
-mirrors ``route_after_implement``). Each plan call uses the executor's plan model tier
-(PRD §8) with the untouchables in the system prompt as the static constitution context;
-that prompt is built ONCE and reused across the per-unit calls so it caches (AC-8).
-
-``select_unit`` remains the DAG cycle/unsatisfiable guard (and is reused by the planner).
-
-When ``config.index.enabled`` (WU-PLAN-REPO-MAP), the SAME shared system prompt also gets
-a repo map of the target repo (``blacksmith.index.build_repo_map``, reused verbatim from
-the codebase-indexing PRD) built ONCE — not once per unit — and injected as static
-context, so it caches across the per-unit calls exactly like the constitution/lessons
-sections above. Off by default; disabled the system prompt is byte-for-byte unchanged.
-
-The SAME ``config.index.enabled`` switch (WU-PLAN-SEARCH-TOOL) also grants the plan tier
-the ``search_code`` tool (the same in-process MCP tool built over ``index.search_code``
-for the implementer) alongside its existing read-only Read/Glob/Grep, so a plan session
-can find symbols/usages in one indexed call instead of many greps. No separate toggle,
-no new write/shell tool, and the tool is only wired when a target ``repo_path`` is given
-(no worktree exists yet at plan time). Disabled, the plan tool surface is byte-for-byte
-unchanged.
-
-When ``config.critic.enabled`` (WU-PLAN-CRITIC-LOOP), after each auto-gated unit's plan is
-produced the SAME plan-tier critique from WU-PLAN-CRITIC-CORE (``executor.run_plan_critique``)
-judges it; while the verdict disapproves and re-plans remain (``config.critic.
-max_plan_revisions``), the unit is RE-PLANNED with the critique fed back into the plan prompt
-(appended, exactly like a fix-retry feeds gate output back to the implementer) and
-re-critiqued. On exhausting the budget it PROCEEDS with the latest plan — the critic is
-advisory and can only trigger a bounded re-plan; it never halts and never touches the
-``approve_plan`` gate. Off by default (``critic=None`` or ``enabled=False``), the plan node
-makes ZERO critic calls and its output is byte-for-byte unchanged.
-
-Without an executor wired (skeleton/tests), the node is a pass-through that only advances
-``status`` — the real decomposition runs only when an executor is injected at graph-build
-time. This keeps the deterministic graph tests independent of any model call.
+Production loops through the parent graph with a durable keyed plan prefix. The
+legacy direct-node API may still plan all units in one call. Bounded advisory
+critic revisions reuse the operation journal after interrupted node execution.
 """
 
 from __future__ import annotations
@@ -62,7 +27,9 @@ from blacksmith.index import (
 )
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
 from blacksmith.path_policy import PolicyViolation, compile_path_rules
+from blacksmith.plan_artifacts import PlanIntegrityError, prd_hash, record_plan, validate_plans
 from blacksmith.receipts import ReceiptError, call_context_for
+from blacksmith.run_context import sha256
 from blacksmith.state import BlacksmithState, Status
 
 # How many prior gate-failure lessons to surface to the planner (most recent first).
@@ -167,6 +134,7 @@ def plan(
     repo_path: str | Path | None = None,
     critic: CriticConfig | None = None,
     max_prd_bytes: int = 262144,
+    checkpointed: bool = False,
 ) -> dict:
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
@@ -197,13 +165,24 @@ def plan(
             "errors": [{"node": "plan", "message": "no work unit with satisfied dependencies"}],
         }
 
-    # Plan EVERY auto-gated unit, in declaration (topological) order. Human-gated units are
-    # skipped — they build for manual QA behind a draft PR, no implementation plan needed.
+    # Plan the declaration-order prefix one unit per graph invocation. Human QA
+    # has no implementation plan; its layout was checked during preflight.
     auto_units = [u for u in contract.work_units if contract.gate_for(u) != "human"]
-    # Index tool wiring (WU-PLAN-SEARCH-TOOL / WU-STRUCT-WIRE): built ONCE and reused across the
-    # per-unit calls below, exactly like system_prompt -- not once per unit. Computed BEFORE the
-    # system prompt so the prompt can advertise the tools whenever they're wired (index_enabled),
-    # never merely when a repo map happened to build.
+    checkpointed = checkpointed or bool(state.get("run_context"))
+    prefix = {}
+    if checkpointed:
+        if state.get("plans") and state.get("planning_version") != 1:
+            raise PlanIntegrityError("legacy_planning_requires_manual_recovery")
+        digest = prd_hash(state)
+        if state.get("planning_version") is None:
+            state = {**state, "planning_version": 1, "planning_prd_sha256": digest,
+                     "plans_by_unit_id": {}, "plans": [], "plan_cursor": 0}
+        prefix = validate_plans(state, complete=False)
+        pending = auto_units[len(prefix):len(prefix) + 1]
+    else:
+        pending = auto_units
+    # The static map/prompt is checkpointed once; each invocation binds its
+    # read-only tool server to the immutable planning snapshot.
     # Production supplies the immutable planning checkout. Always pass cwd even
     # without indexing so SDK reads never depend on the caller's ambient directory.
     repo_path = state.get("planning_path") or repo_path or Path.cwd()
@@ -211,12 +190,16 @@ def plan(
     index_enabled = bool(index_config is not None and index_config.enabled)
     # Built ONCE and reused across the per-unit calls so the static constitution/lessons/repo-map
     # context caches across them (AC-8) instead of being re-sent (or rebuilt) for each unit.
-    system_prompt = _system_prompt(
-        contract,
-        _prior_lessons(contract),
-        _build_repo_map(repo_path, index_config),
-        index_enabled=index_enabled,
-    ) + render_context(state)
+    static_prompt = state.get("planning_system_prompt") if checkpointed else None
+    if static_prompt is not None:
+        if sha256(static_prompt) != state.get("planning_prompt_sha256"):
+            raise PlanIntegrityError("changed planning prompt hash")
+    else:
+        static_prompt = _system_prompt(
+            contract, _prior_lessons(contract), _build_repo_map(repo_path, index_config),
+            index_enabled=index_enabled,
+        )
+    system_prompt = static_prompt + render_context(state)
     allowed_tools = list(_PLAN_READ_ONLY)
     mcp_servers: dict = {}
     if index_enabled:
@@ -231,9 +214,9 @@ def plan(
     critic_enabled = bool(critic is not None and critic.enabled)
     max_plan_revisions = critic.max_plan_revisions if critic is not None else 0
 
-    plans: list[dict] = []
+    plans: list[dict] = list(state.get("plans") or []) if checkpointed else []
     cost_events: list[dict] = []
-    for unit in auto_units:
+    for unit in pending:
         call_kwargs: dict = {
             "system_prompt": system_prompt,
             "cwd": repo_path,
@@ -280,25 +263,35 @@ def plan(
                         }
                     ],
                 }
-        plans.append(
-            {
-                "unit_id": unit.id,
-                "title": unit.title,
-                "layers": list(unit.layers),
-                "target_modules": list(unit.target_modules),
-                "test_contract": unit.test_contract,
-                "steps": result.text,
-                "cost_usd": result.cost_usd,
-                "usage": usage_breakdown(result.usage),
-            }
-        )
+        row = {
+            "unit_id": unit.id,
+            "title": unit.title,
+            "layers": list(unit.layers),
+            "target_modules": list(unit.target_modules),
+            "test_contract": unit.test_contract,
+            "steps": result.text,
+            "cost_usd": result.cost_usd,
+            "usage": usage_breakdown(result.usage),
+        }
+        plans.append(record_plan(state, row) if checkpointed else row)
+    planning_update = {}
+    if checkpointed:
+        planning_update = {
+            "planning_version": 1, "planning_prd_sha256": prd_hash(state),
+            "plans_by_unit_id": {row["unit_id"]: row for row in plans},
+            "plan_cursor": len(plans), "planning_complete": len(plans) == len(auto_units),
+            "planning_system_prompt": static_prompt,
+            "planning_prompt_sha256": sha256(static_prompt),
+        }
     return {
+        **planning_update,
         "work_units": list(contract.work_units),
         # Representative selection (prepare_worktree recomputes the real one from the level plan).
         "selected_unit": auto_units[0] if auto_units else select_unit(contract),
         "plans": plans,
         "cost_events": cost_events,
-        "status": Status.AWAITING_PLAN_APPROVAL,
+        "status": (Status.PENDING if checkpointed and len(plans) < len(auto_units)
+                   else Status.AWAITING_PLAN_APPROVAL),
     }
 
 

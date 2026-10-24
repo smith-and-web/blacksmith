@@ -19,6 +19,7 @@ from langgraph.types import interrupt
 
 from blacksmith.commands import run_command
 from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
+from blacksmith.plan_artifacts import PlanIntegrityError, prepare_approval, record_approval
 from blacksmith.state import BlacksmithState, Status
 
 if TYPE_CHECKING:
@@ -36,9 +37,17 @@ def approve_plan(state: BlacksmithState) -> dict:
     except PolicyViolation as exc:
         return {"status": Status.HALTED,
                 "errors": [{"node": "approve_plan", "message": str(exc)}]}
+    try:
+        proposal = prepare_approval(state) if (
+            state.get("run_context") or state.get("planning_version") is not None
+        ) else None
+    except PlanIntegrityError as exc:
+        return {"status": Status.HALTED,
+                "errors": [{"node": "approve_plan", "message": str(exc)}]}
     decision = _decide(
         {
             "gate": "plan",
+            **(proposal or {}),
             "plans": state.get("plans") or [],
             "hard_path_rules": list(hard_rules),
             "always_protected": [
@@ -50,7 +59,12 @@ def approve_plan(state: BlacksmithState) -> dict:
     approvals = {**state.get("approvals", {}), "plan": decision}
     if not decision:
         return {"approvals": approvals, "status": Status.HALTED}
-    return {"approvals": approvals}
+    try:
+        evidence = record_approval(state, proposal) if proposal is not None else {}
+    except PlanIntegrityError as exc:
+        return {"approvals": {**approvals, "plan": False}, "status": Status.HALTED,
+                "errors": [{"node": "approve_plan", "message": str(exc)}]}
+    return {"approvals": approvals, **evidence}
 
 
 def approve_pr(state: BlacksmithState, *, hitl: HitlConfig | None = None) -> dict:
