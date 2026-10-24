@@ -1,0 +1,354 @@
+........................................................................ [  7%]
+........................................................................ [ 14%]
+....................................................................F.F. [ 21%]
+........................................................................ [ 29%]
+....F...................................FFFF............................ [ 36%]
+........................................................................ [ 43%]
+........................................................................ [ 50%]
+........................................................................ [ 58%]
+........................................................................ [ 65%]
+........................................................................ [ 72%]
+...............................................................FFFF..... [ 80%]
+........................................................................ [ 87%]
+........................................................................ [ 94%]
+..........F..........................................                    [100%]
+=================================== FAILURES ===================================
+___________ test_gate_failure_escalates_then_passes_and_opens_one_pr ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_gate_failure_escalates_th0')
+
+    def test_gate_failure_escalates_then_passes_and_opens_one_pr(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        # WU-A passes (call 1); WU-B's first attempt fails (call 2); WU-B's escalation passes (3).
+        gate = FakeGate(fail_calls={2})
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+        approver = _recording_approver(decision=True)
+    
+        final = drive(graph, _write_prd(tmp_path, _TWO_UNITS), approver=approver, thread_id="esc")
+    
+        # The cheaper first-attempt model built WU-A and WU-B's first (failing) attempt...
+        assert executor.implement_calls == ["WU-A", "WU-B"]
+        # ...and the stronger model re-implemented WU-B exactly once (escalation, at most once).
+        assert executor.escalate_calls == ["WU-B"]
+>       assert gate.calls == 3  # WU-A, WU-B (fail), WU-B re-gate (pass) — no extra escalation
+        ^^^^^^^^^^^^^^^^^^^^^^
+E       assert 4 == 3
+E        +  where 4 = <test_escalation.FakeGate object at 0x10a9b7dd0>.calls
+
+tests/test_escalation.py:221: AssertionError
+___________________ test_first_attempt_pass_never_escalates ____________________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_first_attempt_pass_never_0')
+
+    def test_first_attempt_pass_never_escalates(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/1")
+        gate = FakeGate(fail_calls=set())  # the first attempt passes
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+        approver = _recording_approver(decision=True)
+    
+        final = drive(graph, _write_prd(tmp_path, _ONE_UNIT), approver=approver, thread_id="pass")
+    
+        # A passing first attempt never invokes the stronger escalate model.
+        assert executor.implement_calls == ["WU-S"]
+        assert executor.escalate_calls == []
+>       assert gate.calls == 1
+E       assert 2 == 1
+E        +  where 2 = <test_escalation.FakeGate object at 0x10a900230>.calls
+
+tests/test_escalation.py:282: AssertionError
+_________ test_real_cli_checkpoint_resume_retains_typed_exact_receipt __________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_real_cli_chec...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10aa081a0>
+
+    def test_real_cli_checkpoint_resume_retains_typed_exact_receipt(project, monkeypatch):
+        from blacksmith.run_context import context_from_state
+    
+        root, config, prd, _ = project
+        (root / "blacksmith.toml").write_text(
+            'test_cmd="mkdir -p .checks; printf x >> .checks/count"\n'
+        )
+        (root / ".gitignore").write_text(".checks/\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-m", "count gate")
+        config.write_text(config.read_text() + "[review]\nenabled=false\n")
+        calls = []
+        install_transport(monkeypatch, calls)
+    
+        def approval(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            assert payload["gate"] == "pr"
+            raise KeyboardInterrupt("retain real checkpoint before PR decision")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approval)
+        with pytest.raises(KeyboardInterrupt):
+            cli.main([str(prd), "--config", str(config), "--thread-id", "receipt-resume"])
+        before = saved_values(config, "receipt-resume")
+        receipt = before["gate_receipt"]
+        assert isinstance(receipt, GateReceipt) and receipt.outcome == "passed"
+        assert before["fix_receipt"].eligible
+        context = context_from_state(before)
+        count = context.workspace_path / ".checks/count"
+>       assert count.read_text() == "x"
+E       AssertionError: assert 'xx' == 'x'
+E         
+E         - x
+E         + xx
+
+tests/test_gate_integrity.py:497: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 2fb8aa45-08ab-4787-a49c-6c75eec07adf: selected committed HEAD a9e4d39d69bc355d92a6d0e0ee6aeffa54073513
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_real_cli_checkpoint_resum0/.blacksmith/runs/2fb8aa45-08ab-4787-a49c-6c75eec07adf
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: approve_pr
+_______________ test_mid_dag_draft_pr_describes_only_units_built _______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_mid_dag_draft_pr_describe0')
+
+    def test_mid_dag_draft_pr_describes_only_units_built(tmp_path):
+        # gate_cmd="true" so WU-A's auto gate passes; WU-B (human) never runs the gate.
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        gh = _recording_gh("https://github.com/owner/demo/pull/8")
+        graph, saver = _wire(tmp_path, repo, gh=gh, executor=MultiExecutor())
+        approver = _approver()
+    
+        final = drive(graph, _write_prd(tmp_path, _THREE), approver=approver, thread_id="mid")
+    
+        # The run parked WU-B behind a draft PR; WU-C was never built.
+>       assert final.values["status"] == Status.AWAITING_QA
+E       AssertionError: assert <Status.HALTED: 'halted'> == <Status.AWAIT...'awaiting_qa'>
+E         
+E         - awaiting_qa
+E         + halted
+
+tests/test_human_qa.py:316: AssertionError
+_______________ test_gate_failure_still_halts_and_deletes_branch _______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_gate_failure_still_halts_0')
+
+    def test_gate_failure_still_halts_and_deletes_branch(tmp_path):
+        repo = _target_repo(tmp_path, gate_cmd="false")  # genuine gate failure
+        gh = _recording_gh("https://github.com/owner/demo/pull/6")
+        graph, saver = _wire(tmp_path, repo, gh=gh)  # real run_gate over "false"
+        approver = _approver()
+    
+        final = drive(graph, _write_prd(tmp_path, _AUTO), approver=approver, thread_id="fail")
+    
+        assert final.values["status"] == Status.HALTED
+        assert final.values.get("pr_url") is None
+        assert _pr_creates(gh) == []  # no PR — not even a draft
+        # the work is discarded: the shared branch is deleted by cleanup.
+        branch = final.values["branch"]
+>       assert branch and _branches(repo, branch) == ""
+E       AssertionError: assert ('blacksmith/wu-auto' and '+ blacksmith/wu-auto' == ''
+E         
+E         + + blacksmith/wu-auto)
+
+tests/test_human_qa.py:349: AssertionError
+_____________ test_qa_only_unit_with_no_diff_still_opens_draft_pr ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_qa_only_unit_with_no_diff0')
+
+    def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
+        """The real-world failure that tore runs down: an auto unit builds the code, then a
+        dependent manual-QA unit produces NO diff (there is nothing to implement). The run must
+        still open a draft PR for the auto unit's work and end AWAITING_QA — not halt on
+        "implement produced no file changes". The QA unit's implement is skipped entirely
+        (no executor call, no wasted spend, no risk of re-editing the committed code)."""
+        # gate_cmd="false" would FAIL if the auto gate ever ran for the QA unit — it must not.
+        # WU-CODE's own gate runs on the real run_gate, so use a passing command for it.
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        gh = _recording_gh("https://github.com/owner/demo/pull/9")
+        executor = CodeThenQAExecutor()
+        graph, saver = _wire(tmp_path, repo, gh=gh, executor=executor)
+        approver = _approver()
+    
+        final = drive(graph, _write_prd(tmp_path, _THREE), approver=approver, thread_id="qaonly")
+    
+        # The run parked the human-gated WU-B behind a draft PR with WU-A's committed code.
+>       assert final.values["status"] == Status.AWAITING_QA, final.values.get("errors")
+E       AssertionError: [{'node': 'final_gate', 'message': 'final integration failed: unit WU-C lacks exactly one successful auto outcome: missing outcome'}]
+E       assert <Status.HALTED: 'halted'> == <Status.AWAIT...'awaiting_qa'>
+E         
+E         - awaiting_qa
+E         + halted
+
+tests/test_human_qa.py:371: AssertionError
+___________ test_rejected_pr_approval_still_halts_and_deletes_branch ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_rejected_pr_approval_stil0')
+
+    def test_rejected_pr_approval_still_halts_and_deletes_branch(tmp_path):
+        repo = _target_repo(tmp_path, gate_cmd="true")  # gate passes -> reaches the PR gate
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        graph, saver = _wire(tmp_path, repo, gh=gh)
+        approver = _approver(reject=("pr",))  # approve plan, REJECT the PR
+    
+        final = drive(graph, _write_prd(tmp_path, _AUTO), approver=approver, thread_id="reject")
+    
+        assert final.values["status"] == Status.HALTED
+        assert final.values.get("pr_url") is None
+        assert _pr_creates(gh) == []  # rejection opens no PR
+        branch = final.values["branch"]
+>       assert branch and _branches(repo, branch) == ""  # branch deleted, work discarded
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert ('blacksmith/wu-auto' and '+ blacksmith/wu-auto' == ''
+E         
+E         + + blacksmith/wu-auto)
+
+tests/test_human_qa.py:401: AssertionError
+__________ test_review_clean_first_pass_proceeds_with_one_review_call __________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_review_clean_first_pass_p0')
+
+    def test_review_clean_first_pass_proceeds_with_one_review_call(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[CLEAN_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/1")
+        gate = FakeGate()  # every gate call passes
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            limits=LimitsConfig(), review=ReviewConfig(enabled=True),
+        )
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="clean")
+    
+        assert executor.implement_calls == ["WU-S"]  # no revision attempt
+        assert executor.review_calls == ["WU-S"]  # exactly one review call
+>       assert gate.calls == 1
+E       assert 2 == 1
+E        +  where 2 = <test_review_loop.FakeGate object at 0x10a9b70e0>.calls
+
+tests/test_review_loop.py:225: AssertionError
+__________ test_review_blocking_then_clean_revises_once_and_proceeds ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_review_blocking_then_clea0')
+
+    def test_review_blocking_then_clean_revises_once_and_proceeds(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT, CLEAN_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/2")
+        gate = FakeGate()  # both the base gate call and the re-gate pass
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            limits=LimitsConfig(max_review_revisions=1), review=ReviewConfig(enabled=True),
+        )
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="revise")
+    
+        # Base attempt + exactly one revision; the revision prompt carried the review feedback.
+        assert executor.implement_calls == ["WU-S", "WU-S"]
+        assert "off-by-one" in executor.implement_prompts[1]
+        assert "REVIEWER flagged" in executor.implement_prompts[1]
+        assert "REVIEWER flagged" not in executor.implement_prompts[0]  # first attempt ran blind
+        # Reviewed twice: once flags blocking, the re-review after the revision is clean.
+        assert executor.review_calls == ["WU-S", "WU-S"]
+>       assert gate.calls == 2  # base gate pass + re-gate pass after the revision
+        ^^^^^^^^^^^^^^^^^^^^^^
+E       assert 3 == 2
+E        +  where 3 = <test_review_loop.FakeGate object at 0x10a9b5f40>.calls
+
+tests/test_review_loop.py:254: AssertionError
+___________ test_review_revisions_exhausted_proceeds_without_halting ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_review_revisions_exhauste0')
+
+    def test_review_revisions_exhausted_proceeds_without_halting(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/3")
+        gate = FakeGate()
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            # No revisions allowed at all: the first blocking finding is immediately exhausted.
+            limits=LimitsConfig(max_review_revisions=0), review=ReviewConfig(enabled=True),
+        )
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="exhausted")
+    
+        assert executor.implement_calls == ["WU-S"]  # no revision attempt
+        assert executor.review_calls == ["WU-S"]  # reviewed exactly once
+>       assert gate.calls == 1
+E       assert 2 == 1
+E        +  where 2 = <test_review_loop.FakeGate object at 0x10a7c57c0>.calls
+
+tests/test_review_loop.py:288: AssertionError
+________________ test_review_disabled_never_enters_review_node _________________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_review_disabled_never_ent0')
+
+    def test_review_disabled_never_enters_review_node(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[])  # never consumed
+        gh = _recording_gh("https://github.com/owner/demo/pull/4")
+        gate = FakeGate()
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            limits=LimitsConfig(), review=ReviewConfig(enabled=False),
+        )
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="disabled")
+    
+        assert executor.review_calls == []  # review is never entered
+        assert executor.implement_calls == ["WU-S"]
+>       assert gate.calls == 1
+E       assert 2 == 1
+E        +  where 2 = <test_review_loop.FakeGate object at 0x10a7c4ec0>.calls
+
+tests/test_review_loop.py:319: AssertionError
+_____________ test_fix_retry_same_model_with_feedback_then_passes ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-95/test_fix_retry_same_model_with0')
+
+    def test_fix_retry_same_model_with_feedback_then_passes(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/5")
+        gate = FakeGate(fail_calls={1})  # first attempt fails, the fix retry passes
+        limits = LimitsConfig(max_fix_attempts=1)
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate, limits=limits)
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="heal")
+    
+        # The cheap model built the unit TWICE (base + fix retry) — the stronger model was untouched.
+        assert executor.implement_calls == ["WU-S", "WU-S"]
+        assert executor.escalate_calls == []
+>       assert gate.calls == 2
+E       assert 3 == 2
+E        +  where 3 = <test_self_heal.FakeGate object at 0x10a7c5790>.calls
+
+tests/test_self_heal.py:197: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_escalation.py::test_gate_failure_escalates_then_passes_and_opens_one_pr
+FAILED tests/test_escalation.py::test_first_attempt_pass_never_escalates - as...
+FAILED tests/test_gate_integrity.py::test_real_cli_checkpoint_resume_retains_typed_exact_receipt
+FAILED tests/test_human_qa.py::test_mid_dag_draft_pr_describes_only_units_built
+FAILED tests/test_human_qa.py::test_gate_failure_still_halts_and_deletes_branch
+FAILED tests/test_human_qa.py::test_qa_only_unit_with_no_diff_still_opens_draft_pr
+FAILED tests/test_human_qa.py::test_rejected_pr_approval_still_halts_and_deletes_branch
+FAILED tests/test_review_loop.py::test_review_clean_first_pass_proceeds_with_one_review_call
+FAILED tests/test_review_loop.py::test_review_blocking_then_clean_revises_once_and_proceeds
+FAILED tests/test_review_loop.py::test_review_revisions_exhausted_proceeds_without_halting
+FAILED tests/test_review_loop.py::test_review_disabled_never_enters_review_node
+FAILED tests/test_self_heal.py::test_fix_retry_same_model_with_feedback_then_passes
+12 failed, 977 passed in 440.42s (0:07:20)

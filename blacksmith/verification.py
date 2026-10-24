@@ -204,6 +204,31 @@ def verify_gate_receipt(receipt, state, *, layers=None):
         raise GateError("gate receipt does not match the clean current candidate/layers/toolchain")
     if receipt.scope == "unit" and receipt.scope_id != state["selected_unit"].id:
         raise GateError("gate receipt belongs to a different unit")
+    return _recorded_gate(receipt, context, head, tree, layers)
+
+
+def verify_historical_unit_gate(receipt, state, *, candidate_commit, layers):
+    """Check a prior unit's critical evidence against its immutable Git object.
+
+    Sequential units share a workspace whose HEAD advances. This validates their
+    original candidate without treating that old receipt as a gate for today's HEAD.
+    """
+    context = context_from_state(state)
+    if (not isinstance(receipt, GateReceipt) or receipt.scope != "unit"
+            or receipt.scope_id != state["selected_unit"].id
+            or receipt.outcome != "passed" or receipt.run_id != context.run_id
+            or receipt.candidate_commit != candidate_commit
+            or receipt.toolchain_hash != context.toolchain_sha256
+            or receipt.layers != tuple(layers)):
+        raise GateError("unit outcome lacks matching recorded gate evidence")
+    path = _workspace(state, context)
+    tree = _git(path, "rev-parse", "--verify", candidate_commit + "^{tree}").strip()
+    if tree != receipt.candidate_tree:
+        raise GateError("historical unit tree differs from gate evidence")
+    return _recorded_gate(receipt, context, candidate_commit, tree, tuple(layers))
+
+
+def _recorded_gate(receipt, context, head, tree, layers):
     operation = OperationKey(
         context.run_id,
         receipt.scope_id,

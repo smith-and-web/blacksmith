@@ -68,6 +68,15 @@ def approve_plan(state: BlacksmithState) -> dict:
 
 
 def approve_pr(state: BlacksmithState, *, hitl: HitlConfig | None = None) -> dict:
+    if state.get("run_context") or state.get("state_version") is not None:
+        from blacksmith.integration import final_gate, verify_final_gate
+        try:
+            verify_final_gate(state)
+        except Exception as exc:
+            from blacksmith.receipts import ReceiptError
+            if isinstance(exc, ReceiptError):
+                raise
+            return final_gate(state, failure=exc)
     payload = {
         "gate": "pr",
         "unit": _unit_summary(state.get("selected_unit")),

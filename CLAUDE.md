@@ -32,10 +32,12 @@ add a dependency without adding it to `pyproject.toml`.
 ## Architecture
 
 - `blacksmith/graph.py` — parent topology: ingest/plan/approve, prepare workspace,
-  `execute_unit`, next-unit/join scheduling, PR approval/publication and cleanup.
+  `execute_unit`, checkpointed joins, integration/final gates, approval/publication and cleanup.
 - `blacksmith/unit_graph.py` — the shared checkpointed unit topology: prepare attempt,
   implement, audit/commit, auto-fix, normalize parallel candidate, test gate, review,
   recovery decision and finalize. Both scheduling shapes invoke this same graph.
+- `blacksmith/joins.py` — saved level bases, exact-source picks and critical Git reconciliation.
+- `blacksmith/integration.py` — complete unit outcomes and exact-candidate layer-union gates.
 - `blacksmith/plan_artifacts.py` — per-unit immutable plans and exact PRD/plan approval bindings.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).

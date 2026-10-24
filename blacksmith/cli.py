@@ -973,6 +973,11 @@ def _resume(argv: list[str] | None = None) -> int:
                     "legacy_unit_graph_requires_manual_recovery: execution topology changed; "
                     "run/checkpoints/artifacts retained for inspection"
                 )
+            if values.get("worktree_path") and values.get("join_graph_version") != 1:
+                raise ResumeError(
+                    "legacy_join_graph_requires_manual_recovery: join/final gate topology changed; "
+                    "run/checkpoints/artifacts/budgets retained"
+                )
             from blacksmith.plan_artifacts import validate_plans, verify_approved_plan
             if values.get("planning_version") == 1:
                 validate_plans(values, complete=bool(values.get("approvals", {}).get("plan")))

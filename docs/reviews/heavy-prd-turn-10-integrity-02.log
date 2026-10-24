@@ -1,0 +1,117 @@
+................FFF..F.                                                  [100%]
+=================================== FAILURES ===================================
+_ test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls[after_checkpoint-87] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-96/test_real_process_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bda1b20>
+stage = 'after_checkpoint', exit_code = 87
+
+    '''
+    
+    
+    @pytest.mark.parametrize("stage,exit_code", [("after_checkpoint", 87), ("after_pick", 88),
+                                                ("before_receipt", 89)])
+    def test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls(
+>       project, monkeypatch, stage, exit_code,
+                ^^^^^^^^^^
+    ):
+E   NameError: name 'subprocess' is not defined. Did you forget to import 'subprocess'
+
+tests/test_integration_integrity.py:275: NameError
+_ test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls[after_pick-88] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-96/test_real_process_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bbf4770>
+stage = 'after_pick', exit_code = 88
+
+    '''
+    
+    
+    @pytest.mark.parametrize("stage,exit_code", [("after_checkpoint", 87), ("after_pick", 88),
+                                                ("before_receipt", 89)])
+    def test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls(
+>       project, monkeypatch, stage, exit_code,
+                ^^^^^^^^^^
+    ):
+E   NameError: name 'subprocess' is not defined. Did you forget to import 'subprocess'
+
+tests/test_integration_integrity.py:275: NameError
+_ test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls[before_receipt-89] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-96/test_real_process_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bbf6090>
+stage = 'before_receipt', exit_code = 89
+
+    '''
+    
+    
+    @pytest.mark.parametrize("stage,exit_code", [("after_checkpoint", 87), ("after_pick", 88),
+                                                ("before_receipt", 89)])
+    def test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls(
+>       project, monkeypatch, stage, exit_code,
+                ^^^^^^^^^^
+    ):
+E   NameError: name 'subprocess' is not defined. Did you forget to import 'subprocess'
+
+tests/test_integration_integrity.py:275: NameError
+______ test_new_gate_command_exception_replaces_green_receipt_with_error _______
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-96/test_new_gate_comm...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10ae6ec60>
+
+        assert Path(state["worktree_path"]).is_dir() and not state.get("pr_url")
+    
+    
+    def test_new_gate_command_exception_replaces_green_receipt_with_error(project, monkeypatch):
+        context, state = paused(project, monkeypatch)
+        green = state["final_gate_receipt"]
+        (context.workspace_path / "extra.txt").write_text("new candidate\n")
+        git(context.workspace_path, "add", "extra.txt")
+        git(context.workspace_path, "commit", "-m", "new candidate requires fresh gate")
+    
+>       def broken_command(*args):
+                            ^^^^^^^
+E       NameError: name 'verification' is not defined
+
+tests/test_integration_integrity.py:381: NameError
+----------------------------- Captured stdout call -----------------------------
+Run e8da3b33-19b3-4cb8-b858-0a5f7e7768ae: selected committed HEAD 78ef15c115bcf55b8ca52fab070018290eb87a3b
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-96/test_new_gate_command_exceptio0/.blacksmith/runs/e8da3b33-19b3-4cb8-b858-0a5f7e7768ae
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: integration_gate
+blacksmith: advance_joined_level
+blacksmith: final_gate
+blacksmith: approve_pr
+=========================== short test summary info ============================
+FAILED tests/test_integration_integrity.py::test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls[after_checkpoint-87]
+FAILED tests/test_integration_integrity.py::test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls[after_pick-88]
+FAILED tests/test_integration_integrity.py::test_real_process_exit_reconciles_exact_join_commit_and_skips_completed_model_calls[before_receipt-89]
+FAILED tests/test_integration_integrity.py::test_new_gate_command_exception_replaces_green_receipt_with_error
+4 failed, 19 passed in 127.30s (0:02:07)

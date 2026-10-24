@@ -185,6 +185,16 @@ class BlacksmithState(UnitAttemptState, total=False):
     # engine walks these in order and, within each level, builds the units sequentially in
     # declaration order. Flattening them in order yields ``work_units`` (topo order).
     execution_levels: list[list[WorkUnit]]
+    join_graph_version: int
+    prepared_level: int | None
+    level_bases: dict[str, str]
+    join_cursor: int
+    join_complete: bool
+    join_destinations: dict[str, dict[str, Any]]
+    integration_gate_receipts: dict[str, GateReceipt | None]
+    final_gate_receipt: GateReceipt | None
+    integration_test_results: TestResults
+    final_test_results: TestResults
     selected_unit: WorkUnit
     # Level position the sequential implement->gate loop is currently on (multi-unit run):
     # ``level_cursor`` indexes into ``execution_levels`` and ``unit_in_level`` into that

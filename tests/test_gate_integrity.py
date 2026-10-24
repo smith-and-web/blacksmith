@@ -489,12 +489,14 @@ def test_real_cli_checkpoint_resume_retains_typed_exact_receipt(project, monkeyp
     with pytest.raises(KeyboardInterrupt):
         cli.main([str(prd), "--config", str(config), "--thread-id", "receipt-resume"])
     before = saved_values(config, "receipt-resume")
+    final_receipt = before["final_gate_receipt"]
+    assert final_receipt.scope == "final" and final_receipt.outcome == "passed"
     receipt = before["gate_receipt"]
     assert isinstance(receipt, GateReceipt) and receipt.outcome == "passed"
     assert before["fix_receipt"].eligible
     context = context_from_state(before)
     count = context.workspace_path / ".checks/count"
-    assert count.read_text() == "x"
+    assert count.read_text() == "xx"  # one unit check plus one final union check
     (root / "blacksmith.toml").write_text('test_cmd="false"\n')
     git(root, "add", "blacksmith.toml")
     git(root, "commit", "-m", "verifier changed after approval")
@@ -504,10 +506,11 @@ def test_real_cli_checkpoint_resume_retains_typed_exact_receipt(project, monkeyp
         cli.main(["resume", "--config", str(config), "--thread-id", "receipt-resume"])
     after = saved_values(config, "receipt-resume")
     assert after["gate_receipt"] == receipt
+    assert after["final_gate_receipt"] == final_receipt
     assert len(calls) == 2  # plan and implement only; no replay/reviewer/summary
-    assert count.read_text() == "x"
+    assert count.read_text() == "xx"  # one unit check plus one final union check
     assert run_candidate_gate(after).receipt == receipt
-    assert count.read_text() == "x"
+    assert count.read_text() == "xx"  # one unit check plus one final union check
     verify_gate_receipt(receipt, after)
 
 

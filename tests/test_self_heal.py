@@ -194,7 +194,7 @@ def test_fix_retry_same_model_with_feedback_then_passes(tmp_path):
     # The cheap model built the unit TWICE (base + fix retry) — the stronger model was untouched.
     assert executor.implement_calls == ["WU-S", "WU-S"]
     assert executor.escalate_calls == []
-    assert gate.calls == 2
+    assert gate.calls == 3  # initial, retry, then final union gate
     # The retry prompt fed back the failing gate output AND carried the honesty rule.
     assert "BOOM-GATE-OUTPUT" in executor.implement_prompts[1]
     assert "weaken" in executor.implement_prompts[1].lower()
@@ -203,6 +203,8 @@ def test_fix_retry_same_model_with_feedback_then_passes(tmp_path):
     assert final.values["status"] == Status.DONE
     assert len(_pr_creates(gh)) == 1
     saver.conn.close()
+
+    assert final.values["final_test_results"]["passed"] is True
 
 
 def test_fix_retry_exhausts_then_escalates_then_halts(tmp_path):

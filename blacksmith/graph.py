@@ -184,6 +184,10 @@ def prepare_worktree(
         }
     update: dict = {
         "unit_graph_version": 1,
+        "join_graph_version": 1,
+        "prepared_level": None,
+        "level_bases": {},
+        "join_destinations": {},
         **_new_unit_state(state, unit, worktree.path),
         "worktree_path": str(worktree.path),
         "branch": worktree.branch,
@@ -769,120 +773,21 @@ def _cleanup_builds(builds: list[dict]) -> None:
             shutil.rmtree(path, ignore_errors=True)
 
 
-def _conflict_message(
-    level: int, unit_id: str, conflicted: list[str], placed: dict[str, str], picked: list[str]
-) -> str:
-    """A clear halt message that names BOTH clashing units AND the file(s) they fought
-    over, so a human can see exactly which two same-level units collided."""
-    files = ", ".join(conflicted) if conflicted else "a shared file"
-    others = [placed[f] for f in conflicted if f in placed]
-    if not others:
-        others = picked  # fall back to every already-applied unit in the level
-    other = ", ".join(dict.fromkeys(others)) or "an earlier unit"
-    return (
-        f"level {level} cherry-pick conflict on {files}: units {other} and {unit_id} "
-        "changed the same file(s) — the run halts and opens no PR."
-    )
-
-
 def join_level(state: BlacksmithState) -> dict:
-    """Fan-out barrier: cherry-pick each passing unit's commit onto the shared combined
-    branch in declaration order, then advance the level engine.
+    from blacksmith.joins import join_level as step
+    return step(state)
 
-    Runs once, after all of the level's ``build_unit`` workers complete (so no concurrent
-    write to the shared branch). If ANY unit failed its implement/gate the whole level
-    halts with nothing cherry-picked (no partial level lands); if two units changed the
-    same file the cherry-pick conflicts and the run halts naming both units and the file."""
-    levels = state.get("execution_levels") or []
+
+def advance_joined_level(state: BlacksmithState) -> dict:
+    from blacksmith.unit_graph import _result_view
     level = state.get("level_cursor", 0)
-    level_units = levels[level] if level < len(levels) else []
-    order = {unit.id: index for index, unit in enumerate(level_units)}
-    sources = (
-        list(state.get("unit_outcomes", {}).values())
-        if state.get("unit_outcomes")
-        else (state.get("level_builds") or [])
-    )
-    builds = [b for b in sources if b.get("level") == level]
-    builds.sort(key=lambda b: order.get(b["unit_id"], len(order)))
-
-    # (3) Any failed implement/gate halts the level BEFORE any cherry-pick — nothing lands.
-    failed = [b for b in builds if not b.get("ok")]
-    if failed:
-        _cleanup_builds(builds)
-        names = ", ".join(b["unit_id"] for b in failed)
-        detail = "; ".join(b.get("error", b["unit_id"]) for b in failed)
-        return {
-            "status": Status.HALTED,
-            "errors": [
-                {"node": "join_level", "message": f"level {level} halted: {names} ({detail})"}
-            ],
-        }
-
-    shared = state["worktree_path"]
-    picked: list[str] = []
-    placed: dict[str, str] = {}
-    for build in builds:
-        fetch = _git_run(shared, "fetch", build["clone_path"], build["branch"])
-        if fetch.returncode != 0:
-            _cleanup_builds(builds)
-            return {
-                "status": Status.HALTED,
-                "errors": [
-                    {
-                        "node": "join_level",
-                        "message": f"level {level}: could not fetch unit "
-                        f"{build['unit_id']}'s commit: {fetch.stderr.strip()}",
-                    }
-                ],
-            }
-        cherry = _git_run(shared, "cherry-pick", "FETCH_HEAD")
-        if cherry.returncode != 0:
-            conflicted = [
-                line
-                for line in _git_run(
-                    shared, "diff", "--name-only", "--diff-filter=U"
-                ).stdout.splitlines()
-                if line
-            ]
-            _git_run(shared, "cherry-pick", "--abort")
-            _cleanup_builds(builds)
-            return {
-                "status": Status.HALTED,
-                "errors": [
-                    {
-                        "node": "join_level",
-                        "message": _conflict_message(
-                            level, build["unit_id"], conflicted, placed, picked
-                        ),
-                    }
-                ],
-            }
-        picked.append(build["unit_id"])
-        for changed in build.get("files_touched", []):
-            placed[changed] = build["unit_id"]
-
-    _cleanup_builds(builds)
-    unit_results = [
-        {
-            "unit_id": b["unit_id"],
-            "title": b["title"],
-            "files_touched": list(b.get("files_touched") or []),
-            "diff_summary": b.get("diff_summary", ""),
-            "test_command": b.get("test_command", ""),
-        }
-        for b in builds
-    ]
-    update: dict = {
-        "unit_results": unit_results,
-        "status": Status.TESTING,
-        "level_cursor": level + 1,
-    }
-    # Seed the next level's sequential state so a size-1 level after this fan-out runs its
-    # implement step on the shared clone unchanged (the fan-out router ignores these).
+    levels = state.get("execution_levels") or []
+    results = [_result_view(state["unit_outcomes"][u.id]) for u in levels[level]]
+    update = {"unit_results": results, "level_cursor": level + 1, "status": Status.TESTING}
     if level + 1 < len(levels):
-        update.update(_new_unit_state(state, levels[level + 1][0], shared))
-        update["selected_unit"] = levels[level + 1][0]
-        update["unit_in_level"] = 0
+        unit = levels[level + 1][0]
+        update.update(_new_unit_state(state, unit, state["worktree_path"]))
+        update.update(selected_unit=unit, unit_in_level=0)
     return update
 
 
@@ -915,8 +820,12 @@ def cleanup_worktree(
             sandbox.stop()
         except SandboxError:
             pass
+    if state.get("status") == Status.HALTED:
+        return {}  # Failed joins/gates retain shared and sibling evidence for recovery.
     if worktree_manager is None:
         return {}
+    _cleanup_builds([row for row in (state.get("unit_outcomes") or {}).values()
+                     if row.get("clone_path") != state.get("worktree_path")])
     worktree_path = state.get("worktree_path")
     unit = state.get("selected_unit")
     if not worktree_path or unit is None:
@@ -964,7 +873,8 @@ def route_after_approve_plan(state: BlacksmithState) -> str:
 
 def route_after_approve_pr(state: BlacksmithState) -> str:
     """Proceed only on PR approval; a rejection halts (PRD §5: never auto-merge)."""
-    return "open_pr" if state.get("approvals", {}).get("pr") else "human_halt"
+    return ("open_pr" if state.get("status") != Status.HALTED
+            and state.get("approvals", {}).get("pr") else "human_halt")
 
 
 def _route_or_halt(next_node: str) -> Callable[[BlacksmithState], str]:
@@ -1115,6 +1025,8 @@ def _route_to_level(state: BlacksmithState) -> str | list[Send]:
     """Build the level at ``level_cursor``: fan out (multi-unit + CloneManager), run the
     sequential ``implement`` path (size-1 level), or finish at ``approve_pr`` when the plan
     is exhausted. Shared by every level entry point so the decision lives in one place."""
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
     levels = state.get("execution_levels") or []
     # No level plan seeded (the skeleton / dependency-free graph tests, where
     # prepare_worktree is a pass-through): fall through to the sequential implement path
@@ -1123,7 +1035,9 @@ def _route_to_level(state: BlacksmithState) -> str | list[Send]:
         return "execute_unit"
     level = state.get("level_cursor", 0)
     if level >= len(levels):
-        return "approve_pr"
+        return "final_gate"
+    if state.get("prepared_level") != level:
+        return "prepare_level"
     if _is_fanout_level(state, level):
         return _fanout_sends(state, level)
     return "execute_unit"
@@ -1142,16 +1056,25 @@ def route_after_next_unit(state: BlacksmithState) -> str | list[Send]:
     return _route_to_level(state)
 
 
-def route_after_join(state: BlacksmithState) -> str | list[Send]:
-    """After a fan-out level joins: halt on conflict/failure, else build the next level
-    (fan-out or sequential) or finish at the PR-approval gate."""
+def route_after_join(state: BlacksmithState) -> str:
     if state.get("status") == Status.HALTED:
         return "human_halt"
-    return _route_to_level(state)
+    return "integration_gate" if state.get("join_complete") else "join_level"
+
+
+def route_after_final_gate(state: BlacksmithState) -> str:
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
+    unit = state.get("selected_unit")
+    if unit and state.get("prd") and state["prd"].contract.gate_for(unit) == "human":
+        return "open_draft_pr"  # Exact-SHA approval for this route is S13.
+    return "approve_pr"
 
 
 def route_after_unit(state: BlacksmithState) -> str:
     """Parents select/consume outcomes; all attempt recovery lives in the child."""
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
     if _is_fanout_level(state, state.get("level_cursor", 0)):
         return "join_level"
     unit = state.get("selected_unit")
@@ -1159,8 +1082,9 @@ def route_after_unit(state: BlacksmithState) -> str:
     if not outcome or not outcome["ok"]:
         return "human_halt"
     if outcome["human"]:
-        return "open_draft_pr"
-    return _next_unit_or_approve(state)
+        return "final_gate"
+    next_node = _next_unit_or_approve(state)
+    return "final_gate" if next_node == "approve_pr" else next_node
 
 
 # --- assembly ----------------------------------------------------------------
@@ -1180,6 +1104,14 @@ def _open_pr_node(fn, pr_runner: Runner | None, executor: Executor | None = None
         if executor is not None:
             kwargs["executor"] = executor
         with command_scope_for_state(state, fn.__name__):
+            if state.get("run_context") or state.get("state_version") is not None:
+                from blacksmith.integration import final_gate, verify_final_gate
+                try:
+                    verify_final_gate(state)
+                except ReceiptError:
+                    raise
+                except Exception as exc:
+                    return final_gate(state, failure=exc)
             return fn(state, **kwargs)
 
     return node
@@ -1308,7 +1240,14 @@ def build_graph(
     )
     child = build_unit_graph(unit_deps, worktree_manager)
     graph.add_node("execute_unit", unit_runner(child))
+    from blacksmith.integration import final_gate, integration_gate
+    from blacksmith.joins import prepare_level
+
+    graph.add_node("prepare_level", _node_with(prepare_level))
     graph.add_node("join_level", _node_with(join_level))
+    graph.add_node("integration_gate", _node_with(integration_gate, gate=gate))
+    graph.add_node("advance_joined_level", _node_with(advance_joined_level))
+    graph.add_node("final_gate", _node_with(final_gate, gate=gate))
     graph.add_node("next_unit", _node_with(next_unit))
     graph.add_node("approve_pr", _node_with(approve_pr, hitl=hitl))
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner, executor))
@@ -1328,9 +1267,20 @@ def build_graph(
     )
     graph.add_conditional_edges("approve_plan", route_after_approve_plan)
     graph.add_conditional_edges("prepare_worktree", route_after_prepare)
+    graph.add_conditional_edges("prepare_level", route_after_prepare)
     graph.add_conditional_edges("execute_unit", route_after_unit)
     graph.add_conditional_edges("next_unit", route_after_next_unit)
-    graph.add_conditional_edges("join_level", route_after_join)
+    graph.add_conditional_edges(
+        "join_level", route_after_join,
+        {"join_level": "join_level", "integration_gate": "integration_gate",
+         "human_halt": "human_halt"},
+    )
+    graph.add_conditional_edges("integration_gate", _route_or_halt("advance_joined_level"))
+    graph.add_conditional_edges("advance_joined_level", route_after_next_unit)
+    graph.add_conditional_edges(
+        "final_gate", route_after_final_gate,
+        {"approve_pr": "approve_pr", "open_draft_pr": "open_draft_pr", "human_halt": "human_halt"},
+    )
     graph.add_conditional_edges(
         "approve_pr",
         route_after_approve_pr,

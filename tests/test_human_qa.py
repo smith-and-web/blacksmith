@@ -2,7 +2,7 @@
 
 A human-GATED unit that implemented successfully parks its work behind a draft PR for
 manual QA. That outcome needs its own terminal status, distinct from HALTED
-(failure/rejection, work discarded) and DONE (fully approved); the status must also
+(failure/rejection, artifacts retained) and DONE (fully approved); the status must also
 survive checkpoint persistence, i.e. round-trip through ``blacksmith_serde``
 (WU-QA-STATUS).
 
@@ -13,9 +13,9 @@ layer, run end-to-end with a mocked executor/``gh`` but a REAL worktree manager,
 (3) preserves the branch (cleanup does NOT delete it), and
 (4) never runs the automated ``test_gate`` for that unit.
 
-Regression-guarded: a genuine gate FAILURE or a REJECTED approval STILL routes to
-``human_halt`` -> HALTED with the branch deleted (work discarded) — only a human-gated
-unit that implemented successfully gets the new draft-PR / AWAITING_QA treatment.
+Regression-guarded: gate failure or rejected approval routes to HALTED with the
+branch/workspace retained for recovery. Missing future auto outcomes cannot reach
+publication through a legacy mid-DAG QA node.
 """
 
 import logging
@@ -115,7 +115,7 @@ _AUTO = {
 
 
 # A 3-unit chain: WU-A (auto) -> WU-B (human) -> WU-C (auto, depends on WU-B). The run
-# builds WU-A, then WU-B, and opens a DRAFT PR at WU-B — WU-C is never reached.
+# builds WU-A then WU-B; final completeness now refuses publication without WU-C.
 _THREE = {
     "layers": "  py-logic: auto\n  qa: human",
     "units": """\
@@ -139,6 +139,8 @@ _THREE = {
     depends_on: [WU-B]""",
 }
 
+
+_TERMINAL_QA = {**_THREE, "units": _THREE["units"].split("  - id: WU-C")[0].rstrip()}
 
 def _result(text):
     return ExecutorResult(
@@ -303,37 +305,25 @@ def _create_arg(create, flag):
     return create[create.index(flag) + 1]
 
 
-def test_mid_dag_draft_pr_describes_only_units_built(tmp_path):
-    # gate_cmd="true" so WU-A's auto gate passes; WU-B (human) never runs the gate.
+def test_mid_dag_qa_cannot_publish_with_missing_auto_unit(tmp_path):
+    # Historical structural parsing permits this; production preflight rejects it.
+    # Even the legacy direct graph must not publish a partial auto-unit set.
     repo = _target_repo(tmp_path, gate_cmd="true")
     gh = _recording_gh("https://github.com/owner/demo/pull/8")
-    graph, saver = _wire(tmp_path, repo, gh=gh, executor=MultiExecutor())
+    executor = MultiExecutor()
+    graph, saver = _wire(tmp_path, repo, gh=gh, executor=executor)
     approver = _approver()
-
     final = drive(graph, _write_prd(tmp_path, _THREE), approver=approver, thread_id="mid")
-
-    # The run parked WU-B behind a draft PR; WU-C was never built.
-    assert final.values["status"] == Status.AWAITING_QA
-    creates = _pr_creates(gh)
-    assert len(creates) == 1
-    assert "--draft" in creates[0]
-
-    title = _create_arg(creates[0], "--title")
-    body = _create_arg(creates[0], "--body")
-    # The PR names only the units actually built/committed (WU-A and WU-B)...
-    assert "WU-A" in title and "WU-A" in body
-    assert "WU-B" in title and "WU-B" in body
-    # ...and never the never-built WU-C.
-    assert "WU-C" not in title
-    assert "WU-C" not in body
-    # The human-gated WU-B is verified by a human, not the gate, so the verification line
-    # reports it as awaiting QA rather than counting it as a failed gate (no under-count).
-    assert "awaiting QA" in body
-    assert "1/2 units passed" not in body
+    assert final.values["status"] == Status.HALTED
+    assert not _pr_creates(gh) and not final.values.get("pr_url")
+    assert "WU-C" not in final.values["unit_outcomes"]
+    assert any("WU-C" in row["message"] for row in final.values["errors"])
+    assert Path(final.values["worktree_path"]).is_dir()
+    assert approver.gates == ["plan"]
     saver.conn.close()
 
 
-def test_gate_failure_still_halts_and_deletes_branch(tmp_path):
+def test_gate_failure_halts_and_retains_branch_for_recovery(tmp_path):
     repo = _target_repo(tmp_path, gate_cmd="false")  # genuine gate failure
     gh = _recording_gh("https://github.com/owner/demo/pull/6")
     graph, saver = _wire(tmp_path, repo, gh=gh)  # real run_gate over "false"
@@ -344,9 +334,10 @@ def test_gate_failure_still_halts_and_deletes_branch(tmp_path):
     assert final.values["status"] == Status.HALTED
     assert final.values.get("pr_url") is None
     assert _pr_creates(gh) == []  # no PR — not even a draft
-    # the work is discarded: the shared branch is deleted by cleanup.
+    # Failure artifacts, including the shared branch/worktree, remain inspectable.
     branch = final.values["branch"]
-    assert branch and _branches(repo, branch) == ""
+    assert branch and branch in _branches(repo, branch)
+    assert Path(final.values["worktree_path"]).is_dir()
     assert approver.gates == ["plan"]  # never reached the PR-approval gate
     saver.conn.close()
 
@@ -365,7 +356,7 @@ def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
     graph, saver = _wire(tmp_path, repo, gh=gh, executor=executor)
     approver = _approver()
 
-    final = drive(graph, _write_prd(tmp_path, _THREE), approver=approver, thread_id="qaonly")
+    final = drive(graph, _write_prd(tmp_path, _TERMINAL_QA), approver=approver, thread_id="qaonly")
 
     # The run parked the human-gated WU-B behind a draft PR with WU-A's committed code.
     assert final.values["status"] == Status.AWAITING_QA, final.values.get("errors")
@@ -386,7 +377,7 @@ def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
     saver.conn.close()
 
 
-def test_rejected_pr_approval_still_halts_and_deletes_branch(tmp_path):
+def test_rejected_pr_approval_halts_and_retains_branch_for_recovery(tmp_path):
     repo = _target_repo(tmp_path, gate_cmd="true")  # gate passes -> reaches the PR gate
     gh = _recording_gh("https://github.com/owner/demo/pull/7")
     graph, saver = _wire(tmp_path, repo, gh=gh)
@@ -398,6 +389,7 @@ def test_rejected_pr_approval_still_halts_and_deletes_branch(tmp_path):
     assert final.values.get("pr_url") is None
     assert _pr_creates(gh) == []  # rejection opens no PR
     branch = final.values["branch"]
-    assert branch and _branches(repo, branch) == ""  # branch deleted, work discarded
+    assert branch and branch in _branches(repo, branch)
+    assert Path(final.values["worktree_path"]).is_dir()
     assert approver.gates == ["plan", "pr"]
     saver.conn.close()

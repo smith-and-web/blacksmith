@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
 Heavy-PRD remediation is still in progress. This documents completed runtime
-slices through S09, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+slices through S10, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -33,8 +33,8 @@ parallel worker gets its own run-owned clone. The original checkout is not modif
 
 Clones isolate Git state and guarded file writes. They are not OS sandboxes;
 authoritative generated tests execute on the host. Native commands now have bounded
-execution and toolchain credential filtering, described below. Unit gates now record exact-candidate evidence; combined join/final union gates
-remain S10 work. General use on untrusted repositories is not
+execution and toolchain credential filtering, described below. Unit, joined-level and final gates now record exact-candidate evidence for the
+required layer unions. General use on untrusted repositories is not
 established by these offline tests.
 
 ## Paths and ownership
@@ -62,6 +62,7 @@ Each fresh run has a UUID and these paths under the config directory:
   commands/<operation-id>/{intent.json,stdout.log,stderr.log,outcome.json}
   fixes/<operation-id>.json
   gates/<operation-id>.json
+  joins/<level>/{failure.txt,conflict.patch}
   plans/<sha256-of-raw-unit-id>.json
   plans/approval-proposal.json
   plans/approved.json
@@ -104,7 +105,7 @@ is persisted before displaying the interrupt and includes the run ID, PRD hash,
 bundle hash and per-unit hashes. Acceptance persists `approved.json` plus the same
 hash binding in checkpoint state; a substituted plan cannot reuse the earlier bool.
 Approval rejection does not create an approved artifact. Terminal rejection recovery
-and preservation of failed workspaces still require S11.
+and complete preservation manifests still require S11.
 
 Every implementation attempt (including continuation/fix/escalation/review revision)
 and reviewer validates the whole approved bundle, selected plan and immutable
@@ -252,7 +253,8 @@ multiple commits, checked normalization records a critical squash intent/outcome
 preserves the tree and operation trailer, and occurs before the authoritative gate
 and review. A completed squash can be reused after losing its node checkpoint;
 uncertain squash intent stops for S11 reconciliation. Sequential history is retained.
-Join/integration/final coverage and full artifact reconciliation remain S10/S11.
+S10 now validates and integrates these recorded sources as described below. Full
+artifact/stage recovery remains S11.
 
 Optional unit-stage events carry run/unit/attempt IDs and forward through the
 parent's writer, preserving CLI phase progress. Observation failure cannot replace
@@ -266,6 +268,75 @@ keeps the checkpoint/artifacts. New workspace preparation records
 `unit_graph_version = 1`; pre-workspace approval checkpoints can enter the new
 execution graph. Historical runs remain inspectable. No recovery path silently
 resets consumed budgets or replays ambiguous paid work.
+
+## Exact-source joins and integration gates
+
+The parent now prepares each level before dispatch, records its clean shared base
+SHA in checkpoint state and the critical `join.prepare` receipt, and performs one
+join pick per checkpointed `join_level` invocation. Missing/foreign/duplicate or
+wrong-level outcomes stop before picks. Each expected auto unit must have one
+successful keyed outcome. Workers must be clean, own the run/unit branch/path,
+contain exactly one normalized commit on the saved base and have a matching critical
+unit-gate receipt and intact artifacts. Identical keyed replay is idempotent;
+conflicting terminal outcomes are refused by the reducer.
+
+```mermaid
+flowchart LR
+    P[Prepare level and save base] --> U[Execute units]
+    U --> J[Join one recorded source SHA]
+    J --> J
+    J --> I[Gate completed layer union]
+    I --> A[Advance level]
+    A --> P
+    U --> F[Final auto-layer union gate]
+    A --> F
+    F --> R[PR approval or terminal QA publication seam]
+```
+
+Fetch uses the recorded source SHA, rather than the current branch tip. A critical
+`join.pick` intent records source/base/destination parent before effects; a separate
+`join.commit` intent records the staged tree before checked commit. The destination
+message carries its operation ID and source SHA. Post-commit tree, cleanliness,
+policy and operation/source trailers are checked before completion. The checkpoint
+stores each source-to-destination mapping, parent and tree. Final verification checks
+those mappings against both critical receipts and actual reachable Git objects.
+Sequential units' historical receipts are validated against their original immutable
+Git objects; they are not reused as gates for a later shared HEAD.
+
+If a process exits after a pick or Git commit but before the outcome/checkpoint,
+resume reconciles the exact clean HEAD, parent, staged-tree intent, source and
+operation trailer, reuses the existing commit and continues at the next pick. An
+unknown extra commit, dirty workspace, missing/corrupt evidence or uncommitted
+interrupted pick stops for explicit recovery. Failed receipts are immutable; S11
+must record an explicit recovery generation instead of overwriting one or resetting
+consumed budgets. This does not prove live model billing/cancellation behavior.
+
+A conflict, failed fetch (including a bounded-command exception), failed commit or
+changed commit hook writes retained failure/conflict evidence, then uses checked
+abort/reset to restore the whole saved level base. It retains every worker and the
+shared workspace. A rollback error preserves both its own cause and the original
+failure and does not retry/reset again. Unknown extra edits are retained for
+inspection instead of being discarded. HALTED/rejected cleanup now preserves
+workspaces/branches; complete atomic recovery manifests, binary/untracked snapshots,
+refs bundles and supported recovery commands remain S11 work.
+
+After each multi-unit join, `integration_gate` runs the frozen toolchain over the
+union of all auto layers completed so far. Before normal PR approval or the terminal
+QA publication seam, `final_gate` checks all auto outcomes and gates the union of
+all auto layers on the final clean candidate. Failures get fresh nonpassing scoped
+receipts with command/artifact evidence, halt before approval/publication and never
+retry an arbitrary last sibling. Approval and publication entry recheck complete
+final evidence before summary/model or Git/gh effects. A halted run cannot pass these
+guards under an old approval bool. Final and level commands remain deterministic;
+these receipts prove the recorded commands, not the entire prose test contract.
+
+New workspaces record `join_graph_version=1`. An active v2 workspace without that
+marker refuses resume before executor construction with
+`legacy_join_graph_requires_manual_recovery`; checkpoints/artifacts/budgets are
+retained. Pre-workspace checkpoints with valid S09 plans may enter the new topology.
+The QA seam still needs S13's exact-SHA PR approval, strict blocking/unavailable
+review is S12 and publication reconciliation is S14. These gates are not a general
+readiness or publication-safety release claim. No live release gate ran here.
 
 ## Unit attempt state and reset boundaries
 
@@ -330,8 +401,8 @@ Reuse checks current HEAD/tree, source cleanliness, run identity, required layer
 order, trusted config hash, critical journal outcome, receipt JSON and hashes of
 command stdout/stderr/outcome artifacts. A changed candidate, layer set, missing or
 corrupt artifact cannot reuse a passing receipt. `verify_gate_receipt` is the common
-primitive for subsequent join/final/publication guards; their scheduling and exact
-approval behavior are not yet implemented by S06.
+primitive for S10 join/final/publication entry guards. Exact-SHA approval payloads
+and approval/publication reconciliation remain S13-S14.
 
 Formatters require this attempt's completed implementation-commit receipt and
 operation trailer. They cannot amend a prior unit when the implementer produced
@@ -344,8 +415,8 @@ nonpassing gate evidence. Completed formatter receipts reconcile the amended SHA
 without another amend; uncertain pending stages still require S11 recovery.
 
 This proves unit verifier integrity for the recorded commands. It does not prove
-the full natural-language test contract, merged/final integration coverage, honest
-patch review or publication approval. S10-S19 and live release gates remain open.
+the full natural-language test contract, honest patch review or publication approval.
+S10 adds merged/final coverage; S11-S19 and live release gates remain open.
 
 ## Execution validation and archived PRDs
 
@@ -371,7 +442,7 @@ authoritative; changing the local config does not silently replace them on resum
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call
 refusal are in place; full side-effect reconciliation and explicit terminal-stage
-recovery remain S10-S11 work. These slices do not establish exactly-once
+comprehensive recovery remains S11 work. These slices do not establish exactly-once
 billing across a killed provider process or recovery of terminal policy/gate failures.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing
