@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from blacksmith.contract import PRD, WorkUnit
 from blacksmith.gate_receipts import FixReceipt, GateReceipt
 from blacksmith.receipts import merge_events, merge_unit_outcomes, merge_unit_results
+from blacksmith.review_receipts import ReviewReceipt
 
 
 class Status(StrEnum):
@@ -95,6 +96,7 @@ class UnitResult(TypedDict, total=False):
     diff_summary: str
     test_command: str
     gate_receipt: GateReceipt | None
+    review_receipt: ReviewReceipt | None
 
 
 class UnitAttemptState(TypedDict, total=False):
@@ -126,7 +128,8 @@ class UnitAttemptState(TypedDict, total=False):
     continuation_feedback: str
     gate_receipt: GateReceipt | None
     fix_receipt: FixReceipt | None
-    review_receipt: dict[str, Any] | None
+    review_receipt: ReviewReceipt | None
+    review_retry_token: str
     test_results: TestResults | None
     implementation: dict[str, Any]
     pending_implementation: dict[str, Any] | None
@@ -158,6 +161,7 @@ class UnitOutcome(TypedDict):
     test_command: str
     gate_receipt: GateReceipt | None
     review_clean: bool
+    review_receipt: ReviewReceipt | None
     unit_namespace: str | None
     attempt_id: str
     attempt_number: int
@@ -177,6 +181,7 @@ class BlacksmithState(UnitAttemptState, total=False):
     run_id: str
     run_context: dict[str, Any]
     unit_graph_version: int
+    review_version: int
     unit_mode: str
     unit_initialized: bool
     unit_human: bool

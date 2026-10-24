@@ -1,0 +1,311 @@
+....FF....F............                                                  [100%]
+=================================== FAILURES ===================================
+_ test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[False] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequen...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bceb3b0>
+resume = False
+
+    @pytest.mark.parametrize("resume", [False, True])
+    def test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh(
+        project, monkeypatch, resume
+    ):
+        root, config, prd, contract = project
+        contract["work_units"] = [
+            {
+                "id": name,
+                "title": name,
+                "layers": ["python"],
+                "target_modules": [name.lower() + ".txt"],
+                "test_contract": "all implemented files start with good",
+                "depends_on": deps,
+            }
+            for name, deps in (("A", []), ("B", ["A"]), ("C", ["A"]), ("D", ["B", "C"]))
+        ]
+        write_prd(prd, contract)
+        command = (
+            'for f in a.txt b.txt c.txt d.txt; do if [ -f "$f" ]; then '
+            'grep -q "^good" "$f" || exit 1; fi; done'
+        )
+        (root / "blacksmith.toml").write_text("test_cmd=" + json.dumps(command) + "\n")
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "mixed gate")
+        config.write_text(config.read_text() + "[limits]\nmax_fix_attempts=0\nmax_review_revisions=1\n")
+        monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "unused-offline")
+        monkeypatch.setattr("blacksmith.run_context.shutil.which", lambda tool: f"/offline/{tool}")
+        calls, entries = [], []
+        implement_counts, review_counts = {}, {}
+    
+        async def collect(self, prompt, options, *, emit_findings=False):
+            assert options.setting_sources == [] and options.strict_mcp_config
+            if prompt.startswith("Produce a concise"):
+                return ExecutorResult("PLAN_SENTINEL", options.model, False, 1, 0.01, {}, "offline")
+            unit = re.search(r"^Unit ([^:]+):", prompt, re.M).group(1)
+            calls.append((unit, "review" if emit_findings else "implement", options.model, prompt))
+            if emit_findings:
+                review_counts[unit] = review_counts.get(unit, 0) + 1
+                findings = (
+                    [{"severity": "blocking", "file": "a.txt", "detail": "FIX_A_REQUEST"}]
+                    if unit == "A" and review_counts[unit] == 1
+                    else []
+                )
+                text = json.dumps(
+                    {"verdict": "clean" if not findings else "blocked", "findings": findings}
+                )
+            else:
+                implement_counts[unit] = implement_counts.get(unit, 0) + 1
+                target = unit.lower() + ".txt"
+                allowed = await options.can_use_tool("Write", {"file_path": target}, None)
+                assert isinstance(allowed, PermissionResultAllow)
+                prefix = "bad" if unit == "A" and implement_counts[unit] == 1 else "good"
+                (Path(options.cwd) / target).write_text(f"{prefix} attempt {implement_counts[unit]}\n")
+                if unit == "A" and implement_counts[unit] == 2:
+                    assert "FAILED THE TEST GATE" in prompt
+                if unit == "A" and implement_counts[unit] == 3:
+                    assert "FIX_A_REQUEST" in prompt
+                text = "implemented"
+            return ExecutorResult(text, options.model, False, 1, 0.01, {}, "offline")
+    
+        monkeypatch.setattr(Executor, "_collect", collect)
+        actual_implement = graph_module.implement
+        stopped = False
+    
+        def capture(state, **kwargs):
+            nonlocal stopped
+            unit = state["selected_unit"].id
+            entries.append(
+                (
+                    unit,
+                    deepcopy({k: state.get(k) for k in UnitAttemptState.__annotations__}),
+                    git(state["worktree_path"], "rev-parse", "HEAD"),
+                )
+            )
+            if resume and unit == "D" and not stopped:
+                stopped = True
+                raise KeyboardInterrupt("checkpoint after join, before D transport")
+            return actual_implement(state, **kwargs)
+    
+        monkeypatch.setattr(graph_module, "implement", capture)
+    
+        def approve(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            raise KeyboardInterrupt("retain before PR approval; no publication")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approve)
+>       with pytest.raises(KeyboardInterrupt):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE KeyboardInterrupt
+
+tests/test_unit_state.py:224: Failed
+----------------------------- Captured stdout call -----------------------------
+Run 428b373c-0d32-480d-876b-5f24d74a10b6: selected committed HEAD ec733bf2cc0580204a70bc62a75cf0d9f99c604d
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequential_escalate0/.blacksmith/runs/428b373c-0d32-480d-876b-5f24d74a10b6
+
+status: halted
+error [test_gate]: gate failed for unit A
+error [review]: review unavailable: 1 validation error for Verdict
+verdict
+  Input should be 'clean' or 'needs_changes' [type=literal_error, input_value='blocked', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/literal_error
+total cost: $0.07
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: escalate
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequential_escalate0/.blacksmith/runs/428b373c-0d32-480d-876b-5f24d74a10b6/recovery/2f3ecc97-9bb1-4730-aea3-128a43bfd467/manifest.json
+Next action: blacksmith recovery inspect --thread-id mixed --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequential_escalate0/runtime.toml
+_ test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[True] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequen...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b0a3e60>
+resume = True
+
+    @pytest.mark.parametrize("resume", [False, True])
+    def test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh(
+        project, monkeypatch, resume
+    ):
+        root, config, prd, contract = project
+        contract["work_units"] = [
+            {
+                "id": name,
+                "title": name,
+                "layers": ["python"],
+                "target_modules": [name.lower() + ".txt"],
+                "test_contract": "all implemented files start with good",
+                "depends_on": deps,
+            }
+            for name, deps in (("A", []), ("B", ["A"]), ("C", ["A"]), ("D", ["B", "C"]))
+        ]
+        write_prd(prd, contract)
+        command = (
+            'for f in a.txt b.txt c.txt d.txt; do if [ -f "$f" ]; then '
+            'grep -q "^good" "$f" || exit 1; fi; done'
+        )
+        (root / "blacksmith.toml").write_text("test_cmd=" + json.dumps(command) + "\n")
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "mixed gate")
+        config.write_text(config.read_text() + "[limits]\nmax_fix_attempts=0\nmax_review_revisions=1\n")
+        monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "unused-offline")
+        monkeypatch.setattr("blacksmith.run_context.shutil.which", lambda tool: f"/offline/{tool}")
+        calls, entries = [], []
+        implement_counts, review_counts = {}, {}
+    
+        async def collect(self, prompt, options, *, emit_findings=False):
+            assert options.setting_sources == [] and options.strict_mcp_config
+            if prompt.startswith("Produce a concise"):
+                return ExecutorResult("PLAN_SENTINEL", options.model, False, 1, 0.01, {}, "offline")
+            unit = re.search(r"^Unit ([^:]+):", prompt, re.M).group(1)
+            calls.append((unit, "review" if emit_findings else "implement", options.model, prompt))
+            if emit_findings:
+                review_counts[unit] = review_counts.get(unit, 0) + 1
+                findings = (
+                    [{"severity": "blocking", "file": "a.txt", "detail": "FIX_A_REQUEST"}]
+                    if unit == "A" and review_counts[unit] == 1
+                    else []
+                )
+                text = json.dumps(
+                    {"verdict": "clean" if not findings else "blocked", "findings": findings}
+                )
+            else:
+                implement_counts[unit] = implement_counts.get(unit, 0) + 1
+                target = unit.lower() + ".txt"
+                allowed = await options.can_use_tool("Write", {"file_path": target}, None)
+                assert isinstance(allowed, PermissionResultAllow)
+                prefix = "bad" if unit == "A" and implement_counts[unit] == 1 else "good"
+                (Path(options.cwd) / target).write_text(f"{prefix} attempt {implement_counts[unit]}\n")
+                if unit == "A" and implement_counts[unit] == 2:
+                    assert "FAILED THE TEST GATE" in prompt
+                if unit == "A" and implement_counts[unit] == 3:
+                    assert "FIX_A_REQUEST" in prompt
+                text = "implemented"
+            return ExecutorResult(text, options.model, False, 1, 0.01, {}, "offline")
+    
+        monkeypatch.setattr(Executor, "_collect", collect)
+        actual_implement = graph_module.implement
+        stopped = False
+    
+        def capture(state, **kwargs):
+            nonlocal stopped
+            unit = state["selected_unit"].id
+            entries.append(
+                (
+                    unit,
+                    deepcopy({k: state.get(k) for k in UnitAttemptState.__annotations__}),
+                    git(state["worktree_path"], "rev-parse", "HEAD"),
+                )
+            )
+            if resume and unit == "D" and not stopped:
+                stopped = True
+                raise KeyboardInterrupt("checkpoint after join, before D transport")
+            return actual_implement(state, **kwargs)
+    
+        monkeypatch.setattr(graph_module, "implement", capture)
+    
+        def approve(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            raise KeyboardInterrupt("retain before PR approval; no publication")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approve)
+>       with pytest.raises(KeyboardInterrupt):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE KeyboardInterrupt
+
+tests/test_unit_state.py:224: Failed
+----------------------------- Captured stdout call -----------------------------
+Run 625bb7bd-3648-4148-bc61-cc06b5a4c99e: selected committed HEAD fcb34c50cbc1440b816679eb4c8a137aecc17887
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequential_escalate1/.blacksmith/runs/625bb7bd-3648-4148-bc61-cc06b5a4c99e
+
+status: halted
+error [test_gate]: gate failed for unit A
+error [review]: review unavailable: 1 validation error for Verdict
+verdict
+  Input should be 'clean' or 'needs_changes' [type=literal_error, input_value='blocked', input_type=str]
+    For further information visit https://errors.pydantic.dev/2.13/v/literal_error
+total cost: $0.07
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: escalate
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequential_escalate1/.blacksmith/runs/625bb7bd-3648-4148-bc61-cc06b5a4c99e/recovery/af41f56d-529b-49ca-8df9-0ee35fb30d36/manifest.json
+Next action: blacksmith recovery inspect --thread-id mixed --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_mixed_sequential_escalate1/runtime.toml
+___________ test_review_revisions_exhausted_proceeds_without_halting ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-152/test_review_revisions_exhauste0')
+
+    def test_review_revisions_exhausted_proceeds_without_halting(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/3")
+        gate = FakeGate()
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            # No revisions allowed at all: the first blocking finding is immediately exhausted.
+            limits=LimitsConfig(max_review_revisions=0), review=ReviewConfig(enabled=True),
+        )
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="exhausted")
+    
+        assert executor.implement_calls == ["WU-S"]  # no revision attempt
+        assert executor.review_calls == ["WU-S"]  # reviewed exactly once
+>       assert gate.calls == 2
+E       assert 1 == 2
+E        +  where 1 = <test_review_loop.FakeGate object at 0x10bf35a60>.calls
+
+tests/test_review_loop.py:292: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_unit_state.py::test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[False]
+FAILED tests/test_unit_state.py::test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[True]
+FAILED tests/test_review_loop.py::test_review_revisions_exhausted_proceeds_without_halting
+3 failed, 20 passed in 56.20s

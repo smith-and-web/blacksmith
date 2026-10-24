@@ -995,6 +995,11 @@ def _resume(argv: list[str] | None = None) -> int:
                     "legacy_join_graph_requires_manual_recovery: join/final gate topology changed; "
                     "run/checkpoints/artifacts/budgets retained"
                 )
+            if values.get("worktree_path") and values.get("review_version") != 1:
+                raise ResumeError(
+                    "legacy_review_requires_manual_recovery: cumulative patch/review receipts "
+                    "absent; checkpoints/artifacts/budgets retained"
+                )
             from blacksmith.plan_artifacts import validate_plans, verify_approved_plan
             if values.get("planning_version") == 1:
                 validate_plans(values, complete=bool(values.get("approvals", {}).get("plan")))
@@ -1010,6 +1015,8 @@ def _resume(argv: list[str] | None = None) -> int:
             if values.get("recovery_version") != 1:
                 raise ResumeError("legacy_recovery_requires_manual_recovery: no artifact index")
             validate_recovery(context)
+            from blacksmith.review_receipts import validate_state as validate_reviews
+            validate_reviews(values)
             stack.enter_context(protect_run(context, checkpointer))
             from blacksmith.recovery_control import prepare as prepare_recovery
 

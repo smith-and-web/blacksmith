@@ -526,12 +526,19 @@ def _prepare(
                 if stage not in UNIT_STAGES:
                     raise RecoveryError("missing recorded failed stage; manual inspection required")
                 review_resume = stage == "review"
+                review_blocked = bool(review_resume and state.get("review_receipt")
+                                      and state["review_receipt"].status == "blocking")
                 effect_resume = False
                 overrides = dict(state.get("recovery_call_overrides") or {})
-                if review_resume and not continue_attempt:
+                if review_blocked:
+                    if (not add_budget_usd or state.get("review_revisions", 0)
+                            >= limits["max_review_revisions"]):
+                        raise RecoveryError("blocking candidate cannot be re-reviewed unchanged; "
+                                            "revision allowance remains exhausted")
+                if review_resume and not continue_attempt and not review_blocked:
                     raise RecoveryError("review requires --continue-attempt "
                                         "under remaining allowance")
-                if continue_attempt:
+                if continue_attempt and not review_blocked:
                     if stage not in {"implement", "review"}:
                         raise RecoveryError("--continue-attempt requires a model stage")
                     if (
@@ -547,16 +554,9 @@ def _prepare(
                             "unknown commit after interrupted model; inspect before continuing"
                         )
                     if review_resume:
-                        identity_attempt = attempt_identity(state)
-                        for operation in context.journal().operations():
-                            if (operation.key.unit_id == identity
-                                    and operation.key.kind.startswith("model.review")
-                                    and operation.status != "completed"):
-                                lookup = encoded([identity, operation.key.attempt_id,
-                                                  operation.key.kind])
-                                lookup = next((base for base, target in overrides.items()
-                                               if target == operation.key.attempt_id), lookup)
-                                overrides[lookup] = identity_attempt + ":review:" + key.id[:16]
+                        from blacksmith.review_receipts import retry_overrides
+                        overrides = retry_overrides(state, context, key.id)
+                        state["review_retry_token"] = key.id
                         state["implement_continuations"] = state.get(
                             "implement_continuations", 0) + 1
                         state["attempt_number"] = state.get("attempt_number", 1) + 1
@@ -570,7 +570,7 @@ def _prepare(
                     stage = "review" if review_resume else "implement"
                 elif stage == "implement":
                     raise RecoveryError("model stage requires explicit --continue-attempt")
-                else:
+                elif not review_blocked:
                     effect_resume = _reuse_effect_key(context, state, stage, actual)
                 generation = (previous or state).get("recovery_generation", 0) + 1
                 old_attempt = attempt_identity(state)
@@ -593,6 +593,10 @@ def _prepare(
                 if add_budget_usd and stage == "test_gate":
                     state["recovery_entry"] = "recovery_decision"
                     state["unit_stage"] = "test_gate"
+                    state["status"] = Status.TESTING
+                if review_blocked:
+                    state["recovery_entry"] = "recovery_decision"
+                    state["unit_stage"] = "review"
                     state["status"] = Status.TESTING
                 patch["recovery_units"][identity] = state
                 patch["recovery_fingerprints"][identity] = {"path": str(path), "value": actual}

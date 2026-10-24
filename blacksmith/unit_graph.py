@@ -59,7 +59,7 @@ def _tag(state, phase, update):
     if phase == "audit_commit" and update.get("status") != Status.HALTED:
         update["implementation_attempt_id"] = attempt_identity(state)
     if update.get("status") == Status.HALTED and phase != "finalize_unit":
-        update["unit_failed_stage"] = phase
+        update.setdefault("unit_failed_stage", phase)
     return update
 
 
@@ -162,9 +162,11 @@ def build_unit_graph(deps, worktree_manager=None):
                     "unit_failed_stage": phase,
                 }
         elif phase == "review" and not state.get("review_clean"):
-            action = (
-                "prepare_review_revision" if gm._can_review_revise(state) else "finalize_review"
-            )
+            receipt = state.get("review_receipt")
+            if receipt is None or receipt.status != "disabled":
+                action = (
+                    "prepare_review_revision" if gm._can_review_revise(state) else "finalize_review"
+                )
         return {"recovery_action": action}
 
     def finalize(state):
@@ -203,6 +205,7 @@ def build_unit_graph(deps, worktree_manager=None):
             "test_command": (state.get("test_results") or {}).get("command", ""),
             "gate_receipt": state.get("gate_receipt"),
             "review_clean": state.get("review_clean", False),
+            "review_receipt": state.get("review_receipt"),
             "unit_namespace": state.get("unit_namespace"),
             "attempt_id": attempt_identity(state),
             "attempt_number": state.get("attempt_number", 1),
@@ -274,7 +277,6 @@ def build_unit_graph(deps, worktree_manager=None):
             "review"
             if s.get("status") != Status.HALTED
             and (s.get("test_results") or {}).get("passed")
-            and s.get("review_enabled")
             else "recovery_decision"
         ),
     )
@@ -394,6 +396,7 @@ def unit_runner(unit_graph):
             "branch",
             "limits",
             "review_enabled",
+            "review_version",
             "review_panel_size",
             "shared_clone_path",
             "level_cursor",
@@ -477,5 +480,6 @@ def _result_view(outcome):
             "diff_summary",
             "test_command",
             "gate_receipt",
+            "review_receipt",
         )
     }

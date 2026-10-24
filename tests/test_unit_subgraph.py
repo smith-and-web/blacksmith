@@ -86,7 +86,7 @@ def test_both_shapes_use_identical_bounded_attempt_policy_and_namespaces(
             )
             return ExecutorResult(
                 json.dumps(
-                    {"verdict": "clean" if not findings else "blocked", "findings": findings}
+                    {"verdict": "clean" if not findings else "needs_changes", "findings": findings}
                 ),
                 options.model,
                 False,

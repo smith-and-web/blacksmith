@@ -1,0 +1,57 @@
+
+==================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_review_panel.py __________________
+ImportError while importing test module '/Users/josh.smith/Code/blacksmith/tests/test_review_panel.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_review_panel.py:9: in <module>
+    from blacksmith.nodes.review import aggregate_panel_verdicts
+blacksmith/nodes/review.py:16: in <module>
+    from blacksmith.nodes.plan import cost_event
+blacksmith/nodes/plan.py:30: in <module>
+    from blacksmith.plan_artifacts import PlanIntegrityError, prd_hash, record_plan, validate_plans
+blacksmith/plan_artifacts.py:12: in <module>
+    from blacksmith.run_context import (
+blacksmith/run_context.py:23: in <module>
+    from blacksmith.gate import GateError, TargetToolchain, parse_toolchain
+blacksmith/gate.py:43: in <module>
+    from blacksmith.state import TestResults
+blacksmith/state.py:18: in <module>
+    from blacksmith.review_receipts import ReviewReceipt
+blacksmith/review_receipts.py:12: in <module>
+    from blacksmith.run_context import atomic_write
+E   ImportError: cannot import name 'atomic_write' from partially initialized module 'blacksmith.run_context' (most likely due to a circular import) (/Users/josh.smith/Code/blacksmith/blacksmith/run_context.py)
+__________________ ERROR collecting tests/test_unit_state.py ___________________
+ImportError while importing test module '/Users/josh.smith/Code/blacksmith/tests/test_unit_state.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_unit_state.py:11: in <module>
+    from test_run_context import git, saved_values, write_prd
+tests/test_run_context.py:16: in <module>
+    from blacksmith import cli
+blacksmith/cli.py:32: in <module>
+    from blacksmith.dashboard import serve as serve_dashboard
+blacksmith/dashboard.py:52: in <module>
+    from blacksmith.events import RUN_STATUS, RunEvent, read_events
+blacksmith/events.py:27: in <module>
+    from blacksmith.state import Status
+blacksmith/state.py:18: in <module>
+    from blacksmith.review_receipts import ReviewReceipt
+blacksmith/review_receipts.py:12: in <module>
+    from blacksmith.run_context import atomic_write
+blacksmith/run_context.py:23: in <module>
+    from blacksmith.gate import GateError, TargetToolchain, parse_toolchain
+blacksmith/gate.py:43: in <module>
+    from blacksmith.state import TestResults
+E   ImportError: cannot import name 'TestResults' from partially initialized module 'blacksmith.state' (most likely due to a circular import) (/Users/josh.smith/Code/blacksmith/blacksmith/state.py)
+=========================== short test summary info ============================
+ERROR tests/test_review_panel.py
+ERROR tests/test_unit_state.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+2 errors in 0.41s

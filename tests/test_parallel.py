@@ -121,7 +121,8 @@ class FakeExecutor:
     """Records the cwd each unit built in and the files visible at implement time, and
     writes each unit's target module so the gate/cherry-pick has a real diff to work on."""
 
-    def __init__(self):
+    def __init__(self, *, review_blocking=True):
+        self.review_blocking = review_blocking
         self.cwds: dict[str, str] = {}
         self.seen: dict[str, list[str]] = {}
         self.reviewed: list[str] = []  # unit ids the reviewer was run on
@@ -145,11 +146,11 @@ class FakeExecutor:
         unit_id = re.search(r"^Unit (\S+):", prompt, re.M).group(1)
         self.reviewed.append(unit_id)
         verdict = {
-            "verdict": "needs_changes",
+            "verdict": "needs_changes" if self.review_blocking else "clean",
             "findings": [
                 {"severity": "blocking", "file": f"{unit_id}.txt",
                  "detail": f"review flagged {unit_id}"}
-            ],
+            ] if self.review_blocking else [],
         }
         return _result("```json\n" + json.dumps(verdict) + "\n```")
 
@@ -466,7 +467,7 @@ def test_fanout_build_unit_implement_receives_index_and_sandbox(tmp_path, monkey
     saver.conn.close()
 
 
-def test_fanout_units_are_reviewed_and_findings_reach_pr(tmp_path):
+def test_fanout_units_are_reviewed_and_blockers_halt_before_pr(tmp_path):
     """Review on the fan-out path (review finding #1, Workstream A2).
 
     The default-ON post-gate reviewer only ran on the sequential path, so a unit that landed
@@ -498,11 +499,15 @@ def test_fanout_units_are_reviewed_and_findings_reach_pr(tmp_path):
     # Both fan-out units were reviewed, each on its own build clone.
     assert set(executor.reviewed) == {"WU-X", "WU-Y"}
     # Both units' blocking findings reach the single combined PR body (surfaced, not dropped).
-    body = _pr_body(gh)
+    from blacksmith.nodes.pr import _reviewer_notes_lines
+    body = "\n".join(_reviewer_notes_lines(final.values))
     assert "review flagged WU-X" in body
     assert "review flagged WU-Y" in body
-    assert len(_pr_creates(gh)) == 1
-    assert final.values["status"] == Status.DONE
+    assert _pr_creates(gh) == []
+    assert not any(c[:2] == ["git", "push"] for c in gh.calls)
+    assert final.values["status"] == Status.HALTED
+    assert all(not r["ok"] and r["review_receipt"].status == "blocking"
+               for r in final.values["unit_outcomes"].values())
     saver.conn.close()
 
 
@@ -518,7 +523,7 @@ def test_fanout_node_seam_every_feature_reaches_the_worker(tmp_path, monkeypatch
     both units. Green now; red on the pre-fix main (the worker passed only ``executor`` and never
     reviewed)."""
     repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
-    executor = FakeExecutor()
+    executor = FakeExecutor(review_blocking=False)
     gh = _recording_gh("https://github.com/owner/demo/pull/7")
 
     index_cfg = IndexConfig(enabled=True)
@@ -656,7 +661,7 @@ def test_fanout_blocking_review_revises_in_worker_then_lands_clean(tmp_path):
     saver.conn.close()
 
 
-def test_fanout_blocking_review_exhausts_revisions_then_surfaces(tmp_path):
+def test_fanout_blocking_review_exhausts_revisions_then_halts(tmp_path):
     """The revise loop is BOUNDED (A-i): a reviewer that never clears revises up to
     ``max_review_revisions`` (default 1) then SURFACES the outstanding blocking finding on the
     PR and proceeds — it never halts the run on it, mirroring the sequential finalize_review."""
@@ -676,12 +681,16 @@ def test_fanout_blocking_review_exhausts_revisions_then_surfaces(tmp_path):
     assert executor.impl_calls == {"WU-X": 2, "WU-Y": 2}
     assert executor.review_calls == {"WU-X": 2, "WU-Y": 2}
     # The still-blocking findings SURFACE on the PR (not resolved), and the run still completes.
-    body = _pr_body(gh)
+    from blacksmith.nodes.pr import _reviewer_notes_lines
+    body = "\n".join(_reviewer_notes_lines(final.values))
     assert "unresolved (blocking): WU-X.txt" in body
     assert "unresolved (blocking): WU-Y.txt" in body
     # The PR reports the fan-out revision count: two units each revised once (reducer total),
     # which the last-write-wins review_revisions could never carry off concurrent workers.
-    assert "resolved via revision: 2" in body
+    assert "revision attempts: 2" in body
     assert final.values["review_revisions_total"] == 2
-    assert final.values["status"] == Status.DONE
+    assert final.values["status"] == Status.HALTED
+    assert _pr_creates(gh) == []
+    assert not any(c[:2] == ["git", "push"] for c in gh.calls)
+    assert all(Path(row["clone_path"]).is_dir() for row in final.values["unit_outcomes"].values())
     saver.conn.close()

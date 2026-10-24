@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import io
 
+import pytest
+
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.pr import _pr_body
 from blacksmith.render import Renderer
@@ -100,18 +102,19 @@ def test_gate_render_shows_unresolved_blocking_findings():
     text = out.getvalue()
     assert "wu-s.txt" in text
     assert "off-by-one in the loop bound" in text
-    assert "resolved via revision: 1" in text
+    assert "revision attempts: 1" in text
     assert "review: clean" not in text
 
 
 # --- (b) render shows "review: clean" when none -------------------------------------
 
 
-def test_gate_render_shows_clean_when_no_unresolved_findings():
+def test_gate_render_without_review_evidence_is_unavailable():
     renderer, out = _plain_renderer()
     renderer.gate(PR_PAYLOAD)  # no unresolved_review_findings key at all
     text = out.getvalue()
-    assert "review: clean" in text
+    assert "review: unavailable" in text
+    assert "review: clean" not in text
     assert "Unresolved review findings" not in text
 
 
@@ -129,7 +132,7 @@ def test_gate_render_rendered_mode_shows_unresolved_findings():
     text = out.getvalue()
     assert "a.py" in text
     assert "missing null check" in text
-    assert "resolved via revision: 2" in text
+    assert "revision attempts: 2" in text
 
 
 # --- WU-PR-DIFF-RENDER: the full combined diff, after the diffstat -------------------
@@ -195,7 +198,7 @@ def test_gate_render_pr_sections_still_ordered_diffstat_tests_files_review():
     idx_full_diff = text.index("Full diff:")
     idx_tests = text.index("Tests:")
     idx_files = text.index("Files touched:")
-    idx_review = text.index("review: clean")
+    idx_review = text.index("review: unavailable")
     assert idx_diffstat < idx_full_diff < idx_tests < idx_files < idx_review
 
 
@@ -262,7 +265,7 @@ def test_pr_body_includes_reviewer_notes_section_with_unresolved_findings():
     body = _pr_body(state)
     assert "**Reviewer notes:**" in body
     assert "0 advisory · 1 blocking · 1 revisions" in body
-    assert "resolved via revision: 1" in body
+    assert "revision attempts: 1" in body
     assert "wu-s.txt" in body
     assert "off-by-one in the loop bound" in body
 
@@ -280,20 +283,20 @@ def test_pr_body_prefers_run_wide_revision_total_over_per_unit():
         "review_revisions_total": 3,
     }
     body = _pr_body(state)
-    assert "resolved via revision: 3" in body
+    assert "revision attempts: 3" in body
     assert "0 advisory · 1 blocking · 3 revisions" in body
 
 
-def test_pr_body_reviewer_notes_clean_is_a_single_line():
+def test_pr_body_without_enabled_review_reports_disabled():
     state = {"selected_unit": _unit()}  # no unresolved_review_findings at all
     body = _pr_body(state)
     assert "**Reviewer notes:**" in body
-    assert "Reviewer: clean" in body
+    assert "Reviewer: disabled" in body
     # A clean review reports nothing beyond that one line for the section.
     idx = body.index("**Reviewer notes:**")
     section = body[idx:].splitlines()
-    # section[0] is the header itself, section[1] is the single "Reviewer: clean" line
-    assert section[1] == "Reviewer: clean"
+    # section[0] is the header itself, section[1] is the single "Reviewer: disabled" line
+    assert section[1] == "Reviewer: disabled"
 
 
 def test_pr_body_surfaces_advisory_reviewer_notes():
@@ -372,3 +375,21 @@ def test_pr_body_ends_with_closes_issue_then_not_auto_merged():
     assert "Closes #42" in body
     assert body.rstrip().endswith("Opened by blacksmith for review — not auto-merged.")
     assert body.index("Closes #42") < body.index("Opened by blacksmith for review")
+
+
+@pytest.mark.parametrize("status", ["clean", "blocking", "unavailable", "disabled"])
+@pytest.mark.parametrize("rendered", [False, True])
+def test_gate_reports_recorded_review_status_without_inference(status, rendered):
+    out = _TTYStringIO() if rendered else io.StringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO(), plain=not rendered)
+    renderer.gate({**PR_PAYLOAD, "review_status": status})
+    text = out.getvalue()
+    assert "review: " + status in text
+    if status != "clean":
+        assert "review: clean" not in text
+    assert "resolved via revision" not in text
+
+
+def test_enabled_review_without_receipt_is_unavailable_in_pr_body():
+    body = _pr_body({"selected_unit": _unit(), "review_enabled": True})
+    assert "Reviewer: unavailable" in body and "Reviewer: clean" not in body

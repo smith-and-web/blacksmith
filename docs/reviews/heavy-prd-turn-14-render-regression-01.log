@@ -1,0 +1,288 @@
+FFF....F....FFF............FF.F......................................... [100%]
+=================================== FAILURES ===================================
+_____________ test_gate_render_shows_unresolved_blocking_findings ______________
+
+    def test_gate_render_shows_unresolved_blocking_findings():
+        payload = {
+            **PR_PAYLOAD,
+            "unresolved_review_findings": [
+                {"severity": "blocking", "file": "wu-s.txt", "detail": "off-by-one in the loop bound"},
+            ],
+            "review_revisions": 1,
+        }
+        renderer, out = _plain_renderer()
+        renderer.gate(payload)
+        text = out.getvalue()
+        assert "wu-s.txt" in text
+        assert "off-by-one in the loop bound" in text
+>       assert "resolved via revision: 1" in text
+E       AssertionError: assert 'resolved via revision: 1' in '\nApprove the PR for WU-XY render the gate\n\nDiff summary:\n blacksmith/render.py | 10 ++\n\nTests: PASS  (pytest)\n...lacksmith/render.py\n\nUnresolved review findings:\n  - wu-s.txt: off-by-one in the loop bound\nrevision attempts: 1\n'
+
+tests/test_render.py:103: AssertionError
+___________ test_gate_render_shows_clean_when_no_unresolved_findings ___________
+
+    def test_gate_render_shows_clean_when_no_unresolved_findings():
+        renderer, out = _plain_renderer()
+        renderer.gate(PR_PAYLOAD)  # no unresolved_review_findings key at all
+        text = out.getvalue()
+>       assert "review: clean" in text
+E       AssertionError: assert 'review: clean' in '\nApprove the PR for WU-XY render the gate\n\nDiff summary:\n blacksmith/render.py | 10 ++\n\nTests: PASS  (pytest)\n1 passed\n\nFiles touched:\n  - blacksmith/render.py\n\nreview: unavailable\n'
+
+tests/test_render.py:114: AssertionError
+___________ test_gate_render_rendered_mode_shows_unresolved_findings ___________
+
+    def test_gate_render_rendered_mode_shows_unresolved_findings():
+        payload = {
+            **PR_PAYLOAD,
+            "unresolved_review_findings": [
+                {"severity": "blocking", "file": "a.py", "detail": "missing null check"},
+            ],
+            "review_revisions": 2,
+        }
+        out = _TTYStringIO()
+        renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+        renderer.gate(payload)
+        text = out.getvalue()
+        assert "a.py" in text
+        assert "missing null check" in text
+>       assert "resolved via revision: 2" in text
+E       AssertionError: assert 'resolved via revision: 2' in '\x1b[1mApprove the PR for WU-XY render the gate\x1b[0m\n╭──────── diff summary ─────────╮\n│  blacksmith/render.py | ...               \x1b[33m│\x1b[0m\n\x1b[33m╰──────────────────────────────╯\x1b[0m\n\x1b[2mrevision attempts: 2\x1b[0m\n'
+
+tests/test_render.py:132: AssertionError
+____ test_gate_render_pr_sections_still_ordered_diffstat_tests_files_review ____
+
+    def test_gate_render_pr_sections_still_ordered_diffstat_tests_files_review():
+        payload = {
+            **PR_PAYLOAD,
+            "diff_text": "diff --git a/render.py b/render.py\n+added line",
+        }
+        renderer, out = _plain_renderer()
+        renderer.gate(payload)
+        text = out.getvalue()
+        idx_diffstat = text.index("Diff summary:")
+        idx_full_diff = text.index("Full diff:")
+        idx_tests = text.index("Tests:")
+        idx_files = text.index("Files touched:")
+>       idx_review = text.index("review: clean")
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ValueError: substring not found
+
+tests/test_render.py:198: ValueError
+____ test_pr_body_includes_reviewer_notes_section_with_unresolved_findings _____
+
+    def test_pr_body_includes_reviewer_notes_section_with_unresolved_findings():
+        state = {
+            "selected_unit": _unit(),
+            "unresolved_review_findings": [
+                {"severity": "blocking", "file": "wu-s.txt", "detail": "off-by-one in the loop bound"},
+            ],
+            "review_revisions": 1,
+        }
+        body = _pr_body(state)
+        assert "**Reviewer notes:**" in body
+        assert "0 advisory · 1 blocking · 1 revisions" in body
+>       assert "resolved via revision: 1" in body
+E       AssertionError: assert 'resolved via revision: 1' in '\n| Unit | What | Files touched |\n| --- | --- | --- |\n| WU-01 | scaffold | — |\n\n**Verification:** 0/1 units passe...n- unresolved (blocking): wu-s.txt: off-by-one in the loop bound\n\nOpened by blacksmith for review — not auto-merged.'
+
+tests/test_render.py:265: AssertionError
+__________ test_pr_body_prefers_run_wide_revision_total_over_per_unit __________
+
+    def test_pr_body_prefers_run_wide_revision_total_over_per_unit():
+        # A fan-out run reports revisions via the run-wide reducer ``review_revisions_total`` (its
+        # concurrent workers can't write the last-write-wins per-unit ``review_revisions``). The PR
+        # body prefers the total; the per-unit field here is 0 (never updated on a fan-out-only run).
+        state = {
+            "selected_unit": _unit(),
+            "unresolved_review_findings": [
+                {"severity": "blocking", "file": "a.txt", "detail": "still off by one"},
+            ],
+            "review_revisions": 0,
+            "review_revisions_total": 3,
+        }
+        body = _pr_body(state)
+>       assert "resolved via revision: 3" in body
+E       AssertionError: assert 'resolved via revision: 3' in '\n| Unit | What | Files touched |\n| --- | --- | --- |\n| WU-01 | scaffold | — |\n\n**Verification:** 0/1 units passe...on attempts: 3\n- unresolved (blocking): a.txt: still off by one\n\nOpened by blacksmith for review — not auto-merged.'
+
+tests/test_render.py:283: AssertionError
+______________ test_pr_body_reviewer_notes_clean_is_a_single_line ______________
+
+    def test_pr_body_reviewer_notes_clean_is_a_single_line():
+        state = {"selected_unit": _unit()}  # no unresolved_review_findings at all
+        body = _pr_body(state)
+        assert "**Reviewer notes:**" in body
+>       assert "Reviewer: clean" in body
+E       AssertionError: assert 'Reviewer: clean' in '\n| Unit | What | Files touched |\n| --- | --- | --- |\n| WU-01 | scaffold | — |\n\n**Verification:** 0/1 units passed\n\n**Reviewer notes:**\nReviewer: disabled\n\nOpened by blacksmith for review — not auto-merged.'
+
+tests/test_render.py:291: AssertionError
+_____________ test_fanout_units_are_reviewed_and_findings_reach_pr _____________
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t14-render-regression-01/test_fanout_units_are_reviewed0')
+
+    def test_fanout_units_are_reviewed_and_findings_reach_pr(tmp_path):
+        """Review on the fan-out path (review finding #1, Workstream A2).
+    
+        The default-ON post-gate reviewer only ran on the sequential path, so a unit that landed
+        in a parallel level was NEVER reviewed — a regression the unit tests missed shipped
+        unreviewed, depending only on the PRD's dependency shape. This pins that BOTH units of a
+        parallel level are reviewed on their own build clones and their blocking findings reach the
+        ONE combined PR body. (Would fail before A2: the worker never called run_review.)"""
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    
+        saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+        graph = compile_graph(
+            saver,
+            executor=executor,
+            worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+            gate=run_gate,
+            pr_runner=gh,
+            review=ReviewConfig(enabled=True),
+        )
+    
+        final = drive(
+            graph,
+            _write_prd(tmp_path, _TWO_INDEPENDENT),
+            approver=_recording_approver(),
+            thread_id="rev",
+        )
+    
+        # Both fan-out units were reviewed, each on its own build clone.
+        assert set(executor.reviewed) == {"WU-X", "WU-Y"}
+        # Both units' blocking findings reach the single combined PR body (surfaced, not dropped).
+>       body = _pr_body(gh)
+               ^^^^^^^^^^^^
+
+tests/test_parallel.py:501: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+gh = <function _recording_gh.<locals>.run at 0x109a1d300>
+
+    def _pr_body(gh):
+>       create = _pr_creates(gh)[0]
+                 ^^^^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests/test_parallel.py:197: IndexError
+____________ test_fanout_node_seam_every_feature_reaches_the_worker ____________
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t14-render-regression-01/test_fanout_node_seam_every_fe0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109a17fe0>
+
+    def test_fanout_node_seam_every_feature_reaches_the_worker(tmp_path, monkeypatch):
+        """Node-seam exhaustiveness guard (review finding #4, Workstream A3).
+    
+        The forwarding guard (test_reviewer_wiring.py, seam 1) stops at ``compile_graph``'s kwargs —
+        it never checks a feature reaches the NODE that reads it, and never touches ``build_unit``,
+        which is exactly how the reviewer (#1) and index/sandbox (#2) went dark on parallel units
+        while it stayed green. This drives the REAL graph with a ``CloneManager`` + a 2-unit fan-out
+        level + index/sandbox/review ALL wired on, and asserts NODE BEHAVIOUR on the parallel path:
+        each worker's inner implement call receives the index + sandbox deps AND the reviewer runs on
+        both units. Green now; red on the pre-fix main (the worker passed only ``executor`` and never
+        reviewed)."""
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    
+        index_cfg = IndexConfig(enabled=True)
+        # Wired-but-disabled sandbox: threaded into the graph (so we can assert it reaches the
+        # worker's implement) without requiring docker in the test.
+        sandbox_mgr = SandboxManager(config=SandboxConfig(enabled=False))
+    
+        saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+        graph = compile_graph(
+            saver,
+            executor=executor,
+            worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+            gate=run_gate,
+            pr_runner=gh,
+            index=index_cfg,
+            sandbox=sandbox_mgr,
+            review=ReviewConfig(enabled=True),
+        )
+    
+        # Spy on the implement the fan-out worker calls (looked up as a module global at call time).
+        real_implement = bsgraph.implement
+        captured: list[dict] = []
+    
+        def spy_implement(state, **kwargs):
+            captured.append(kwargs)
+            return real_implement(state, **kwargs)
+    
+        monkeypatch.setattr(bsgraph, "implement", spy_implement)
+    
+        final = drive(
+            graph,
+            _write_prd(tmp_path, _TWO_INDEPENDENT),
+            approver=_recording_approver(),
+            thread_id="seam",
+        )
+    
+        # Both units built via fan-out (own -build clones) -> every implement call came from build_unit.
+        assert set(executor.cwds) == {"WU-X", "WU-Y"}
+        assert all(cwd.endswith("-build") for cwd in executor.cwds.values())
+        # (a) index + sandbox reached each worker's implement call.
+        assert len(captured) == 2
+        for kwargs in captured:
+            assert kwargs.get("index_config") is index_cfg
+            assert kwargs.get("sandbox") is sandbox_mgr
+            assert "sandbox_exec_timeout_s" in kwargs
+        # (b) the reviewer ran on BOTH fan-out units.
+        assert set(executor.reviewed) == {"WU-X", "WU-Y"}
+>       assert final.values["status"] == Status.DONE
+E       AssertionError: assert <Status.HALTED: 'halted'> == <Status.DONE: 'done'>
+E         
+E         - done
+E         + halted
+
+tests/test_parallel.py:569: AssertionError
+_________ test_fanout_blocking_review_exhausts_revisions_then_surfaces _________
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t14-render-regression-01/test_fanout_blocking_review_ex0')
+
+    def test_fanout_blocking_review_exhausts_revisions_then_surfaces(tmp_path):
+        """The revise loop is BOUNDED (A-i): a reviewer that never clears revises up to
+        ``max_review_revisions`` (default 1) then SURFACES the outstanding blocking finding on the
+        PR and proceeds — it never halts the run on it, mirroring the sequential finalize_review."""
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        executor = ReviseExecutor(clears_at=99)  # reviewer never clears
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        graph, saver = _wire_review_revise(tmp_path, repo, executor=executor, gh=gh)
+    
+        final = drive(
+            graph,
+            _write_prd(tmp_path, _TWO_INDEPENDENT),
+            approver=_recording_approver(),
+            thread_id="exhaust",
+        )
+    
+        # Bounded to one revision: original + one revision implement, reviewed after each.
+        assert executor.impl_calls == {"WU-X": 2, "WU-Y": 2}
+        assert executor.review_calls == {"WU-X": 2, "WU-Y": 2}
+        # The still-blocking findings SURFACE on the PR (not resolved), and the run still completes.
+>       body = _pr_body(gh)
+               ^^^^^^^^^^^^
+
+tests/test_parallel.py:679: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+gh = <function _recording_gh.<locals>.run at 0x109907100>
+
+    def _pr_body(gh):
+>       create = _pr_creates(gh)[0]
+                 ^^^^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests/test_parallel.py:197: IndexError
+=========================== short test summary info ============================
+FAILED tests/test_render.py::test_gate_render_shows_unresolved_blocking_findings
+FAILED tests/test_render.py::test_gate_render_shows_clean_when_no_unresolved_findings
+FAILED tests/test_render.py::test_gate_render_rendered_mode_shows_unresolved_findings
+FAILED tests/test_render.py::test_gate_render_pr_sections_still_ordered_diffstat_tests_files_review
+FAILED tests/test_render.py::test_pr_body_includes_reviewer_notes_section_with_unresolved_findings
+FAILED tests/test_render.py::test_pr_body_prefers_run_wide_revision_total_over_per_unit
+FAILED tests/test_render.py::test_pr_body_reviewer_notes_clean_is_a_single_line
+FAILED tests/test_parallel.py::test_fanout_units_are_reviewed_and_findings_reach_pr
+FAILED tests/test_parallel.py::test_fanout_node_seam_every_feature_reaches_the_worker
+FAILED tests/test_parallel.py::test_fanout_blocking_review_exhausts_revisions_then_surfaces
+10 failed, 62 passed in 38.41s

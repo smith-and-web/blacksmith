@@ -216,8 +216,8 @@ class Renderer:
         """The PR gate's reviewer summary (WU-REVIEW-RENDER): any outstanding blocking
         findings the post-gate review loop gave up on, plus how many revision rounds it
         spent getting there. Read straight off the gate payload's ``unresolved_review_findings``
-        / ``review_revisions`` keys (mirroring the state fields of the same name); absent
-        on a payload with no review data, which renders as a clean review."""
+        / ``review_revisions`` keys. Revision attempts do not count resolved findings;
+        missing review_status renders unavailable."""
         unresolved = payload.get("unresolved_review_findings") or []
         # Prefer the run-wide reducer total (fan-out workers' revisions land here, not in the
         # last-write-wins ``review_revisions``); fall back to the per-unit field when absent.
@@ -261,7 +261,7 @@ class Renderer:
                 print(f"  - {path}", file=out)
             unresolved, resolved = self._review_summary(payload)
             if not unresolved:
-                print("\nreview: clean", file=out)
+                print("\nreview: " + payload.get("review_status", "unavailable"), file=out)
             else:
                 print("\nUnresolved review findings:", file=out)
                 for finding in unresolved:
@@ -270,7 +270,7 @@ class Renderer:
                         f"{finding.get('detail', '')}",
                         file=out,
                     )
-                print(f"resolved via revision: {resolved}", file=out)
+                print(f"revision attempts: {resolved}", file=out)
 
     def _rendered_gate(self, payload: dict) -> None:
         console = self._console
@@ -324,7 +324,8 @@ class Renderer:
             console.print(Panel(files or Text("(none)"), title="files touched", expand=False))
             unresolved, resolved = self._review_summary(payload)
             if not unresolved:
-                console.print(Text("review: clean", style="dim"))
+                console.print(Text("review: " + payload.get("review_status", "unavailable"),
+                                   style="dim"))
             else:
                 findings = Text()
                 for finding in unresolved:
@@ -337,7 +338,7 @@ class Renderer:
                         border_style="yellow", expand=False,
                     )
                 )
-                console.print(Text(f"resolved via revision: {resolved}", style="dim"))
+                console.print(Text(f"revision attempts: {resolved}", style="dim"))
 
     # -- per-node progress ----------------------------------------------------
 

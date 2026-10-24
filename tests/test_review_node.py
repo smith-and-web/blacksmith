@@ -5,8 +5,12 @@ gate, using read-only tools only. This unit adds only the node + state keys — 
 wiring — so these tests call ``review()`` directly with a FAKE executor.
 """
 
+import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated, get_type_hints
+
+import pytest
 
 from blacksmith.config import IndexConfig
 from blacksmith.contract import parse_prd
@@ -84,6 +88,30 @@ def _state(**overrides):
     return state
 
 
+@pytest.fixture(autouse=True)
+def actual_review_workspace(tmp_path, monkeypatch):
+    repo = tmp_path / "review-source"
+    repo.mkdir()
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), *args], check=True,
+                              capture_output=True, text=True).stdout.strip()
+    git("init", "-b", "main")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.invalid")
+    (repo / "original.txt").write_text("ORIGINAL_BEHAVIOR\n")
+    git("add", "-A")
+    git("commit", "-m", "original")
+    base = git("rev-parse", "HEAD")
+    (repo / "original.txt").write_text("NEW_BEHAVIOR\n")
+    git("add", "-A")
+    git("commit", "-m", "candidate")
+    original_state = _state
+    def state(**overrides):
+        values = {"worktree_path": str(repo), "unit_base_commit": base, **overrides}
+        return original_state(**values)
+    monkeypatch.setattr(sys.modules[__name__], "_state", state)
+
+
 # --- (a) clean verdict --------------------------------------------------------
 
 
@@ -120,32 +148,36 @@ def test_review_node_advisory_only_finding_is_still_clean():
 # --- (c) unparseable / empty verdicts fail open -------------------------------
 
 
-def test_review_node_unparseable_verdict_is_treated_as_clean():
+def test_review_node_unparseable_verdict_is_unavailable():
     fake = FakeExecutor(_result("I looked at it, seems fine, no fenced block here."))
     out = review(_state(), executor=fake)
-    assert out["review_clean"] is True
+    assert out["review_clean"] is False
+    assert out["review_receipt"].status == "unavailable"
     assert out["review_findings"] == []
 
 
-def test_review_node_empty_verdict_is_treated_as_clean():
+def test_review_node_empty_verdict_is_unavailable():
     fake = FakeExecutor(_result(""))
     out = review(_state(), executor=fake)
-    assert out["review_clean"] is True
+    assert out["review_clean"] is False
+    assert out["review_receipt"].status == "unavailable"
     assert out["review_findings"] == []
 
 
-def test_review_node_malformed_json_is_treated_as_clean():
+def test_review_node_malformed_json_is_unavailable():
     fake = FakeExecutor(_result('```json\n{"verdict": "needs_changes", "findings": [\n```'))
     out = review(_state(), executor=fake)
-    assert out["review_clean"] is True
+    assert out["review_clean"] is False
+    assert out["review_receipt"].status == "unavailable"
     assert out["review_findings"] == []
 
 
-def test_review_node_error_result_treated_as_clean():
+def test_review_node_error_result_is_unavailable():
     # The model call itself failed (e.g. max-turns) -- fail-open, never wedge a green unit.
     fake = FakeExecutor(_result("Reached maximum number of turns", is_error=True, cost=0.5))
     out = review(_state(), executor=fake)
-    assert out["review_clean"] is True
+    assert out["review_clean"] is False
+    assert out["review_receipt"].status == "unavailable"
     assert out["review_findings"] == []
     # ...but the attempt's spend is still ledgered even though it fails open.
     assert out["cost_events"][0]["cost_usd"] == 0.5
@@ -191,7 +223,8 @@ def test_review_prompt_includes_diff_and_test_contract():
 
 def test_review_node_noop_without_executor():
     out = review(_state())
-    assert out == {}
+    assert out["review_receipt"].status == "disabled"
+    assert not out["review_clean"] and out["cost_events"] == []
 
 
 def test_review_node_missing_selected_unit_records_error():
@@ -248,7 +281,8 @@ def test_review_panel_1_of_3_blocking_is_still_clean():
         [_result(NEEDS_CHANGES_VERDICT), _result(CLEAN_VERDICT), _result(CLEAN_VERDICT)]
     )
     out = review(_state(review_panel_size=3), executor=fake)
-    assert out["review_clean"] is True
+    assert out["review_clean"] is False
+    assert out["review_receipt"].status == "blocking"
     assert len(out["cost_events"]) == 3
 
 
@@ -277,7 +311,10 @@ def test_review_panel_size_1_matches_pre_panel_single_call_output():
 
     assert len(fake.calls) == 1
     assert len(fake_explicit.calls) == 1
-    assert baseline == explicit
+    assert {k: v for k, v in baseline.items() if k != "review_receipt"} == {
+        k: v for k, v in explicit.items() if k != "review_receipt"}
+    assert baseline["review_receipt"].model_dump(exclude={"patch": {"path"}}) == \
+        explicit["review_receipt"].model_dump(exclude={"patch": {"path"}})
     assert baseline["review_clean"] is True
     assert baseline["review_findings"] == []
     assert len(baseline["cost_events"]) == 1
@@ -324,7 +361,7 @@ def test_review_index_enabled_prompt_teaches_index_and_absolute_path():
     assert "`path`" in system_prompt
     # The worktree's ABSOLUTE path is stated so the reviewer never guesses one
     # (observed: Read /repo/... and Read /Users/smith/... both failed and wasted turns).
-    assert str(Path("/tmp/does-not-matter").resolve()) in system_prompt
+    assert str(Path(_state()["worktree_path"]).resolve()) in system_prompt
     assert "absolute path" in system_prompt.lower()
 
 

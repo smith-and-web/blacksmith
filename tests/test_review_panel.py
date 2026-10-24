@@ -16,14 +16,14 @@ ADVISORY_A = {"severity": "advisory", "file": "blacksmith/foo.py", "detail": "mi
 # --- (a) 3 reviewers, 1 blocking -> no consensus -> clean ----------------------
 
 
-def test_three_reviewers_one_blocking_is_clean_no_consensus():
+def test_three_reviewers_one_blocking_blocks_without_majority():
     findings_by_reviewer = [
         [BLOCKING_A],
         [],
         [],
     ]
     review_clean, findings = aggregate_panel_verdicts(findings_by_reviewer)
-    assert review_clean is True
+    assert review_clean is False
     assert findings == [BLOCKING_A]
 
 
@@ -101,7 +101,7 @@ def test_union_preserves_distinct_findings_from_different_reviewers():
 # --- empty panel edge case ------------------------------------------------------
 
 
-def test_empty_panel_is_clean_with_no_findings():
+def test_empty_panel_never_reports_clean():
     review_clean, findings = aggregate_panel_verdicts([])
-    assert review_clean is True
+    assert review_clean is False
     assert findings == []

@@ -1,0 +1,12 @@
+E501 Line too long (104 > 100)
+   --> tests/test_review_integrity.py:205:101
+    |
+203 |                               .splitlines()[0])
+204 |         from blacksmith.review_receipts import ReviewPatch
+205 |         request = mcp_types.CallToolRequest(method="tools/call", params=mcp_types.CallToolRequestParams(
+    |                                                                                                     ^^^^
+206 |             name="read_diff", arguments={"offset": 0, "max_bytes": 32768}))
+207 |         actual_rpc = await server.request_handlers[mcp_types.CallToolRequest](request)
+    |
+
+Found 1 error.

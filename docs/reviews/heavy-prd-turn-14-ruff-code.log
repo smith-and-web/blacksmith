@@ -1,0 +1,12 @@
+E501 Line too long (101 > 100)
+   --> blacksmith/review_receipts.py:213:101
+    |
+211 |             or record.unit_id != unit.id or record.base_commit != base
+212 |             or record.candidate_commit != candidate):
+213 |         raise ReceiptError("review is unavailable/blocking or belongs to a different unit/candidate")
+    |                                                                                                     ^
+214 |     journal = context.journal()
+215 |     operation = next((o for o in journal.operations() if o.key.id == record.receipt_id), None)
+    |
+
+Found 1 error.

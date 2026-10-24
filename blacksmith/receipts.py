@@ -274,10 +274,14 @@ class OperationJournal:
 
     def get(self, key: OperationKey) -> OperationReceipt | None:
         self._check_key(key)
+        return self.get_by_id(key.id)
+
+    def get_by_id(self, operation_id: str) -> OperationReceipt | None:
+        """Read one hash-verified operation through its primary-key reference."""
         with self._connection() as conn:
             row = conn.execute(
                 "SELECT * FROM operations WHERE operation_id=?",
-                (key.id,),
+                (operation_id,),
             ).fetchone()
             return self._receipt(row) if row else None
 

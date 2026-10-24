@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
 Heavy-PRD remediation is still in progress. This documents completed runtime
-slices through S11, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+slices through S12, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -61,6 +61,8 @@ Each fresh run has a UUID and these paths under the config directory:
   execution.lock
   commands/<operation-id>/{intent.json,stdout.log,stderr.log,outcome.json}
   fixes/<operation-id>.json
+  reviews/<operation-id>.json
+  reviews/patches/<unit-base-candidate-identity>.patch
   gates/<operation-id>.json
   joins/<level>/{failure.txt,conflict.patch}
   plans/<sha256-of-raw-unit-id>.json
@@ -218,7 +220,7 @@ flowchart LR
     C --> F[Formatter]
     F --> N[Normalize parallel candidate]
     N --> G[All-layer gate]
-    G --> R[Review when enabled]
+    G --> R[Review or disabled receipt]
     G --> D
     R --> D
     D --> P
@@ -228,9 +230,11 @@ flowchart LR
 The recovery decision chooses bounded partial continuation, same-model fix, one
 stronger-model escalation, bounded review revision or termination. It uses one
 policy for both shapes, including optional SBFL before a checked reset. There is
-no Python worker recovery loop. The existing strict review-policy hardening is
-still S12 work; exhausted blocking review currently retains the legacy reporting
-behavior and is not a release-readiness claim.
+no Python worker recovery loop. Enabled review now fails closed: any panel blocker
+blocks, unavailable results halt, and exhausted revision allowance halts while
+retaining work. Disabled review records a disabled receipt without a model call.
+The [review runbook](heavy-prd-reviews.md) documents cumulative patch evidence,
+large-patch read_diff tools, strict verdicts and explicit recovery.
 
 A successful model result, its pending commit metadata and cost events checkpoint
 before audit/commit. Each next step checkpoints before another model call. Child
@@ -333,8 +337,9 @@ New workspaces record `join_graph_version=1`. An active v2 workspace without tha
 marker refuses resume before executor construction with
 `legacy_join_graph_requires_manual_recovery`; checkpoints/artifacts/budgets are
 retained. Pre-workspace checkpoints with valid S09 plans may enter the new topology.
-The QA seam still needs S13's exact-SHA PR approval, strict blocking/unavailable
-review is S12 and publication reconciliation is S14. These gates are not a general
+The QA seam still needs S13's exact-SHA PR approval and publication reconciliation
+is S14. S12 review receipts now cross both execution shapes and are checked at joins,
+final verification and publication entry. These gates are not a general
 readiness or publication-safety release claim. No live release gate ran here.
 
 ## Unit attempt state and reset boundaries
@@ -369,8 +374,10 @@ transitions, not merely because `resume` was invoked.
 Real CLI/checkpointer tests cover an escalated and reviewed sequential unit, then
 parallel siblings, then a fresh sequential unit, including a stop after the join
 and resume before its model call. The final unit starts cheap with no stale flags,
-receives its own review, and resumes the same attempt identity. Both scheduling shapes now use the common compiled unit subgraph. The review-receipt channel starts absent; strict actual-patch review
-receipts are S12 work. These state tests do not prove integration/publication or
+receives its own review, and resumes the same attempt identity. Both scheduling shapes
+use the common compiled unit subgraph. The typed review-receipt channel starts absent
+and receives the exact unit/candidate's clean, blocking, unavailable or disabled
+result; revisions review the complete cumulative patch. These state tests do not prove integration/publication or
 killed-SDK recovery/billing safety.
 
 ## Trusted exact-candidate unit gates
@@ -415,9 +422,10 @@ without another amend; pending formatter stages reconcile from their original
 command/tree intents. Unsealed unknown changes stop for inspection.
 
 This proves unit verifier integrity for the recorded commands. It does not prove
-the full natural-language test contract, honest patch review or publication approval.
-S10 adds merged/final coverage. S12-S19 and live release gates remain separate;
-full S11 verification is recorded in the implementation evidence.
+the full natural-language test contract or publication approval. S10 adds merged/final
+coverage, and S12 records actual cumulative-patch reviews with honest fail-closed
+outcomes. S13-S19 and live release gates remain separate; full per-slice verification
+is recorded in the implementation evidence.
 
 ## Recovery artifacts and explicit restart
 
@@ -486,7 +494,10 @@ it with `interrupted_attempt_requires_resume`. `--continue-attempt` acknowledges
 original unchanged receipt and partial files, consumes remaining continuation
 allowance and creates a new call receipt. Planner/critic and panel recovery reuse
 completed roles/seats. Review continuation preserves the gated candidate and uses
-the same continuation allowance. Unknown usage remains unknown; live cancellation
+the same continuation allowance. It replaces unavailable/malformed/uncertain seat
+identities while reusing valid completed seats, without re-reviewing an unchanged
+blocked candidate. Budget additions can permit an actual remaining code revision,
+not erase a blocker or reset its revision allowance. Unknown usage remains unknown; live cancellation
 and provider billing are not proved by these offline drills.
 
 A positive finite `--add-budget-usd` adds to the saved cap without changing frozen
@@ -523,9 +534,9 @@ same SHA. An owned staged pick can finish once without fetching/picking again.
 Recovery operations themselves perform no remote publication; approval/publication
 behavior is hardened separately in S13-S14.
 
-These are scoped offline guarantees. Strict review, exact-SHA QA/PR approval,
-publication reconciliation, global admission/deadlines, bounded scheduling and
-conditional sandbox/respond handling remain S12-S19. Clones are not OS sandboxes;
+These are scoped offline guarantees. Exact-SHA QA/PR approval, publication
+reconciliation, global admission/deadlines, bounded scheduling and conditional
+sandbox/respond handling remain S13-S19. Clones are not OS sandboxes;
 the trusted host toolchain boundary still applies. Release canaries and Docker
 smoke remain separate authorized gates.
 

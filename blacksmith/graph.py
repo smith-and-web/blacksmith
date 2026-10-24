@@ -184,6 +184,7 @@ def prepare_worktree(
         }
     update: dict = {
         "unit_graph_version": 1,
+        "review_version": 1,
         "join_graph_version": 1,
         "prepared_level": None,
         "level_bases": {},
@@ -641,8 +642,8 @@ def prepare_implement_continuation(state: BlacksmithState) -> dict:
 # stronger model adversarially reviews the just-passed unit's diff (blacksmith.nodes.review,
 # WU-REVIEW-NODE). A blocking finding revises the unit (feeding the findings back into the
 # next implement prompt exactly as a fix-retry feeds back the gate output) and re-gates;
-# once revisions are exhausted or the run is over budget, the unit still proceeds to
-# next_unit/approve_pr -- carrying its unresolved findings forward -- rather than halting.
+# exhausted blocking findings halt with artifacts retained. Unavailable review halts
+# immediately and can be retried only through explicit recovery within allowance.
 
 
 def review_node(
@@ -663,7 +664,8 @@ def review_node(
     read_symbol) into the reviewer's tool surface as ``implement`` gets (WU-REVIEW-INDEX):
     additive and off unless ``index_config.enabled``.
     """
-    result = _run_review(state, executor=executor, index_config=index_config)
+    result = _run_review({**state, "review_enabled": bool(state.get("review_enabled"))},
+                         executor=executor, index_config=index_config)
     if "review_findings" in result:
         result = {**result, "review_current_findings": result["review_findings"]}
     return result
@@ -704,12 +706,13 @@ def prepare_review_revision(state: BlacksmithState) -> dict:
 
 
 def finalize_review(state: BlacksmithState) -> dict:
-    """Review-driven revisions are exhausted or the run is over budget: retain this
-    unit's outstanding BLOCKING findings in ``unresolved_review_findings`` and proceed --
-    never ``human_halt``. Routing to next_unit/approve_pr happens on the outgoing edge."""
+    """Exhausted blocking review halts and retains the exact unresolved evidence."""
     findings = state.get("review_current_findings") or []
     blocking = [f for f in findings if f.get("severity") == "blocking"]
-    return {"unresolved_review_findings": blocking}
+    return {"unresolved_review_findings": blocking, "status": Status.HALTED,
+            "unit_failed_stage": "review",
+            "errors": [{"node": "review", "message": "blocking review unresolved; "
+                        "revision allowance or run budget exhausted"}]}
 
 
 def _can_review_revise(state: BlacksmithState) -> bool:
@@ -960,10 +963,14 @@ def route_after_review(state: BlacksmithState) -> str:
     A clean verdict proceeds exactly like a gate pass with no review (the plain
     next_unit/approve_pr decision). A blocking finding revises the unit -- bounded by
     ``limits.max_review_revisions`` and the cost cap -- before re-gating and re-reviewing.
-    Once revisions are exhausted or the run is over budget, the unit still proceeds
-    (carrying its unresolved findings forward via ``finalize_review``) rather than halting
-    -- the review loop never routes to ``human_halt``."""
-    if state.get("review_clean"):
+    Exhausted blockers route to finalize_review, which halts and preserves evidence.
+    An unavailable result halts immediately without another reviewer call."""
+    if state.get("status") == Status.HALTED:
+        return "human_halt"
+    receipt = state.get("review_receipt")
+    if receipt is not None and receipt.status == "unavailable":
+        return "human_halt"
+    if state.get("review_clean") or (receipt and receipt.status == "disabled"):
         return _next_unit_or_approve(state)
     if _can_review_revise(state):
         return "prepare_review_revision"
@@ -1017,6 +1024,7 @@ def _fanout_sends(state: BlacksmithState, level: int) -> list[Send]:
                 # reviewer on its build clone (review finding #1); absent -> the worker skips
                 # review, exactly as before this fix.
                 "review_enabled": state.get("review_enabled"),
+                "review_version": state.get("review_version"),
                 "review_panel_size": state.get("review_panel_size"),
             },
         )
@@ -1158,7 +1166,7 @@ def build_graph(
     ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP) the same way:
     when provided, ``config.review.enabled`` is seeded into state so ``route_after_test_gate``
     can route a PASS to ``review`` instead of straight to next_unit/approve_pr. Left unset
-    (every graph wired without it) the review node is never entered.
+    (every graph wired without it) review records disabled without a model call.
 
     ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE):
     when provided AND ``sandbox.config.enabled``, ``prepare_worktree`` starts it once over the
@@ -1313,6 +1321,7 @@ def blacksmith_serde() -> JsonPlusSerializer:
     hazard for pause/resume (AC-2) once the graph persists rich state (WU-09+).
     Registering them explicitly keeps the allowlist tight (only blacksmith's types).
     """
+    from blacksmith.review_receipts import PanelResult, ReviewPatch, ReviewReceipt, ValidatedFinding
     return JsonPlusSerializer(
         allowed_msgpack_modules=[
             Status,
@@ -1323,6 +1332,10 @@ def blacksmith_serde() -> JsonPlusSerializer:
             FixReceipt,
             GateCommandReceipt,
             GateLayerReceipt,
+            ReviewReceipt,
+            ReviewPatch,
+            PanelResult,
+            ValidatedFinding,
         ]
     )
 
@@ -1377,7 +1390,7 @@ def compile_graph(
     every test that does not opt in) leaves the loop off and routing unchanged.
 
     ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP); ``None`` (the
-    default) leaves the review node unreachable and routing unchanged.
+    default) records disabled review without admitting reviewer calls.
 
     ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE);
     ``None`` (the default) or one with ``config.enabled=False`` leaves ``prepare_worktree``/

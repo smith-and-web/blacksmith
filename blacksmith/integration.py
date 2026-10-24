@@ -123,6 +123,9 @@ def validate_worker(state, unit, row, base):
             raise GateError("worker attempt differs from gate receipt")
         worker = {**state, "selected_unit": unit, "worktree_path": path}
         verification.verify_gate_receipt(proof, worker, layers=verification.required_layers(worker))
+        from blacksmith.review_receipts import verify_receipt
+        verify_receipt(row.get("review_receipt"), worker, unit=unit,
+                       base=row.get("base_commit"), candidate=source)
         policy_for_state(worker, path).audit(base)
 
 
@@ -171,6 +174,10 @@ def verify_completed_units(state, *, through=None):
                 )
         if git(shared, "merge-base", "--is-ancestor", destination, "HEAD", check=False).returncode:
             raise GateError(f"unit {unit.id} destination is absent from current candidate")
+        if state.get("run_context"):
+            from blacksmith.review_receipts import verify_receipt
+            verify_receipt(row.get("review_receipt"), state, unit=unit,
+                           base=row.get("base_commit"), candidate=row.get("source_commit"))
     return records
 
 

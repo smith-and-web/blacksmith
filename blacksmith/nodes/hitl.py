@@ -83,6 +83,11 @@ def approve_pr(state: BlacksmithState, *, hitl: HitlConfig | None = None) -> dic
         "implementation": state.get("implementation"),
         "test_results": state.get("test_results"),
     }
+    from blacksmith.review_receipts import current_blockers
+    from blacksmith.review_receipts import summary as review_summary
+    payload["review_status"] = review_summary(state)
+    payload["unresolved_review_findings"] = current_blockers(state)
+    payload["review_revisions_total"] = state.get("review_revisions_total", 0)
     # Additive, read-only combined-diff display (WU-PR-DIFF-CAPTURE): only when a HitlConfig
     # is injected (production via build_graph_for) AND its byte ceiling is nonzero (the
     # off switch), AND the run actually has a shared worktree + a captured base ref to diff

@@ -178,7 +178,7 @@ def test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh(
                 else []
             )
             text = json.dumps(
-                {"verdict": "clean" if not findings else "blocked", "findings": findings}
+                {"verdict": "clean" if not findings else "needs_changes", "findings": findings}
             )
         else:
             implement_counts[unit] = implement_counts.get(unit, 0) + 1

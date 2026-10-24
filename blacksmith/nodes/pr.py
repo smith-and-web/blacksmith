@@ -144,6 +144,14 @@ def _open_pr(
             "status": Status.HALTED,
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
+    if state.get("run_context") or state.get("state_version") is not None:
+        from blacksmith.integration import verify_final_gate
+        verify_final_gate(state)
+    elif state.get("review_enabled"):
+        from blacksmith.review_receipts import summary as review_summary
+        if review_summary(state) != "clean":
+            return {"status": Status.HALTED,
+                    "errors": [{"node": node, "message": "review unavailable or blocking"}]}
     if state.get("prd") is not None:
         try:
             policy_for_state(state).audit(
@@ -219,6 +227,8 @@ def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
         "Write a concise pull request title and summary for the following completed work.\n\n"
         f"PRD purpose:\n{purpose}\n\n"
         f"Units built this run:\n{units_block}\n\n"
+        f"Recorded review status: {_review_status(state)}. Disabled review is not clean; "
+        "do not invent review approval or equate revision attempts with resolved findings.\n\n"
         "Respond with EXACTLY ONE fenced JSON code block and nothing else:\n"
         "```json\n"
         '{"title": "<concise PR title, no unit ids required>", '
@@ -415,15 +425,17 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     needs no plumbing through the gate payload. Surfaces BOTH the unresolved BLOCKING findings
     the post-gate review loop gave up on AND the reviewer's ADVISORY findings — non-blocking
     notes that never enter ``unresolved_review_findings`` (so they were silently dropped from
-    the PR before) but are still worth a reviewer's eyes. Only a review with neither collapses
-    to a single "Reviewer: clean" line."""
-    unresolved = state.get("unresolved_review_findings") or []
+    the PR before) but are still worth a reviewer's eyes. The status comes from current
+    typed unit receipts; missing/disabled evidence can never be labeled clean."""
+    from blacksmith.review_receipts import current_blockers
+    unresolved = current_blockers(state)
     advisory = _dedup_findings(
         f for f in (state.get("review_findings") or []) if f.get("severity") == "advisory"
     )
-    lines = ["", "**Reviewer notes:**"]
+    from blacksmith.review_receipts import summary as review_summary
+    review_status = review_summary(state)
+    lines = ["", "**Reviewer notes:**", "Reviewer: " + review_status]
     if not unresolved and not advisory:
-        lines.append("Reviewer: clean")
         return lines
     # Prefer the run-wide reducer total (counts fan-out workers' revisions, which can't write
     # the last-write-wins ``review_revisions``); fall back to the per-unit field for states
@@ -432,7 +444,7 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     # A one-line severity-count header so a reviewer can triage before reading every finding.
     lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revisions} revisions")
     if revisions:
-        lines.append(f"- resolved via revision: {revisions}")
+        lines.append(f"- revision attempts: {revisions}")
     for finding in unresolved:
         lines.append(
             f"- unresolved (blocking): {finding.get('file', '(unknown file)')}: "
@@ -443,6 +455,11 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
             f"- advisory: {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}"
         )
     return lines
+
+
+def _review_status(state):
+    from blacksmith.review_receipts import summary
+    return summary(state)
 
 
 def _build_metadata_lines(state: BlacksmithState) -> list[str]:
