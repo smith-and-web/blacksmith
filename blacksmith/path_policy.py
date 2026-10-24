@@ -10,13 +10,17 @@ from __future__ import annotations
 import fnmatch
 import glob
 import os
-import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
+from blacksmith.commands import CommandError, run_command
+
 DEFAULT_PROTECTED_GLOBS = (
-    "*Cargo.lock", "*.kindling.yaml", "*/migrations/*", "*blacksmith/contract.py",
+    "*Cargo.lock",
+    "*.kindling.yaml",
+    "*/migrations/*",
+    "*blacksmith/contract.py",
 )
 READ_TOOLS = frozenset({"Read", "Glob", "Grep"})
 WRITE_TARGETS = {
@@ -57,7 +61,9 @@ def compile_path_rules(untouchables: Iterable[str]) -> tuple[str, ...]:
         if not explicit and not bare_path:
             continue
         if (
-            not value or value.startswith(("/", "\\")) or "\\" in value
+            not value
+            or value.startswith(("/", "\\"))
+            or "\\" in value
             or ".." in PurePosixPath(value).parts
             or any(ord(c) < 32 for c in value)
             or not PurePosixPath(value).parts
@@ -77,8 +83,10 @@ def is_protected(path: str, protected_globs: Iterable[str] = DEFAULT_PROTECTED_G
     posix = PurePosixPath(path).as_posix()
     parts = PurePosixPath(posix).parts
     # These protections cannot be removed by supplying an empty custom rule list.
-    if any(p in {".git", ".gitmodules", ".mcp.json", "blacksmith.toml",
-                 "blacksmith.config.toml"} for p in parts):
+    if any(
+        p in {".git", ".gitmodules", ".mcp.json", "blacksmith.toml", "blacksmith.config.toml"}
+        for p in parts
+    ):
         return True
     if any(
         parts[i] == ".claude" and fnmatch.fnmatchcase(parts[i + 1], "settings*.json")
@@ -150,10 +158,14 @@ class PathPolicy:
             ("ls-files", "--others", "--exclude-standard", "-z"),
         ):
             try:
-                proc = subprocess.run(
-                    ["git", "-C", os.fspath(self.root), *args], capture_output=True, timeout=120,
+                proc = run_command(
+                    ["git", "-C", os.fspath(self.root), *args],
+                    capture_output=True,
+                    text=False,
+                    sensitive=True,
                 )
-            except (OSError, subprocess.TimeoutExpired) as exc:
+                proc.require_complete_output()
+            except (OSError, CommandError) as exc:
                 raise PolicyViolation(f"path audit failed: {exc}") from exc
             if proc.returncode:
                 raise PolicyViolation(f"path audit failed: {proc.stderr.decode(errors='replace')}")
@@ -166,10 +178,12 @@ class PathPolicy:
 
 def policy_for_state(state: dict, root: str | Path | None = None) -> PathPolicy:
     from blacksmith.context import requirements_prd
+
     prd = requirements_prd(state)
     rules = compile_path_rules(prd.contract.untouchables if prd else ())
     if state.get("run_context"):
         from blacksmith.run_context import context_from_state
+
         context = context_from_state(state)
         if context.runtime_config_path:
             try:

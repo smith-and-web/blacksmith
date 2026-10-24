@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
-import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +32,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 
+from blacksmith.commands import command_scope_for_state, run_command
 from blacksmith.config import (
     CriticConfig,
     HitlConfig,
@@ -950,8 +950,11 @@ def build_unit(
     return result_update
 
 
-def _git_run(cwd: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True)
+def _git_run(cwd: str, *args: str):
+    # Conflicts/fetch errors have explicit stage handling; all other failures halt.
+    checked = args[0] not in {"fetch", "cherry-pick"} or args == ("cherry-pick", "--abort")
+    result = run_command(["git", "-C", str(cwd), *args], check=checked)
+    return result.require_complete_output()
 
 
 def _cleanup_builds(builds: list[dict]) -> None:
@@ -1333,28 +1336,24 @@ def _open_pr_node(fn, pr_runner: Runner | None, executor: Executor | None = None
     constructed by ``build_graph_for`` — no separate wiring — and drives the additive,
     fail-open title/summary synthesis inside ``_open_pr``. ``None`` (the default, every
     existing test) leaves both PR nodes byte-for-byte unchanged."""
-    if pr_runner is None and executor is None:
-        return fn
-
     def node(state: BlacksmithState) -> dict:
         kwargs = {}
         if pr_runner is not None:
             kwargs["runner"] = pr_runner
         if executor is not None:
             kwargs["executor"] = executor
-        return fn(state, **kwargs)
+        with command_scope_for_state(state, fn.__name__):
+            return fn(state, **kwargs)
 
     return node
 
 
 def _node_with(fn, **injected):
-    """Bind dependencies at build time. If nothing is injected, return the bare node
-    (a status-only pass-through), keeping deterministic graph tests dependency-free."""
-    if all(value is None for value in injected.values()):
-        return fn
-
+    """Bind dependencies and per-node immutable command scope, including fan-out."""
     def node(state: BlacksmithState) -> dict:
-        return fn(state, **injected)
+        kwargs = injected if any(value is not None for value in injected.values()) else {}
+        with command_scope_for_state(state, fn.__name__):
+            return fn(state, **kwargs)
 
     return node
 
@@ -1482,13 +1481,13 @@ def build_graph(
         "build_unit",
         _node_with(build_unit, deps=unit_deps, worktree_manager=worktree_manager),
     )
-    graph.add_node("join_level", join_level)
+    graph.add_node("join_level", _node_with(join_level))
     graph.add_node("next_unit", next_unit)
-    graph.add_node("escalate", prepare_escalation)
+    graph.add_node("escalate", _node_with(prepare_escalation))
     graph.add_node("fix_retry", _node_with(prepare_fix_retry, sbfl=sbfl))
     graph.add_node("continue_implement", prepare_implement_continuation)
     graph.add_node("review", _node_with(review_node, executor=executor, index_config=index))
-    graph.add_node("prepare_review_revision", prepare_review_revision)
+    graph.add_node("prepare_review_revision", _node_with(prepare_review_revision))
     graph.add_node("finalize_review", finalize_review)
     graph.add_node("approve_pr", _node_with(approve_pr, hitl=hitl))
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner, executor))

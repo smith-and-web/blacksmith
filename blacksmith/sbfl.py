@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import json
 import math
-import subprocess
 from pathlib import Path
 from xml.etree import ElementTree
+
+from blacksmith.commands import run_command
+from blacksmith.receipts import ReceiptError
 
 
 def collect_suspicious_locations(
@@ -54,9 +56,16 @@ def collect_suspicious_locations(
         # command is parsed — no new subprocess-invocation dependency. The
         # return code is intentionally discarded: it is expected to be
         # non-zero when the tests it runs fail.
-        subprocess.run(
-            coverage_cmd, cwd=str(worktree), capture_output=True, text=True, shell=True
+        run_command(
+            coverage_cmd,
+            cwd=str(worktree),
+            capture_output=True,
+            text=True,
+            shell=True,
+            toolchain=True,
         )
+    except ReceiptError:
+        raise
     except Exception:
         return []
 

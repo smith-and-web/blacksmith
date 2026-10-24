@@ -28,13 +28,13 @@ stays verify-only; ``fix_cmd`` is a separate step.
 
 from __future__ import annotations
 
-import subprocess
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from blacksmith.commands import run_command
 from blacksmith.state import TestResults
 
 CONFIG_FILENAME = "blacksmith.toml"
@@ -135,9 +135,7 @@ def run_gate(
         setup_ok, setup_output = _run(setup_cmd, path)
         sections.append(f"$ {setup_cmd}\n{setup_output}")
         if not setup_ok:
-            return GateResult(
-                passed=False, output="\n".join(sections), command=" && ".join(ran)
-            )
+            return GateResult(passed=False, output="\n".join(sections), command=" && ".join(ran))
 
     ran.append(test_cmd)
     test_ok, output = _run(test_cmd, path)
@@ -203,15 +201,13 @@ def _amend_if_changed(cwd: Path) -> bool:
     Returns whether an amend happened. The ``--cached --quiet`` check is what keeps an
     already-formatted tree (the common case) from amending — and stops a degenerate
     no-commit implement path from rewriting an unrelated commit."""
-    subprocess.run(["git", "-C", str(cwd), "add", "-A"], capture_output=True, text=True)
-    staged = subprocess.run(
-        ["git", "-C", str(cwd), "diff", "--cached", "--quiet"], capture_output=True, text=True
+    run_command(["git", "-C", str(cwd), "add", "-A"], check=True)
+    staged = run_command(
+        ["git", "-C", str(cwd), "diff", "--cached", "--quiet"], check=True, allowed=(0, 1)
     )
     if staged.returncode == 0:  # nothing staged -> the fixer changed nothing
         return False
-    amend = subprocess.run(
-        ["git", "-C", str(cwd), "commit", "--amend", "--no-edit"], capture_output=True, text=True
-    )
+    amend = run_command(["git", "-C", str(cwd), "commit", "--amend", "--no-edit"], check=True)
     return amend.returncode == 0
 
 
@@ -222,8 +218,10 @@ def _run(command: str, cwd: Path) -> tuple[bool, str]:
     # Commands come from the target repo's committed blacksmith.toml — trusted config,
     # not untrusted input. A missing binary now surfaces as a failing gate (exit 127 +
     # captured stderr) rather than a hard GateError, which is the right signal to route on.
-    proc = subprocess.run(command, cwd=str(cwd), capture_output=True, text=True, shell=True)
-    return proc.returncode == 0, (proc.stdout or "") + (proc.stderr or "")
+    proc = run_command(
+        command, cwd=str(cwd), capture_output=True, text=True, shell=True, toolchain=True
+    )
+    return proc.returncode == 0, proc.stdout_tail + proc.stderr_tail
 
 
 def _format_validation_error(path: Path, err: ValidationError) -> str:

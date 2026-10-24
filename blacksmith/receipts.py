@@ -302,6 +302,51 @@ class OperationJournal:
             conn.commit()
             return receipt
 
+    def command_intent(
+        self, unit_id: str, attempt_id: str, kind: str, payload: Mapping[str, Any]
+    ) -> OperationReceipt:
+        """Allocate an ordered observation/effect ID under the same durable lock.
+
+        Commands are never transparently replayed: observations must be fresh and
+        mutation reconciliation belongs to the owning stage's stable receipt.
+        """
+        text = encoded(dict(payload))
+        with self._connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            ordinal = (
+                conn.execute(
+                    "SELECT COUNT(*) FROM operations WHERE run_id=? AND unit_id=? "
+                    "AND attempt_id=? AND kind LIKE 'command:%'",
+                    (self.run_id, unit_id, attempt_id),
+                ).fetchone()[0]
+                + 1
+            )
+            key = OperationKey(self.run_id, unit_id, attempt_id, f"command:{ordinal}:{kind}")
+            conn.execute(
+                "INSERT INTO operations VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    key.id,
+                    key.run_id,
+                    key.unit_id,
+                    key.attempt_id,
+                    key.kind,
+                    "intent",
+                    text,
+                    digest(text),
+                    None,
+                    None,
+                    _now(),
+                    None,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM operations WHERE operation_id=?",
+                (key.id,),
+            ).fetchone()
+            receipt = self._receipt(row, created=True)
+            conn.commit()
+            return receipt
+
     def finish(
         self,
         key: OperationKey,

@@ -17,6 +17,10 @@ plan = "claude-sonnet-4-6"     # cheaper/faster: planning
 implement = "claude-sonnet-5"  # implementation
 
 [limits]
+# Trusted native command wall time and combined stdout/stderr log cap.
+# Git/gh use a separate 120-second default. Toolchain credentials are stripped.
+command_timeout_s = 1800
+max_command_output_bytes = 1048576
 # Gate self-heal loop (WU-GATE-SELF-HEAL). When a unit's test gate fails, blacksmith
 # re-implements the unit with the gate output fed back, instead of discarding the
 # (expensive) run on a fixable error.

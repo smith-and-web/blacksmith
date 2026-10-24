@@ -32,9 +32,10 @@ advances, its PRD is removed, or the runtime config changes during approval. Eac
 parallel worker gets its own run-owned clone. The original checkout is not modified.
 
 Clones isolate Git state and guarded file writes. They are not OS sandboxes;
-authoritative generated tests execute on the host. Credential stripping, bounded
-commands and exact gate receipts are subsequent remediation slices. General use on
-untrusted repositories is not established by these offline tests.
+authoritative generated tests execute on the host. Native commands now have bounded
+execution and toolchain credential filtering, described below. Exact gate receipts
+remain a subsequent remediation slice. General use on untrusted repositories is not
+established by these offline tests.
 
 ## Paths and ownership
 
@@ -58,6 +59,7 @@ Each fresh run has a UUID and these paths under the config directory:
   trusted-blacksmith.toml
   operations.sqlite
   execution.lock
+  commands/<operation-id>/{intent.json,stdout.log,stderr.log,outcome.json}
   planning/
   workspace/
   units/<sha256-of-raw-unit-id>/workspace/
@@ -97,8 +99,10 @@ Known streamed turns and reported terminal usage survive stream errors.
 Implementation commits carry `Blacksmith-Operation-Id: <id>` trailers. Completed
 commit reuse requires the recorded HEAD, a matching trailer and a clean workspace;
 unknown extra changes stop for inspection. An interrupted commit intent still
-requires stage-specific reconciliation in S11. Command/fixer/squash/join/publication
-receipts and full artifact recovery remain later slices.
+requires stage-specific reconciliation in S11. Native commands now record individual
+intent/outcome receipts. Semantic fixer/squash/join/publication reconciliation and full
+artifact recovery remain later slices; a command receipt alone does not make an
+interrupted multi-command stage safe to repeat.
 
 Cost events use call IDs and keyed reduction so a replayed update cannot add the
 same call twice. Missing costs remain unknown, not measured zero-dollar calls.
@@ -111,6 +115,43 @@ SDK native tool sets are explicit: planner/critic/reviewer get read-only tools;
 the implementer gets guarded file tools. Summaries have no native or MCP tools.
 Installed SDK option/CLI-argument construction was checked locally; no live SDK
 permission canary has run.
+
+## Bounded native commands
+
+`[limits].command_timeout_s` defaults to 1800 seconds for setup, fix, test, lint and
+optional SBFL commands. Git and gh have a separate 120-second default; internal
+callers can supply a command-specific deadline. `[limits].max_command_output_bytes`
+defaults to 1048576 bytes, shared by each command's stdout and stderr log files.
+The immutable saved settings apply to sequential workers, parallel workers and
+resume. These limits add no model calls and do not replace run-wide admission.
+
+Each command starts in a new POSIX session with closed stdin. Timeout or cancellation
+sends TERM to its process group, allows up to five seconds for termination, then
+sends KILL and reaps the direct child. Background descendants in the same group are
+terminated even if the shell exits first. This is process-group ownership, not a
+security boundary against hostile programs which deliberately escape their group.
+Docker exec requires separate in-container ownership/termination evidence in S17.
+
+Output is drained incrementally into capped files. Logs retain emitted byte counts
+and explicit truncation metadata/markers; graph feedback includes bounded tails and
+the retained command-log directory. Git outputs used for identity, paths or other decisions must
+be complete, so truncation fails closed. Sensitive Git config/remote/identity output
+is available only to its caller; persisted argv/output are redacted. Pre-context
+preflight reads use bounded temporary log directories; once run identity exists,
+logs and journal receipts are inside its run directory.
+
+Toolchain children receive a copied environment with known model/admin/GitHub
+credentials and the configured API credential variables removed. Authorized Git/gh
+publication commands retain their normal credential access. Host files, credential
+helpers and the network are not isolated: trusted host gates are not OS sandboxes.
+
+Command IDs use transactionally allocated ordinals inside the run/unit/attempt/stage
+identity. Observations always run again when requested; a previous HEAD/status result
+is never reused as current truth. Critical intent persistence precedes spawning, and
+outcome persistence follows process cleanup. An uncertain outcome stays available
+for its owning stage to reconcile. Native commands are never automatically retried
+by this service. Failed add, amend, reset, clean, squash and other required Git
+operations stop execution rather than silently accepting incomplete work.
 
 ## Execution validation and archived PRDs
 
@@ -136,7 +177,7 @@ authoritative; changing the local config does not silently replace them on resum
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call
 refusal are in place; full side-effect reconciliation and explicit terminal-stage
-recovery are still required by S05-S11. These slices do not establish exactly-once
+recovery are still required by S06-S11. These slices do not establish exactly-once
 billing across a killed provider process or recovery of terminal policy/gate failures.
 
 Pre-migration checkpoints remain readable through the checkpointer and existing

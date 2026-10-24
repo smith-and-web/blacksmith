@@ -29,11 +29,11 @@ Given a PR blacksmith itself opened, this drives a BOUNDED revise loop:
 from __future__ import annotations
 
 import functools
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from blacksmith.commands import run_command
 from blacksmith.config import BlacksmithConfig
 from blacksmith.contract import PRD, PRDContract, WorkUnit
 from blacksmith.executor import Executor
@@ -136,9 +136,7 @@ def format_review_feedback(comments: list[dict]) -> str:
     to the implementer via the EXISTING feedback channel (``last_gate_output``)."""
     lines = ["A human reviewer left the following feedback on this open PR. Address it:"]
     for comment in comments:
-        where = (
-            f"{comment.get('path')}:{comment.get('line')}" if comment.get("path") else "general"
-        )
+        where = f"{comment.get('path')}:{comment.get('line')}" if comment.get("path") else "general"
         author = comment.get("author") or "reviewer"
         lines.append(f"- [{where}] {author}: {comment.get('body', '')}")
     return "\n".join(lines)
@@ -152,17 +150,21 @@ def _implement_failure_message(update: dict) -> str:
 
 
 def _git(path: Path, *args: str) -> str:
-    result = subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True)
-    return result.stdout
+    result = run_command(
+        ["git", "-C", str(path), *args], capture_output=True, text=True, check=True
+    )
+    return result.require_complete_output().stdout
 
 
 def _reset_hard(path: Path, ref: str) -> None:
     """Discard a failed attempt's commit(s), back to the clean pre-attempt state —
     exactly mirroring the self-heal loop's ``prepare_fix_retry`` reset."""
-    subprocess.run(
-        ["git", "-C", str(path), "reset", "--hard", ref], capture_output=True, text=True
+    run_command(
+        ["git", "-C", str(path), "reset", "--hard", ref], capture_output=True, text=True, check=True
     )
-    subprocess.run(["git", "-C", str(path), "clean", "-fd"], capture_output=True, text=True)
+    run_command(
+        ["git", "-C", str(path), "clean", "-fd"], capture_output=True, text=True, check=True
+    )
 
 
 def _push_revision(clone: Clone, branch: str, *, remote: str, runner: Runner) -> None:

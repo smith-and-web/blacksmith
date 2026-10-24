@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from blacksmith.commands import run_command
 from blacksmith.run_context import git_read, run_branch
 
 if TYPE_CHECKING:
@@ -98,7 +98,7 @@ class WorktreeManager:
         remote is unconfigured or its URL has no recognizable slug — never raises — so the
         preflight guard can report a clear "no remote" message rather than a git failure.
         """
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(self.repo_path), "remote", "get-url", remote],
             capture_output=True,
             text=True,
@@ -108,11 +108,12 @@ class WorktreeManager:
         return normalize_remote_slug(result.stdout)
 
     def _git(self, *args: str, check: bool = True) -> str:
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(self.repo_path), *args],
             capture_output=True,
             text=True,
         )
+        result.require_complete_output()
         if check and result.returncode != 0:
             raise WorktreeError(
                 f"git {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}"
@@ -200,7 +201,7 @@ class CloneManager:
         repointed at — and normalizes it (see :func:`normalize_remote_slug`). Returns
         ``None`` when unconfigured or unrecognizable; never raises.
         """
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(self.repo_path), "remote", "get-url", remote],
             capture_output=True,
             text=True,
@@ -210,7 +211,7 @@ class CloneManager:
         return normalize_remote_slug(result.stdout)
 
     def _source_origin_url(self) -> str | None:
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(self.repo_path), "remote", "get-url", "origin"],
             capture_output=True,
             text=True,
@@ -231,7 +232,7 @@ class CloneManager:
                 self._git(clone_path, "config", key, value)
 
     def _source_config(self, key: str) -> str | None:
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(self.repo_path), "config", "--get", key],
             capture_output=True,
             text=True,
@@ -241,11 +242,12 @@ class CloneManager:
         return result.stdout.strip() or None
 
     def _git(self, cwd: Path, *args: str, check: bool = True) -> str:
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(cwd), *args],
             capture_output=True,
             text=True,
         )
+        result.require_complete_output()
         if check and result.returncode != 0:
             raise WorktreeError(
                 f"git {' '.join(args)} failed (exit {result.returncode}): {result.stderr.strip()}"

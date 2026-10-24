@@ -8,7 +8,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -17,6 +16,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
+from blacksmith.commands import CommandError, command_scope, run_command
 from blacksmith.config import BlacksmithConfig
 from blacksmith.contract import PRD, ContractError, parse_prd_text, validate_execution_contract
 from blacksmith.gate import GateError, TargetToolchain, parse_toolchain
@@ -43,8 +43,11 @@ def origin_identity(url: str, *, allow_slug: bool = False) -> str:
     if "://" in url:
         parsed = urlsplit(url)
         if (
-            parsed.scheme not in {"https", "http", "ssh", "git"} or not parsed.hostname
-            or parsed.password or parsed.query or parsed.fragment
+            parsed.scheme not in {"https", "http", "ssh", "git"}
+            or not parsed.hostname
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
             or (parsed.username and not (parsed.scheme == "ssh" and parsed.username == "git"))
         ):
             raise RunContextError(
@@ -72,10 +75,14 @@ def origin_identity(url: str, *, allow_slug: bool = False) -> str:
 
 def git_read(repo: Path, *args: str) -> str:
     try:
-        proc = subprocess.run(
-            ["git", "-C", str(repo), *args], capture_output=True, timeout=120,
+        proc = run_command(
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            text=False,
+            sensitive=True,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        proc.require_complete_output()
+    except (OSError, CommandError) as exc:
         raise RunContextError(f"Git preflight failed ({args[0]}): {type(exc).__name__}") from exc
     if proc.returncode:
         # Do not echo credential-bearing origin or configuration output.
@@ -225,23 +232,34 @@ class RunContext(BaseModel):
         if config.target.repo_path != Path(self.repo_path):
             raise ValueError("runtime target differs from snapshot identity")
         config._source_path = (
-            Path(self.runtime_config_path) if self.runtime_config_path
+            Path(self.runtime_config_path)
+            if self.runtime_config_path
             else self.directory.parents[2] / "blacksmith.config.toml"
         )
         return config
 
     def initial_state(self) -> dict:
         return {
-            "state_version": STATE_VERSION, "run_id": self.run_id,
-            "run_context": self.model_dump(), "planning_path": str(self.planning_path),
-            "prd": self.prd(), "prd_path": self.prd_path,
+            "state_version": STATE_VERSION,
+            "run_id": self.run_id,
+            "run_context": self.model_dump(),
+            "planning_path": str(self.planning_path),
+            "prd": self.prd(),
+            "prd_path": self.prd_path,
         }
 
     def save(self) -> None:
         data = self.model_dump()
-        atomic_write(self.directory / "manifest.json", canonical_json({
-            "context": data, "sha256": sha256(canonical_json(data)),
-        }) + "\n")
+        atomic_write(
+            self.directory / "manifest.json",
+            canonical_json(
+                {
+                    "context": data,
+                    "sha256": sha256(canonical_json(data)),
+                }
+            )
+            + "\n",
+        )
         atomic_write(self.directory / "input.prd.md", self.prd_text)
         atomic_write(self.directory / "runtime-config.json", self.runtime_config_json)
         atomic_write(self.directory / "trusted-blacksmith.toml", self.toolchain_text)
@@ -252,8 +270,10 @@ class RunContext(BaseModel):
             raise RunContextError("selected repository differs from recorded run repository")
         try:
             manifest = json.loads((self.directory / "manifest.json").read_text())
-            if manifest != {"context": self.model_dump(),
-                            "sha256": sha256(canonical_json(self.model_dump()))}:
+            if manifest != {
+                "context": self.model_dump(),
+                "sha256": sha256(canonical_json(self.model_dump())),
+            }:
                 raise ValueError("manifest mismatch")
             for name, digest in (
                 ("input.prd.md", self.prd_sha256),
@@ -291,10 +311,18 @@ def context_from_state(state: dict) -> RunContext:
 
 
 def create_run_context(
-    config: BlacksmithConfig, prd: PRD, thread_id: str,
-    *, required_tools: tuple[str, ...] = ("git", "gh", "claude"),
+    config: BlacksmithConfig,
+    prd: PRD,
+    thread_id: str,
+    *,
+    required_tools: tuple[str, ...] = ("git", "gh", "claude"),
 ) -> RunContext:
     """Preflight once; materialize immutable artifacts before the first paid call."""
+    with command_scope(limits=config.limits, stage="preflight"):
+        return _create_run_context(config, prd, thread_id, required_tools=required_tools)
+
+
+def _create_run_context(config, prd, thread_id, *, required_tools):
     if not thread_id.strip() or any(ord(c) < 32 for c in thread_id):
         raise RunContextError("thread-id must be nonempty and contain no control characters")
     config = config.resolved()
@@ -335,43 +363,75 @@ def create_run_context(
                 commands = toolchain.commands_for(layer)
                 if any(cmd is not None and not cmd.strip() for cmd in commands):
                     raise RunContextError(f"empty required toolchain command for layer {layer}")
-    config = config.model_copy(update={
-        "target": config.target.model_copy(update={"repo_path": repo}),
-    })
+    config = config.model_copy(
+        update={
+            "target": config.target.model_copy(update={"repo_path": repo}),
+        }
+    )
     snapshot = canonical_json(config.model_dump(mode="json"))
     run_id = str(uuid4())
     directory = config.config_dir / ".blacksmith" / "runs" / run_id
     context = RunContext(
-        run_id=run_id, thread_id=thread_id, repo_path=str(repo), origin=origin,
-        origin_url=origin_url, base_commit=base, default_branch=config.target.default_branch,
-        prd_path=str(prd.path.resolve()), prd_text=prd.text, prd_sha256=sha256(prd.text),
-        runtime_config_json=snapshot, runtime_config_sha256=sha256(snapshot),
+        run_id=run_id,
+        thread_id=thread_id,
+        repo_path=str(repo),
+        origin=origin,
+        origin_url=origin_url,
+        base_commit=base,
+        default_branch=config.target.default_branch,
+        prd_path=str(prd.path.resolve()),
+        prd_text=prd.text,
+        prd_sha256=sha256(prd.text),
+        runtime_config_json=snapshot,
+        runtime_config_sha256=sha256(snapshot),
         runtime_config_path=str(config.config_path) if config.config_path else None,
-        toolchain_text=toolchain_text, toolchain_sha256=sha256(toolchain_text),
+        toolchain_text=toolchain_text,
+        toolchain_sha256=sha256(toolchain_text),
         run_dir=str(directory),
     )
     directory.mkdir(parents=True, exist_ok=False)
     try:
         context.save()  # Critical input persistence fails closed before planning.
         journal = OperationJournal.create(context)
-        operation = OperationKey(context.run_id, "__run__", "bootstrap", "git.planning_snapshot")
-        journal.intent(operation, {"source": str(repo), "base_commit": base,
-                                   "destination": str(context.planning_path)})
-        git_read(repo.parent, "clone", "--local", "--no-hardlinks", "--no-checkout",
-                 str(repo), str(context.planning_path))
-        git_read(context.planning_path, "checkout", "--detach", base)
-        git_read(context.planning_path, "remote", "set-url", "origin", origin_url)
-        for key, value in zip(("user.name", "user.email"), match.groups(), strict=True):
-            git_read(context.planning_path, "config", key, value)
-        # No hard links and no symlink following: chmod must never alter source files.
-        paths = sorted(context.planning_path.rglob("*"), key=lambda p: len(p.parts), reverse=True)
-        for path in paths:
-            if not path.is_symlink():
-                path.chmod(path.stat().st_mode & ~0o222)
-        context.planning_path.chmod(context.planning_path.stat().st_mode & ~0o222)
-        context.verify(selected_repo=repo)
-        journal.finish(operation, "completed", {"base_commit": base,
-                                                "planning_path": str(context.planning_path)})
+        with command_scope(context, stage="bootstrap", attempt_id="bootstrap"):
+            operation = OperationKey(
+                context.run_id, "__run__", "bootstrap", "git.planning_snapshot"
+            )
+            journal.intent(
+                operation,
+                {
+                    "source": str(repo),
+                    "base_commit": base,
+                    "destination": str(context.planning_path),
+                },
+            )
+            git_read(
+                repo.parent,
+                "clone",
+                "--local",
+                "--no-hardlinks",
+                "--no-checkout",
+                str(repo),
+                str(context.planning_path),
+            )
+            git_read(context.planning_path, "checkout", "--detach", base)
+            git_read(context.planning_path, "remote", "set-url", "origin", origin_url)
+            for key, value in zip(("user.name", "user.email"), match.groups(), strict=True):
+                git_read(context.planning_path, "config", key, value)
+            # No hard links and no symlink following: chmod must never alter source files.
+            paths = sorted(
+                context.planning_path.rglob("*"), key=lambda p: len(p.parts), reverse=True
+            )
+            for path in paths:
+                if not path.is_symlink():
+                    path.chmod(path.stat().st_mode & ~0o222)
+            context.planning_path.chmod(context.planning_path.stat().st_mode & ~0o222)
+            context.verify(selected_repo=repo)
+            journal.finish(
+                operation,
+                "completed",
+                {"base_commit": base, "planning_path": str(context.planning_path)},
+            )
     except (OSError, RunContextError, ReceiptError) as exc:
         raise RunContextError(
             f"preflight snapshot failed; retained artifacts: {directory}"

@@ -13,11 +13,11 @@ The injected resume value is a bool (the CLI prompt in WU-11 sends y/n); a
 
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING, Any
 
 from langgraph.types import interrupt
 
+from blacksmith.commands import run_command
 from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
 from blacksmith.state import BlacksmithState, Status
 
@@ -88,7 +88,7 @@ def combined_diff(worktree_path: str, base_ref: str, *, max_bytes: int) -> str:
     ``max_bytes`` it is truncated to that byte ceiling with an explicit
     ``"…(diff truncated at N bytes)…"`` marker appended."""
     try:
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(worktree_path), "diff", f"{base_ref}..HEAD"],
             capture_output=True,
             text=True,
@@ -97,7 +97,7 @@ def combined_diff(worktree_path: str, base_ref: str, *, max_bytes: int) -> str:
         return ""
     if result.returncode != 0:
         return ""
-    diff_text = result.stdout
+    diff_text = result.require_complete_output().stdout
     if not diff_text:
         return ""
     encoded = diff_text.encode("utf-8")

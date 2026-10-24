@@ -1,0 +1,264 @@
+........................................................................ [ 46%]
+............................F.................FF..F..................... [ 92%]
+...........                                                              [100%]
+=================================== FAILURES ===================================
+_____________ test_sdk_intent_failure_prevents_first_provider_call _____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-44/test_sdk_intent_fa...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109696840>
+capsys = <_pytest.capture.CaptureFixture object at 0x109696450>
+
+    def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_sdk BEFORE INSERT ON operations "
+            "WHEN NEW.kind LIKE 'model.%' BEGIN SELECT RAISE(ABORT,'no receipt'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
+        assert calls == []
+        path = database(project)
+>       assert operations(path) == [("git.planning_snapshot", "completed")]
+E       AssertionError: assert [('git.planni...pleted'), ...] == [('git.planni... 'completed')]
+E         
+E         Left contains 8 more items, first extra item: ('command:1:bootstrap:git', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:70: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run a551be9a-a5a0-494c-818d-a6c85a3e219c: selected committed HEAD 5793fcc507ce96cc24979d619711612b1c82f08c
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-44/test_sdk_intent_failure_preven0/.blacksmith/runs/a551be9a-a5a0-494c-818d-a6c85a3e219c
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: critical journal read/write failed: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-44/test_sdk_intent_failure_preven0/.blacksmith/runs/a551be9a-a5a0-494c-818d-a6c85a3e219c/operations.sqlite
+________ test_collect_empty_coverage_cmd_returns_empty_without_running _________
+
+name = 'blacksmith.sbfl.subprocess', package = None
+
+    def import_module(name, package=None):
+        """Import a module.
+    
+        The 'package' argument is required when performing a relative import. It
+        specifies the package to use as the anchor point from which to resolve the
+        relative import to an absolute import.
+    
+        """
+        level = 0
+        if name.startswith('.'):
+            if not package:
+                raise TypeError("the 'package' argument is required to perform a "
+                                f"relative import for {name!r}")
+            for character in name:
+                if character != '.':
+                    break
+                level += 1
+>       return _bootstrap._gcd_import(name[level:], package, level)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ModuleNotFoundError: No module named 'blacksmith.sbfl.subprocess'; 'blacksmith.sbfl' is not a package
+
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: ModuleNotFoundError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-44/test_collect_empty_coverage_cm0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109613d70>
+
+    def test_collect_empty_coverage_cmd_returns_empty_without_running(tmp_path, monkeypatch):
+        def _boom(*args, **kwargs):
+            raise AssertionError("subprocess.run must not be called for an empty coverage_cmd")
+    
+>       monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+
+tests/test_sbfl.py:218: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/_pytest/monkeypatch.py:107: in derive_importpath
+    target = resolve(module)
+             ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'blacksmith.sbfl.subprocess'
+
+    def resolve(name: str) -> object:
+        # Simplified from zope.dottedname.
+        parts = name.split(".")
+    
+        used = parts.pop(0)
+        found: object = importlib.import_module(used)
+        for part in parts:
+            used += "." + part
+            try:
+                found = getattr(found, part)
+            except AttributeError:
+                pass
+            else:
+                continue
+            # We use explicit un-nesting of the handling block in order
+            # to avoid nested exceptions.
+            try:
+                importlib.import_module(used)
+            except ImportError as ex:
+                expected = str(ex).split()[-1]
+                if expected == used:
+                    raise
+                else:
+>                   raise ImportError(f"import error in {used}: {ex}") from ex
+E                   ImportError: import error in blacksmith.sbfl.subprocess: No module named 'blacksmith.sbfl.subprocess'; 'blacksmith.sbfl' is not a package
+
+.venv/lib/python3.12/site-packages/_pytest/monkeypatch.py:88: ImportError
+________ test_collect_blank_coverage_cmd_returns_empty_without_running _________
+
+name = 'blacksmith.sbfl.subprocess', package = None
+
+    def import_module(name, package=None):
+        """Import a module.
+    
+        The 'package' argument is required when performing a relative import. It
+        specifies the package to use as the anchor point from which to resolve the
+        relative import to an absolute import.
+    
+        """
+        level = 0
+        if name.startswith('.'):
+            if not package:
+                raise TypeError("the 'package' argument is required to perform a "
+                                f"relative import for {name!r}")
+            for character in name:
+                if character != '.':
+                    break
+                level += 1
+>       return _bootstrap._gcd_import(name[level:], package, level)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ModuleNotFoundError: No module named 'blacksmith.sbfl.subprocess'; 'blacksmith.sbfl' is not a package
+
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: ModuleNotFoundError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-44/test_collect_blank_coverage_cm0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1095dcda0>
+
+    def test_collect_blank_coverage_cmd_returns_empty_without_running(tmp_path, monkeypatch):
+        def _boom(*args, **kwargs):
+            raise AssertionError("subprocess.run must not be called for a blank coverage_cmd")
+    
+>       monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+
+tests/test_sbfl.py:231: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/_pytest/monkeypatch.py:107: in derive_importpath
+    target = resolve(module)
+             ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'blacksmith.sbfl.subprocess'
+
+    def resolve(name: str) -> object:
+        # Simplified from zope.dottedname.
+        parts = name.split(".")
+    
+        used = parts.pop(0)
+        found: object = importlib.import_module(used)
+        for part in parts:
+            used += "." + part
+            try:
+                found = getattr(found, part)
+            except AttributeError:
+                pass
+            else:
+                continue
+            # We use explicit un-nesting of the handling block in order
+            # to avoid nested exceptions.
+            try:
+                importlib.import_module(used)
+            except ImportError as ex:
+                expected = str(ex).split()[-1]
+                if expected == used:
+                    raise
+                else:
+>                   raise ImportError(f"import error in {used}: {ex}") from ex
+E                   ImportError: import error in blacksmith.sbfl.subprocess: No module named 'blacksmith.sbfl.subprocess'; 'blacksmith.sbfl' is not a package
+
+.venv/lib/python3.12/site-packages/_pytest/monkeypatch.py:88: ImportError
+________ test_collect_raising_subprocess_returns_empty_without_raising _________
+
+name = 'blacksmith.sbfl.subprocess', package = None
+
+    def import_module(name, package=None):
+        """Import a module.
+    
+        The 'package' argument is required when performing a relative import. It
+        specifies the package to use as the anchor point from which to resolve the
+        relative import to an absolute import.
+    
+        """
+        level = 0
+        if name.startswith('.'):
+            if not package:
+                raise TypeError("the 'package' argument is required to perform a "
+                                f"relative import for {name!r}")
+            for character in name:
+                if character != '.':
+                    break
+                level += 1
+>       return _bootstrap._gcd_import(name[level:], package, level)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       ModuleNotFoundError: No module named 'blacksmith.sbfl.subprocess'; 'blacksmith.sbfl' is not a package
+
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/importlib/__init__.py:90: ModuleNotFoundError
+
+The above exception was the direct cause of the following exception:
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-44/test_collect_raising_subproces0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109694470>
+
+    def test_collect_raising_subprocess_returns_empty_without_raising(tmp_path, monkeypatch):
+        def _boom(*args, **kwargs):
+            raise OSError("no such executable")
+    
+>       monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+
+tests/test_sbfl.py:270: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/_pytest/monkeypatch.py:107: in derive_importpath
+    target = resolve(module)
+             ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+name = 'blacksmith.sbfl.subprocess'
+
+    def resolve(name: str) -> object:
+        # Simplified from zope.dottedname.
+        parts = name.split(".")
+    
+        used = parts.pop(0)
+        found: object = importlib.import_module(used)
+        for part in parts:
+            used += "." + part
+            try:
+                found = getattr(found, part)
+            except AttributeError:
+                pass
+            else:
+                continue
+            # We use explicit un-nesting of the handling block in order
+            # to avoid nested exceptions.
+            try:
+                importlib.import_module(used)
+            except ImportError as ex:
+                expected = str(ex).split()[-1]
+                if expected == used:
+                    raise
+                else:
+>                   raise ImportError(f"import error in {used}: {ex}") from ex
+E                   ImportError: import error in blacksmith.sbfl.subprocess: No module named 'blacksmith.sbfl.subprocess'; 'blacksmith.sbfl' is not a package
+
+.venv/lib/python3.12/site-packages/_pytest/monkeypatch.py:88: ImportError
+=========================== short test summary info ============================
+FAILED tests/test_receipt_wiring.py::test_sdk_intent_failure_prevents_first_provider_call
+FAILED tests/test_sbfl.py::test_collect_empty_coverage_cmd_returns_empty_without_running
+FAILED tests/test_sbfl.py::test_collect_blank_coverage_cmd_returns_empty_without_running
+FAILED tests/test_sbfl.py::test_collect_raising_subprocess_returns_empty_without_raising
+4 failed, 151 passed in 30.37s

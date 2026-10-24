@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from blacksmith.commands import run_command
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.plan import cost_event
 from blacksmith.path_policy import PolicyViolation, policy_for_state
@@ -54,9 +54,10 @@ class PullRequest:
 
 
 def subprocess_runner(argv: Sequence[str], cwd: Path | None = None) -> CommandResult:
-    proc = subprocess.run(
+    proc = run_command(
         list(argv), cwd=str(cwd) if cwd else None, capture_output=True, text=True
     )
+    proc.require_complete_output()
     return CommandResult(proc.returncode, proc.stdout, proc.stderr)
 
 

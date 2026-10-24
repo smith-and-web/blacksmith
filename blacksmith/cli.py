@@ -25,6 +25,7 @@ from pathlib import Path
 from langgraph.types import Command
 
 from blacksmith import __version__
+from blacksmith.commands import CommandError, command_scope
 from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, find_config
 from blacksmith.contract import ContractError, PRDContract, parse_prd, validate_execution_contract
 from blacksmith.costs import run_costs
@@ -961,6 +962,7 @@ def _resume(argv: list[str] | None = None) -> int:
             values = saved.checkpoint["channel_values"]
             context = context_from_state(values)
             stack.enter_context(context.lock())
+            stack.enter_context(command_scope(context, stage="cli"))
             context.verify(
                 selected_repo=selected.resolve_repo_path(),
                 require_workspace=bool(values.get("worktree_path")),
@@ -990,7 +992,7 @@ def _resume(argv: list[str] | None = None) -> int:
                 ended_at=ended_at, approval_wait_s=approval_wait,
             )
             return 0 if final.values.get("status") == Status.DONE else 1
-    except (ResumeError, RunContextError, ConfigError, ContractError,
+    except (ResumeError, RunContextError, ConfigError, ContractError, CommandError,
             GateError, ReceiptError, OSError) as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
@@ -1319,6 +1321,7 @@ def main(argv: list[str] | None = None) -> int:
             prd = parse_prd(args.prd_path)
             context = create_run_context(config, prd, args.thread_id)
             stack.enter_context(context.lock())
+            stack.enter_context(command_scope(context, stage="cli"))
             graph = build_graph_for(context.execution_config(), checkpointer)
             renderer = _build_renderer(args)
             approval_wait = 0.0
@@ -1343,7 +1346,7 @@ def main(argv: list[str] | None = None) -> int:
                 started_at=started_at, ended_at=ended_at, approval_wait_s=approval_wait,
             )
             return 0 if final.values.get("status") == Status.DONE else 1
-    except (FreshRunError, RunContextError, ConfigError, ContractError,
+    except (FreshRunError, RunContextError, ConfigError, ContractError, CommandError,
             GateError, ReceiptError, OSError) as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1

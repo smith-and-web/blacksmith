@@ -67,7 +67,9 @@ def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, c
     assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
     assert calls == []
     path = database(project)
-    assert operations(path) == [("git.planning_snapshot", "completed")]
+    assert operations(path) == [("git.planning_snapshot", "completed")] + [
+        (f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)
+    ]
     assert (path.parent / "planning").is_dir()
     assert not (path.parent / "workspace").exists()
     assert "critical journal read/write failed" in capsys.readouterr().err

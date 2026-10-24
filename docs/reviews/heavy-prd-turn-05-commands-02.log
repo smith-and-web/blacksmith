@@ -1,0 +1,29 @@
+.......F................................                                 [100%]
+=================================== FAILURES ===================================
+_________ test_command_receipts_are_ordered_and_observations_are_fresh _________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-45/test_command_recei...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_command_receipts_are_ordered_and_observations_are_fresh(project):
+        context = create(project, "command-receipts")
+        with command_scope(context, unit_id="U1", attempt_id="a1", stage="verify"):
+            first = run_command(python("print('first')"))
+            second = run_command(python("print('second')"))
+        assert first.stdout == "first\n" and second.stdout == "second\n"
+        with sqlite3.connect(context.journal().path) as conn:
+            rows = conn.execute(
+                "SELECT kind,status,outcome_json FROM operations WHERE unit_id='U1' ORDER BY rowid"
+            ).fetchall()
+>       assert [(r[0], r[1]) for r in rows] == [
+            ("command:1:verify:python", "completed"),
+            ("command:2:verify:python", "completed"),
+        ]
+E       AssertionError: assert [('command:1:... 'completed')] == [('command:1:... 'completed')]
+E         
+E         At index 0 diff: ('command:1:verify:python3', 'completed') != ('command:1:verify:python', 'completed')
+E         Use -v to get more diff
+
+tests/test_commands.py:173: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_commands.py::test_command_receipts_are_ordered_and_observations_are_fresh
+1 failed, 39 passed in 17.28s

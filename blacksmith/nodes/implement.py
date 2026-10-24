@@ -16,12 +16,12 @@ wired (skeleton/tests), it is a status-only pass-through.
 
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
+from blacksmith.commands import run_command
 from blacksmith.config import IndexConfig
 from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
@@ -460,7 +460,7 @@ def _commit_changes(worktree_path: str, message: str) -> tuple[list[str], str]:
     ]
     diff_summary = _git(worktree_path, "diff", "--cached", "--stat")
     if files:
-        commit = subprocess.run(
+        commit = run_command(
             ["git", "-C", str(worktree_path), "commit", "-m", message],
             capture_output=True,
             text=True,
@@ -471,9 +471,10 @@ def _commit_changes(worktree_path: str, message: str) -> tuple[list[str], str]:
 
 
 def _git(worktree_path: str, *args: str) -> str:
-    result = subprocess.run(
+    result = run_command(
         ["git", "-C", str(worktree_path), *args], capture_output=True, text=True
     )
+    result.require_complete_output()
     if result.returncode:
         raise CommitError(result.stderr.strip() or result.stdout.strip() or "git command failed")
     return result.stdout
