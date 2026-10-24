@@ -7,6 +7,7 @@
 - Current turn: 2; S01 and S02 implemented and verified. Full offline suite: 783 passed; ruff passed. This turn made implementation and verification progress.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
+- S01-S02 implementation commit: `88070ac` (local only).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
