@@ -15,6 +15,7 @@
 - S07 implementation commit: `f3a1312` (local only).
 - S08 implementation commit: `b694e06` (local only).
 - S09 implementation commit: `adc56d2` (local only).
+- S10 implementation commit: `07965ca` (local only).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
