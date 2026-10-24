@@ -114,3 +114,5 @@ Contract schema edits require explicit human review before merge (spec §3.2). N
 - `Projects/blacksmith.md` updated through MCP with S03 status, migration and scoped proof. Targeted brain lint: 0 errors/0 warnings. After >70 seconds, index status reported lastRun.errors=0 and invalidFrontmatter.count=0; semantic retrieval returned the updated remediation section at rank 1 (`095869bc-3534-46e9-807b-967fd68e00a1`).
 
 - Environment metadata was collected with `uv run python` (Python 3.12.13). An initial host `python3` metadata attempt failed because that interpreter did not have the project packages; it was not used as dependency/version evidence.
+
+- S03 implementation checkpoint committed locally as `e8650ba` (`feat: freeze run inputs and validate version-2 execution`). Staged whitespace check and host pre-commit checks passed. Original specification and probe remain untracked and untouched. No push.
