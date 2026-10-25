@@ -207,6 +207,15 @@ RECURSION_LIMIT = 150
 
 
 def _step(graph, payload, config, *, on_node, on_event=None):
+    from blacksmith.run_clock import cancellation_signals, execution_scope
+    values = payload if isinstance(payload, dict) and payload.get("run_context") else (
+        graph.get_state(config).values)
+    context = context_from_state(values) if values.get("run_context") else None
+    with execution_scope(context) as clock, cancellation_signals(clock):
+        return _execute_step(graph, payload, config, on_node=on_node, on_event=on_event)
+
+
+def _execute_step(graph, payload, config, *, on_node, on_event=None):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
     Streams ``stream_mode=["updates", "debug", "custom"]``. The ``debug`` stream emits a
@@ -610,6 +619,9 @@ def _total_cost_line(values) -> str:
     that returned no cost) is excluded from the sum rather than crashing it. If nothing
     reported a cost, the spend is unknown — say so plainly.
     """
+    if values.get("run_context"):
+        from blacksmith.accounting import cost_line, snapshot
+        return cost_line(snapshot(context_from_state(values)))
     known = [c for c in _cost_usds(values) if c is not None]
     if not known:
         return "total cost: cost unavailable"
@@ -651,6 +663,9 @@ def _report(snapshot, renderer: Renderer | None = None) -> None:
     renderer = renderer if renderer is not None else Renderer()
     values = snapshot.values
     extra = {"pending_qa": values["pending_qa_unit"]} if values.get("pending_qa_unit") else {}
+    if values.get("run_context"):
+        from blacksmith.accounting import clock_line, snapshot
+        extra["clock_line"] = clock_line(snapshot(context_from_state(values)))
     renderer.report(
         status=values.get("status"),
         pr_url=values.get("pr_url"),
@@ -1000,6 +1015,13 @@ def _resume(argv: list[str] | None = None) -> int:
             values = saved.checkpoint["channel_values"]
             context = context_from_state(values)
             stack.enter_context(context.lock())
+            # Policy/inputs are read-only checks. Refuse legacy metadata before
+            # native observations can append command or active-clock receipts.
+            context.verify_inputs()
+            from blacksmith.budget import BudgetLedger
+            from blacksmith.run_clock import used
+            BudgetLedger(context).balance()
+            used(context)
             stack.enter_context(command_scope(context, stage="cli"))
             context.verify(
                 selected_repo=selected.resolve_repo_path(),
@@ -1450,6 +1472,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--thread-id", default="run", help="Checkpointer thread id for this run.")
     parser.add_argument(
+        "--unlimited-cost", action="store_true",
+        help="Explicitly remove the run cost cap; per-call budget and time bounds still apply.",
+    )
+    parser.add_argument(
         "--auto-approve",
         action="store_true",
         help="Approve every gate non-interactively (headless/CI).",
@@ -1485,6 +1511,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         load_dotenv(Path.cwd() / ".env")
         config = _load_config(args.config)
+        if args.unlimited_cost:
+            config = config.model_copy(update={"limits": config.limits.model_copy(
+                update={"max_run_cost_usd": None})})
         if args.prd_path is None:
             return _scaffold_issue(args.issue, config)
         with ExitStack() as stack:
@@ -1497,7 +1526,8 @@ def main(argv: list[str] | None = None) -> int:
                     f"--thread-id or `blacksmith resume --thread-id {args.thread_id}`"
                 )
             prd = parse_prd(args.prd_path)
-            context = create_run_context(config, prd, args.thread_id)
+            context = create_run_context(config, prd, args.thread_id,
+                                         unlimited_cost=args.unlimited_cost)
             stack.enter_context(context.lock())
             stack.enter_context(command_scope(context, stage="cli"))
             from blacksmith.recovery import protect_run

@@ -5,13 +5,14 @@ call + caching verification is the manual `scripts/smoke.py`). A fake query func
 stands in for the SDK, so these run with no CLI and no network.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from blacksmith.config import BlacksmithConfig, ConfigError
-from blacksmith.executor import Executor, ExecutorError
+from blacksmith.executor import Executor, ExecutorError, ModelCallStopped
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -100,6 +101,14 @@ def test_build_options_forwards_mcp_servers(monkeypatch):
     assert options.mcp_servers == {"blacksmith-index": server}
     # A call with no MCP servers still yields a valid (empty) mapping, not a crash.
     assert ex.build_options(model="claude-sonnet-5").mcp_servers == {}
+
+
+@pytest.mark.parametrize('role', ['run_plan_critique', 'run_summary', 'run_review'])
+def test_sdk_budget_stop_subtype_cannot_be_hidden_by_success_boolean(monkeypatch, role):
+    stopped = replace(_result(is_error=False), subtype='error_max_budget_usd')
+    executor = Executor(_config(monkeypatch), query_fn=FakeQuery([stopped]))
+    with pytest.raises(ModelCallStopped, match='budget'):
+        getattr(executor, role)('do not fall back', raise_on_error=False)
 
 
 def test_run_plan_and_implement_use_tiered_models(monkeypatch):

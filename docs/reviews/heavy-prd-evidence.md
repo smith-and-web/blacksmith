@@ -47,8 +47,8 @@ Implementation is incomplete. No live release gate has passed.
 
 ## Final required local verification
 
-- Latest full suite (S01-S13): `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t15-full-01`, **1181 passed in2097.72s**, exit0, no failures/warnings/skips/xfails. Final S19 full suite remains required after later slices.
-- Latest `uv run ruff check`: **passed** after S01-S13, refreshed at turn16. Final S19 lint remains required after later slices.
+- Latest accepted full suite (S01-S15): `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t21-full-03`, **1325 passed/6 SDK advisory warnings in3373.29s**, exit0, no failures/skips/xfails or warning filtering. Final integrated S19 full including100/20 remains required after remaining source integration.
+- Latest primary `uv run ruff check`: **passed** at turn22 after S15 full proof. Final S19 lint remains required after remaining source integration.
 - Per-slice acceptance/crash/migration evidence and source/dependency identity are retained below. Final S19 all-requirement audit remains pending.
 
 ## Acceptance matrix tracking
@@ -71,8 +71,8 @@ Implementation is incomplete. No live release gate has passed.
 | Corrupt/missing/wrong manifest and concurrent resume | S03 locks/input checks plus S11 artifact/controller/repair/boundary tests refuse before executor; exact original checkpoints/receipts retained |
 | Distinct run/worker/branch identities | S03 real clone/path/branch tests pass |
 | 100-unit chain and 20 roots, max active 2 | Pending S16; measured deterministic concurrency |
-| Exhaustion across all paid call classes, concurrent reservations | Pending S15; missing cost consumes reservation; resume cannot reset |
-| Hanging command/children/large output and model timeout | S05 real process-group timeout/cancellation and bounded logs pass; model deadlines/cancellation remain S15 |
+| Exhaustion across all paid call classes, concurrent reservations | S15 accepted: atomic all-role grants, exact SDK option, unknown full charge, denied/started/overrun recovery and persistent totals; full1325/ruff and named S15 audit. Legacy respond awaits S18 explicit rejection/integration |
+| Hanging command/children/large output and model timeout | S05 native bounded-group proof plus S15 actual installed-SDK local process groups, remaining deadlines, four parallel cancellation modes and partial receipts; full1325 passes |
 | Per-workspace sandbox sentinel, timeout, resume | Deferred option requires explicit enabled-config rejection in S17; real Docker gate remains unrun |
 | Respond preserved feedback, synthetic unit, remote race/push failure | Deferred option requires explicit unsupported-until-hardened error in S18 |
 | Optional observability/memory failure, critical journal failure | S04 critical transaction faults halt before effects; S08 writer failure is best effort; full optional-store/metrics matrix remains S19. Turn 13 native network test guard corrected after the failed unintended push documented below |
@@ -654,3 +654,66 @@ Counter20->21 persisted once after objective/repository instructions/memory/brai
 
 
 Turn21 durable handoff validation: Projects/blacksmith.md updated through MCP; targeted lint0 errors/0 warnings. After99 seconds index lastRun.errors0/invalidFrontmatter0, fresh semantic retrieval and exact entire-note readback matched every byte (368e239d-03a8-4fde-876b-368f31f48186); positive feedback once. Receipt heavy-prd-turn-21-brain-verification.json. No memory-folder write. Exact165/168 source/input/config/runtime audits passed while primary44404 and isolated regression supervisor51538/pytest51552 stayed live. S15/S16 remain unchecked; S01-S14 accepted; S17-S19/live gates outstanding. Counter21/30 unchanged by status question/compaction/tools; next automatic22; stop/save/pause at30. Historical turn13 failed-push exception retained.
+
+
+## Turn22 continuation audit
+
+Counter21->22 persisted once after objective/repository instructions/memory/brain/current-source checks. Previous turn was progress (536829f docs/evidence plus verified source/correction/archive receipts). Full03/44404 and isolated regression supervisor51538/pytest51552 verified live. Complete165/168 source/config/input sets unchanged. No restart, no full acceptance, no paid/publication/Docker action.
+
+- Turn22 read-only S16 transfer check: exact13-file feature delta c4c18cd..a9ff632b, SHA256fcdd90ad1c7823cce72d2727c1cd3e9960f95a153ffbd1c8f70b8bf99bf2eff4, passes git apply --check on frozen primary and touches none of six preserved S15 files. Receipt heavy-prd-turn-22-transfer-check.json. Patch not applied.
+- Added S15 requirement/wiring/named-regression audit heavy-prd-admission-audit.md and runbook link. All34 referenced named test functions verified present by AST; existence is not runtime proof. Final full03 remains required. No source edits or new paid calls.
+
+
+### Turn22 remaining observability trace (future S19, not implemented)
+
+Read-only inspection on current S15/S16 source confirms these remaining S19 changes: unit_graph.unit_runner returns a recovered child's cumulative review_revisions_total into an additive parent reducer (state.py), while each latest keyed unit_outcome already contains the exact per-unit review_revisions. Emit only each unit's new delta and derive presentation totals from current keyed outcomes so historical inflated reducer values are not promoted to exact counts. Keep attempt/cap counters unchanged; add an actual blocking->revision->unavailable->explicit recovery case asserting total1 rather than2 and preserved previous receipts/costs.
+
+Renderer.report and PR/gate finding/error loops remain unbounded; bound presentation with explicit omitted counts/full artifact references, while preserving full critical receipts/history/immutable requirements. Executor._extract_review_findings currently accepts arbitrary dictionary findings and can emit findings after missing terminal because is_error stays false; reuse strict parse_verdict validation and require a successful terminal result before optional finding emission. Bind activity to call/run/unit/attempt/task identity and bound text at presentation. Optional live-store creation/event and metric failures are swallowed silently; add bounded diagnostics while retaining best-effort continuation. ReviewConfig and some legacy state/helper docstrings still describe advisory/proceed-after-blocker behavior; update to actual strict receipts/halts. Existing enabled-sandbox lifecycle assertions are intentionally replaced by S17 no-effect rejection under the spec's explicit disabled alternative; low-level primitive tests are not Docker enablement proof.
+
+
+### Turn22 S15 accepted; scoped S16/S17/S18 integration candidates
+
+Primary full03/44404 terminal **1325 passed,6 SDK advisory warnings/3373.29s, exit0**,
+no skips/xfails or filtering. Complete165-source/config/input/Python3.12.13/all installed
+distribution versions/SQLite3.53.1 and final log/ruff hashes verified against frozen
+turn21-environment-03. Fresh primary ruff22 passed. S15 accepted locally; implementation
+commit follows. All failed older receipts remain retained. Original spec/probe
+unchanged/untracked/unstaged. No live billing/remote cancellation guarantee inferred.
+
+S16 adjacent regression terminal93/1061.65s, source168/config/inputs unchanged and fresh
+ruff passed. Independent supervisor exit code unavailable after truncated launch;
+terminal complete summary and absent verified PIDs retained. Final100/20 under
+integrated source remains required. Read-only feature patch check13 files and six
+preserved S15 hashes is in turn22-transfer-check.json.
+
+Isolated final-stage baseline780bd45 preserves integrated S15/S16 source. S17 allowed
+disabled-sandbox candidate2c197fe passed227/190.45s and final30/47.36s/ruff. Configuration
+loads and all execution/native/paid/parent/child/workspace boundaries reject enabled
+sandbox; implementation never advertises tool. Historical actual Git/input/journal/
+SQLite/capture remains inspectable; resume/native/SDK/new capture refuse with exact
+checkpoint/operations/events unchanged. Initial1-fail/146-pass was missing fixture
+recovery_version1; assertion retained, marker corrected, target1/1.28s passes. Explicit
+sandbox=false sample has identical structural settings to omitted default. Fake
+Docker primitive tests are not real isolation/enablement evidence.
+
+S18 permitted disabled-command candidatee51d653 passed31/4.63s and ruff. CLI help0,
+required-arg parsing2, execution1 before environment/config/PRD/GitHub/SDK/clone; wrapper1
+and library RespondUnsupportedError before effects. Real scratch remote histories
+unchanged. Legacy unsafe flow body removed; existing behavior tests intentionally
+change to no-effect refusals under the explicit spec exception. No enabled revision
+workflow/race/push-recovery claim. Complete169-source/config/input/runtime/receipt
+identity turn22-deferrals-source-03.json. All test/lint handles terminal.
+
+S13 accepted fixture archived/verified/removed under disk pressure:150464975-byte
+turn15-full01.tar.gz, SHA2567ee5dfbe69d62473673c27b55b0f8b10ec4c1d26c865958d7f360d0f4d6d5c64;
+manifest SHA256a055aee69a0eed3d7c887b88d620369aa5f61a1bd48f0f22750d1b4b2e6c1ab1,
+518060 entries/122766 owned dirs. Proof/restore turn22-archive-proof.json. Failed/live
+roots untouched; no protected.env read. Known other-device lsof warnings retained.
+Cleanup86330 terminal0. Free3.0GiB at last check; monitor before final scale/full.
+
+Next: locally commit S15, checked S16 then S17/S18 feature-only integration preserving
+all source identities; S19 observability/docs/matrix; final combined full pytest/ruff
+including100/20 before remaining checkmarks. Goal22/30 active; at30 stop/save/pause.
+No external push/merge/live publication/paid canary/Docker smoke this turn. Paid
+canary, human contract review and Docker enablement remain unrun release gates;
+historical turn13 failed external-push exception retained.

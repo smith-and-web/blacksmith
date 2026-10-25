@@ -81,7 +81,22 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
     if getattr(result, "call_id", None):
         event["event_id"] = result.call_id + ":cost"
         event["call_id"] = result.call_id
+    if getattr(result, "transcript_path", None):
+        event["transcript_path"] = result.transcript_path
     return event
+
+
+def journal_cost_event(event):
+    """One canonical graph spelling for a critical paid-call cost observation."""
+    payload = event["payload"]
+    node = payload["node"].removeprefix("model.")
+    result = {**{k: payload[k] for k in (
+        "call_id", "unit_id", "model", "cost_usd", "num_turns", "session_id")},
+        "node": "plan_critic" if node == "critic" else node,
+        "usage": usage_breakdown(payload.get("usage")), "event_id": event["event_id"]}
+    if payload.get("transcript_path"):
+        result["transcript_path"] = payload["transcript_path"]
+    return result
 
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
 # finishes in one) but block all writes — at plan time there is no worktree yet, so
@@ -490,9 +505,10 @@ def _critic_loop(
     Each critique call is ledgered as its own ``cost_event`` (node ``"plan_critic"``); each
     re-plan call is ledgered exactly like the original plan call (node ``"plan"``). Returns
     the FINAL (post-critique) ``ExecutorResult`` -- either the original plan (approved, or
-    the budget was zero) or the latest re-plan once the budget is exhausted. Never raises:
+    the revision allowance was zero) or the latest re-plan once it is exhausted.
     a critique call that errors or returns garbage is parsed fail-open (``_parse_critique``)
     as approved, so a broken critic can only ever shorten this loop, never stall it. If a
+    Critical storage/admission/budget/deadline errors always propagate. If a
     RE-PLAN call itself errors, that errored result is returned so the caller halts exactly
     as it would have on the original plan call failing.
     """
@@ -524,9 +540,8 @@ def _run_critique(
 ) -> dict:
     """One fail-open critique call: ``{"approved": bool, "critique": str}``.
 
-    Any exception raised by the call itself (not just an ``is_error`` result) is treated as
-    approved with no critique -- the critic can never stall or halt planning, matching the
-    fail-open contract of ``_parse_critique`` for a malformed/absent verdict.
+    Ordinary advisory exceptions/malformed verdicts fall back to no critique.
+    Critical storage, admission, SDK budget stops and deadlines halt planning.
     """
     try:
         critique_result = executor.run_plan_critique(

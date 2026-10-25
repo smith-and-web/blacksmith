@@ -1,5 +1,6 @@
 """Critical storage failures at real CLI/Git/graph boundaries cannot fall through."""
 
+import json
 import sqlite3
 
 import pytest
@@ -49,6 +50,8 @@ def test_bootstrap_intent_failure_prevents_planning_clone_and_sdk(project, monke
     assert cli.main([str(prd), "--config", str(config)]) == 1
     path = database(project)
     assert operations(path) == [("recovery.initialize", "completed"),
+                                ("budget.policy", "completed"),
+                                ("clock.policy", "completed"),
                                 ("recovery.capture", "completed"),
                                 ("recovery.capture.seal", "completed")]
     assert not (path.parent / "planning").exists()
@@ -70,12 +73,28 @@ def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, c
     assert calls == []
     path = database(project)
     rows = operations(path)
-    assert rows[:10] == [
+    assert rows[:3] == [("recovery.initialize", "completed"),
+                        ("budget.policy", "completed"), ("clock.policy", "completed")]
+    base_rows = [row for row in rows if not row[0].startswith(("clock.", "admission."))
+                 and row[0] != "budget.policy"]
+    assert base_rows[:10] == [
         ("recovery.initialize", "completed"), ("git.planning_snapshot", "completed"),
     ] + [(f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)]
-    assert rows[10:] == [("recovery.capture", "completed")] + [
+    assert base_rows[10:] == [("recovery.capture", "completed")] + [
         (f"command:{i}:recovery_capture:git", "completed") for i in range(1, 9)
     ] + [("recovery.capture.seal", "completed")]
+    with sqlite3.connect(path) as connection:
+        reserves = connection.execute(
+            "SELECT status,intent_json,outcome_json FROM operations "
+            "WHERE kind='admission.reserve'").fetchall()
+        clocks = connection.execute(
+            "SELECT status FROM operations WHERE kind='clock.slice'").fetchall()
+    assert len(reserves) == 1 and reserves[0][0] == "intent" and reserves[0][2] is None
+    assert json.loads(reserves[0][1])["reservation_usd"] == 5
+    assert [kind for kind, _ in rows if kind.startswith("admission.")] == ["admission.reserve"]
+    assert {kind for kind, _ in rows if kind.startswith("clock.")} == {
+        "clock.policy", "clock.slice"}
+    assert clocks and all(status == "completed" for status, in clocks)
     assert not any(kind.startswith("model.") for kind, _ in rows)
     assert (path.parent / "planning").is_dir()
     assert not (path.parent / "workspace").exists()

@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import warnings
 from collections.abc import AsyncIterator, Callable, Sequence
-from dataclasses import asdict, dataclass, replace
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -53,6 +56,39 @@ QueryFn = Callable[..., AsyncIterator[Any]]
 
 class ExecutorError(Exception):
     """Raised when a Claude Agent SDK call fails or returns an error result."""
+
+
+class ModelCallStopped(ReceiptError):
+    """A started model call stopped on budget/deadline; never an advisory fallback."""
+
+    def __init__(self, reason, result):
+        self.reason, self.result = reason, result
+        self.call_id, self.started = result.call_id, True
+        super().__init__(f"model_call_stopped:{reason}: {result.call_id}")
+
+
+_CALL = ContextVar("blacksmith_model_call", default=None)
+
+
+def _cost_record(key, operation_kind, result):
+    event = {"call_id": key.id, "unit_id": key.unit_id, "attempt_id": key.attempt_id,
+             "node": operation_kind, "model": result.model,
+             "cost_usd": result.cost_usd, "usage": result.usage,
+             "num_turns": result.num_turns, "session_id": result.session_id}
+    if result.transcript_path:
+        event["transcript_path"] = result.transcript_path
+    return [(key.id + ":cost", "model_cost", event)]
+
+
+def _partial_result(model, call, *, kind, text):
+    saved = call.get("captured", {})
+    terminal = saved.get("terminal")
+    return ExecutorResult(text=text, model=saved.get("model") or model, is_error=True,
+        num_turns=terminal.num_turns if terminal else saved.get("num_turns", 0),
+        cost_usd=terminal.total_cost_usd if terminal else None,
+        usage=terminal.usage if terminal else None, session_id=saved.get("session_id"),
+        error_kind=kind, terminal_received=False, transcript_path=call.get("transcript_path"),
+        call_id=call.get("call_id"))
 
 
 def _emit_activity(payload: dict[str, Any]) -> None:
@@ -129,6 +165,7 @@ class ExecutorResult:
     error_kind: str | None = None
     call_id: str | None = None
     terminal_received: bool = True
+    transcript_path: str | None = field(default=None, compare=False)
 
     @property
     def hit_turn_limit(self) -> bool:
@@ -167,16 +204,24 @@ class Executor:
         betas: Sequence[str] | None = None,
         mcp_servers: dict[str, Any] | None = None,
         tools: Sequence[str] | None = None,
+        max_budget_usd: float | None = None,
     ) -> ClaudeAgentOptions:
         # Dedicated key (PRD §8 / AC-8): resolve_api_key raises if it is unset, so an
         # accidental fall-back to other auth is impossible.
         env = {"ANTHROPIC_API_KEY": self._config.resolve_api_key()}
+        budget = self._config.limits.max_call_cost_usd
+        if max_budget_usd is not None:
+            if (type(max_budget_usd) not in {int, float}
+                    or not math.isfinite(max_budget_usd) or max_budget_usd <= 0):
+                raise ValueError("SDK budget must be positive and finite")
+            budget = min(budget, max_budget_usd)
         return ClaudeAgentOptions(
             model=model,
             tools=list(tools) if tools is not None else None,
             system_prompt=system_prompt,
             cwd=str(cwd) if cwd is not None else None,
             max_turns=max_turns,
+            max_budget_usd=budget,
             allowed_tools=list(allowed_tools or []),
             disallowed_tools=list(disallowed_tools or []),
             permission_mode=permission_mode,
@@ -194,6 +239,19 @@ class Executor:
         )
 
     def run(
+        self, prompt: str, *, model: str, raise_on_error: bool = True,
+        emit_findings: bool = False, call_context: CallContext | None = None,
+        operation_kind: str = "model.call", **option_kwargs: Any,
+    ) -> ExecutorResult:
+        from blacksmith.budget import BudgetLedger
+        from blacksmith.run_clock import execution_scope
+        context = BudgetLedger.for_call(call_context).context if call_context else None
+        with execution_scope(context):
+            return self._run(prompt, model=model, raise_on_error=raise_on_error,
+                emit_findings=emit_findings, call_context=call_context,
+                operation_kind=operation_kind, **option_kwargs)
+
+    def _run(
         self,
         prompt: str,
         *,
@@ -211,9 +269,20 @@ class Executor:
         "finding" activity event, in order, on the custom stream (best-effort; see
         ``_emit_activity``).
         """
+        if call_context is None and self._query is query:
+            raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
         options = self.build_options(model=model, **option_kwargs)
         journal = call_context.journal() if call_context else None
         key = call_context.key(operation_kind) if call_context else None
+        budget_ledger = reservation = None
+        if journal is not None:
+            from blacksmith.budget import BudgetLedger
+            budget_ledger = BudgetLedger.for_call(call_context)
+            reservation = (budget_ledger.reservation_for(key) if journal.get(key)
+                           else budget_ledger.reserve(key))
+            options = replace(options, max_budget_usd=reservation.amount_usd)
         cached = None
         if journal is not None:
             receipt = journal.intent(key, {
@@ -221,6 +290,7 @@ class Executor:
                 "system_prompt_sha256": digest(str(options.system_prompt or "")),
                 "model": options.model, "cwd": str(options.cwd) if options.cwd else None,
                 "max_turns": options.max_turns, "max_budget_usd": options.max_budget_usd,
+                "admission_id": reservation.operation_id,
                 "allowed_tools": options.allowed_tools,
                 "disallowed_tools": options.disallowed_tools,
                 "tools": options.tools,
@@ -239,29 +309,87 @@ class Executor:
                     raise ReceiptError("invalid retained SDK result identity/status")
         if cached is not None:
             result = cached
+            if budget_ledger is not None:
+                budget_ledger.settle(reservation)
         else:
+            call = {"call_id": key.id if key else str(uuid4())}
             try:
-                result = asyncio.run(self._collect(prompt, options, emit_findings=emit_findings))
+                token = _CALL.set(call)
+                try:
+                    result = asyncio.run(self._bounded_collect(
+                        prompt, options, emit_findings=emit_findings))
+                    result = replace(result, transcript_path=_CALL.get().get("transcript_path"))
+                finally:
+                    _CALL.reset(token)
             except BaseException as exc:
                 if journal is not None:
-                    journal.finish(key, "interrupted", {"error_type": type(exc).__name__})
+                    partial = _partial_result(options.model, call, kind="interrupted",
+                                              text=f"call interrupted: {type(exc).__name__}")
+                    journal.finish(key, "interrupted", {"error_type": type(exc).__name__,
+                        "result": asdict(partial)},
+                        events=_cost_record(key, operation_kind, partial))
+                    budget_ledger.settle(reservation)
                 raise
             if journal is not None:
                 result = replace(result, call_id=key.id)
-                event = {"call_id": key.id, "unit_id": key.unit_id, "attempt_id": key.attempt_id,
-                         "node": operation_kind, "model": result.model,
-                         "cost_usd": result.cost_usd, "usage": result.usage,
-                         "num_turns": result.num_turns, "session_id": result.session_id}
                 status = ("unknown" if not result.terminal_received
                           else "failed" if result.is_error else "completed")
                 journal.finish(key, status,
                                {"result": asdict(result)},
-                               events=[(key.id + ":cost", "model_cost", event)])
+                               events=_cost_record(key, operation_kind, result))
+                budget_ledger.settle(reservation)
                 if not result.terminal_received:
+                    if result.error_kind in {"timeout", "run_deadline"}:
+                        raise ModelCallStopped(result.error_kind, result)
                     raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+        if result.error_kind == "budget" or (budget_ledger is not None and (
+                budget_ledger.balance().unacknowledged_overrun)):
+            raise ModelCallStopped("budget", result)
         if raise_on_error and result.is_error:
             raise ExecutorError(f"executor call failed (model={result.model}): {result.text!r}")
         return result
+
+    async def _bounded_collect(self, prompt, options, *, emit_findings=False):
+        from blacksmith.run_clock import current
+        from blacksmith.sdk_transport import finish_cleanup
+        clock = current()
+        timeout = self._config.limits.model_timeout_s
+        reason = "timeout"
+        if clock is not None and clock.check() < timeout:
+            timeout, reason = clock.remaining, "run_deadline"
+
+        async def watch():
+            while True:
+                clock.check()
+                await asyncio.sleep(.05)
+
+        async def drain(task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        try:
+            async with asyncio.timeout(timeout):
+                if clock is None:
+                    return await self._collect(prompt, options, emit_findings=emit_findings)
+                task = asyncio.create_task(self._collect(prompt, options,
+                                                       emit_findings=emit_findings))
+                monitor = asyncio.create_task(watch())
+                try:
+                    done, _ = await asyncio.wait((task, monitor),
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if monitor in done:
+                        monitor.result()
+                    return task.result()
+                finally:
+                    monitor.cancel()
+                    task.cancel()
+                    await finish_cleanup(drain(task))
+                    await finish_cleanup(drain(monitor))
+        except TimeoutError:
+            return _partial_result(options.model, _CALL.get() or {},
+                                   kind=reason, text="model call timed out")
 
     def run_plan(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the cheaper plan model tier (PRD §8)."""
@@ -271,8 +399,8 @@ class Executor:
     def run_summary(self, prompt: str, **kwargs: Any) -> ExecutorResult:
         """Run with the cheap plan model tier, for PR title/body narration (WU-PR-SUMMARY-TIER).
 
-        Reuses ``config.models.plan`` rather than a dedicated tier -- this is a cheap,
-        fail-open call at PR time, not a new cost center.
+        Reuses ``config.models.plan``. Ordinary synthesis errors may use deterministic
+        text; admission, budget-stop, deadline and critical receipt failures halt.
         """
         # Narration uses only the supplied immutable text, with no built-in or MCP tools.
         kwargs.update(tools=[], allowed_tools=[], mcp_servers={})
@@ -284,7 +412,8 @@ class Executor:
         (WU-PLAN-CRITIC-CORE).
 
         Reuses ``config.models.plan`` rather than a dedicated tier -- like ``run_summary``,
-        this is a cheap, fail-open one-shot call, not a new cost center or model provider.
+        this adds no provider/tier. Admission, budget-stop, deadline and critical
+        receipt failures propagate; only ordinary advisory failures can fall back.
         """
         return self.run(prompt, model=self._config.models.plan,
                         operation_kind="model.critic", **kwargs)
@@ -322,13 +451,17 @@ class Executor:
         # it into this holder as _aggregate sees it so the error path below can link the
         # PARTIAL transcript already flushed for the call (instead of leaving session_id=None).
         captured: dict[str, Any] = {"session_id": None, "num_turns": 0}
+        if _CALL.get() is not None:
+            _CALL.get()["captured"] = captured
         try:
             if options.can_use_tool is not None:
                 # A can_use_tool guard needs a persistent bidirectional connection: the
                 # one-shot query() closes its input stream before the permission round-trip
                 # (the agent sees "Tool permission request failed: Stream closed"). The
                 # ClaudeSDKClient keeps the connection open for the duration of the turn.
-                async with ClaudeSDKClient(options=options) as client:
+                from blacksmith.sdk_transport import OwnedCLITransport
+                transport = OwnedCLITransport(prompt="", options=options)
+                async with ClaudeSDKClient(options=options, transport=transport) as client:
                     await client.query(prompt)
                     return await self._aggregate(
                         client.receive_response(),
@@ -336,12 +469,18 @@ class Executor:
                         captured,
                         emit_findings=emit_findings,
                     )
+            kwargs = {"prompt": prompt, "options": options}
+            if self._query is query:
+                from blacksmith.sdk_transport import OwnedCLITransport
+                kwargs["transport"] = OwnedCLITransport(prompt=prompt, options=options)
             return await self._aggregate(
-                self._query(prompt=prompt, options=options),
+                self._query(**kwargs),
                 default_model,
                 captured,
                 emit_findings=emit_findings,
             )
+        except ReceiptError:
+            raise
         except Exception as exc:
             # The Agent SDK signals some failures — notably "Reached maximum number of turns",
             # but also CLI/stream errors — by RAISING during message iteration rather than
@@ -394,6 +533,7 @@ class Executor:
                     session_id = getattr(message, "session_id", None) or session_id
                     if captured is not None:
                         captured["session_id"] = session_id
+                        captured["model"] = model
                     texts.extend(b.text for b in message.content if isinstance(b, TextBlock))
                     # Intra-node activity (WU-LIVE-INTRA-NODE): one "turn" event per assistant
                     # turn, plus one "tool_use" event per tool call within it -- best-effort,
@@ -419,9 +559,11 @@ class Executor:
             # "error_max_turns", "error_during_execution"). Classify the turn cap distinctly so
             # a caller can recover from it rather than treating it like any other error.
             subtype = getattr(result, "subtype", None) if result else None
+            is_error = is_error or subtype == "error_max_budget_usd"
             error_kind = None
             if is_error:
-                error_kind = "max_turns" if subtype == "error_max_turns" else "other"
+                error_kind = ("max_turns" if subtype == "error_max_turns" else
+                              "budget" if subtype == "error_max_budget_usd" else "other")
             if result is None:
                 error_kind = "missing_terminal"
             if emit_findings and not is_error:
@@ -467,7 +609,10 @@ class Executor:
             if not events:
                 return
             cfg = self._config.transcripts
-            name = f"{session_id or 'unknown-session'}.jsonl"
-            transcript.write_transcript(cfg.dir / name, events)
+            call = _CALL.get()
+            name = f"{call['call_id'] if call else uuid4()}.jsonl"
+            path = cfg.dir / name
+            if transcript.write_transcript(path, events) and call is not None:
+                call["transcript_path"] = str(path)
         except Exception:
             pass

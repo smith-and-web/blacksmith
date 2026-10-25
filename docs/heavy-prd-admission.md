@@ -1,7 +1,10 @@
 # Spending admission, deadlines and recovery
 
-S15 is under local verification. The [checklist](reviews/heavy-prd-progress.md)
+S15 is accepted locally after the full1325-test suite and ruff passed. The
+[checklist](reviews/heavy-prd-progress.md)
 and [evidence record](reviews/heavy-prd-evidence.md) identify accepted slices.
+The [S15 audit](reviews/heavy-prd-admission-audit.md) maps each admission/time
+requirement to production wiring and named regression evidence.
 Offline proof does not satisfy the unrun provider/publication release canary.
 
 ## Saved limits

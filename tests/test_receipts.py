@@ -11,6 +11,8 @@ from uuid import uuid4
 
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from test_run_context import create
+from test_run_context import project as project
 
 from blacksmith.config import BlacksmithConfig, TranscriptsConfig
 from blacksmith.executor import Executor, ExecutorError
@@ -20,6 +22,7 @@ from blacksmith.receipts import (
     OperationJournal,
     OperationKey,
     ReceiptError,
+    call_context_for,
     merge_events,
 )
 
@@ -36,6 +39,13 @@ class JournalContext:
 @pytest.fixture
 def journal(tmp_path):
     return OperationJournal.create(JournalContext(tmp_path, str(uuid4())))
+
+
+@pytest.fixture
+def admitted(project):
+    context = create(project)
+    return context.journal(), call_context_for(
+        context.initial_state(), unit_id="U1", attempt_id="attempt-1")
 
 
 def key(journal, unit="U1", attempt="attempt-1", kind="model.plan"):
@@ -249,12 +259,12 @@ def test_event_reduction_deduplicates_ids_but_keeps_distinct_calls_and_legacy_ev
     ],
 )
 def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
-    journal,
+    admitted,
     monkeypatch,
     method,
     kind,
 ):
-    context = call_context(journal)
+    journal, context = admitted
     calls = []
 
     async def query(*, prompt, options):
@@ -275,8 +285,8 @@ def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_re
     assert reopened.events()[0]["payload"]["cost_usd"] == 0.25
 
 
-def test_sdk_failed_terminal_result_is_retained_and_not_rebilled(journal, monkeypatch):
-    context = call_context(journal)
+def test_sdk_failed_terminal_result_is_retained_and_not_rebilled(admitted, monkeypatch):
+    journal, context = admitted
     calls = []
 
     async def query(*, prompt, options):
@@ -294,11 +304,11 @@ def test_sdk_failed_terminal_result_is_retained_and_not_rebilled(journal, monkey
 
 @pytest.mark.parametrize("ending", ["missing-terminal", "stream-error", "cancellation"])
 def test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically(
-    journal,
+    admitted,
     monkeypatch,
     ending,
 ):
-    context = call_context(journal)
+    journal, context = admitted
     calls = []
 
     async def query(*, prompt, options):
@@ -327,15 +337,23 @@ def test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically(
     assert journal.get(context.key("model.plan")).status in {"unknown", "interrupted"}
 
 
-def test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk(journal, monkeypatch):
-    context = call_context(journal)
-    journal.intent(context.key("model.plan"), {"different": "intent"})
+def test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk(admitted, monkeypatch):
+    journal, context = admitted
+    original_calls = []
+
+    async def original_query(*, prompt, options):
+        original_calls.append(prompt)
+        yield sdk_result()
+
+    ex = executor(monkeypatch, original_query)
+    ex.run_plan("original request", call_context=context)
+    assert original_calls == ["original request"]
 
     async def forbidden_query(*, prompt, options):
         pytest.fail("conflicting or corrupt receipt must prevent SDK transport")
         yield sdk_result()
 
-    ex = executor(monkeypatch, forbidden_query)
+    ex._query = forbidden_query
     with pytest.raises(ReceiptError, match="intent changed"):
         ex.run_plan("changed request", call_context=context)
     journal.path.unlink()

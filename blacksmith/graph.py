@@ -464,12 +464,20 @@ def _events_cost(events: list[dict] | None) -> float:
 
 def _run_cost(state: BlacksmithState) -> float:
     """Total USD spent so far this run — the sum of the append-only cost ledger."""
+    if state.get("run_context"):
+        from blacksmith.budget import BudgetLedger
+        return BudgetLedger(context_from_state(state)).balance().charged_usd
     return _events_cost(state.get("cost_events")) + float(state.get("run_cost_base") or 0)
 
 
 def _within_budget(state: BlacksmithState) -> bool:
     """True if the run may still spend on recovery (WU-GATE-SELF-HEAL): no cap configured,
     or total spend so far is still under the configured ``max_run_cost_usd``."""
+    if state.get("run_context"):
+        from blacksmith.budget import BudgetLedger
+        balance = BudgetLedger(context_from_state(state)).balance()
+        return not balance.unacknowledged_overrun and (
+            balance.remaining_usd is None or balance.remaining_usd > 0)
     cap = (state.get("limits") or {}).get("max_run_cost_usd")
     return cap is None or _run_cost(state) < cap
 
@@ -1145,8 +1153,10 @@ def _node_with(fn, **injected):
 
     def node(state: BlacksmithState) -> dict:
         kwargs = injected if any(value is not None for value in injected.values()) else {}
-        with command_scope_for_state(state, fn.__name__):
-            return fn(state, **kwargs)
+        from blacksmith.run_clock import failure_scope
+        with failure_scope():
+            with command_scope_for_state(state, fn.__name__) as scope, failure_scope(scope.context):
+                return fn(state, **kwargs)
 
     return node
 

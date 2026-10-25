@@ -5,10 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from blacksmith.budget import AdmissionDenied
 from blacksmith.config import IndexConfig
 from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
-from blacksmith.executor import Executor, ExecutorResult
+from blacksmith.executor import Executor, ExecutorResult, ModelCallStopped
 from blacksmith.index import (
     INDEX_MCP_SERVER_NAME,
     QUALIFIED_INDEX_TOOL_NAMES,
@@ -193,7 +194,8 @@ def review(state: BlacksmithState, *, executor: Executor | None = None,
                         findings=verdict.findings, call_id=result.call_id,
                         response_sha256=digest(result.text or "")))
                 except ReceiptError as exc:
-                    if not str(exc).startswith("interrupted_attempt_requires_resume:"):
+                    if not isinstance(exc, (AdmissionDenied, ModelCallStopped)) and not str(
+                            exc).startswith("interrupted_attempt_requires_resume:"):
                         raise  # Critical persistence/integrity errors are never advisory.
                     panels.append(PanelResult(seat=seat, status="unavailable",
                                   call_id=call.key("model.review").id if call else None,

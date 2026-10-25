@@ -234,11 +234,8 @@ def _content(context, target):
                 or data["body"].count(marker(target)) != 1
                 or not isinstance(data["cost_events"], list)):
             raise ReceiptError("invalid publication content evidence")
-        from blacksmith.nodes.plan import usage_breakdown
-        known = {e["event_id"]: {**{k: e["payload"][k] for k in (
-            "unit_id", "model", "cost_usd", "num_turns", "session_id", "call_id")},
-            "node": e["payload"]["node"].removeprefix("model."),
-            "usage": usage_breakdown(e["payload"]["usage"]), "event_id": e["event_id"]}
+        from blacksmith.nodes.plan import journal_cost_event
+        known = {e["event_id"]: journal_cost_event(e)
             for e in context.journal().events() if e["kind"] == "model_cost"}
         if any(known.get(e.get("event_id")) != e for e in data["cost_events"]):
             raise ReceiptError("publication content cost differs from critical accounting")

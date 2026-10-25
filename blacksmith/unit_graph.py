@@ -83,9 +83,11 @@ def build_unit_graph(deps, worktree_manager=None):
                 )
             except Exception:
                 pass  # Optional observation never substitutes for critical checkpoint/receipts.
-            with command_scope_for_state(state, phase):
-                update = fn(state)
-            return _tag(state, phase, update)
+            from blacksmith.run_clock import failure_scope
+            with failure_scope():
+                with command_scope_for_state(state, phase) as scope, failure_scope(scope.context):
+                    update = fn(state)
+                    return _tag(state, phase, update)
 
         return node
 
@@ -121,7 +123,7 @@ def build_unit_graph(deps, worktree_manager=None):
         ):
             initial.update({k: state[k] for k in UnitAttemptState.__annotations__ if k in state})
         human = bool(state.get("prd") and state["prd"].contract.gate_for(unit) == "human")
-        return {
+        prepared = {
             **initial,
             "worktree_path": path,
             "branch": branch,
@@ -129,6 +131,24 @@ def build_unit_graph(deps, worktree_manager=None):
             "unit_namespace": f"{state.get('run_id', 'legacy')}/{unit_hash(unit.id)}",
             "unit_human": human,
         }
+        if state.get("run_context") and not human:
+            from blacksmith.budget import AdmissionDenied, BudgetLedger
+            from blacksmith.receipts import call_context_for
+            ledger = BudgetLedger(context_from_state(state))
+            balance = ledger.balance()
+            if balance.unacknowledged_overrun or (
+                    balance.remaining_usd is not None and balance.remaining_usd <= 0):
+                call = call_context_for({**state, **prepared}, unit_id=unit.id)
+                try:
+                    # This writes the original denied-before-start identity. A
+                    # concurrent refund may instead grant it; the SDK then reuses
+                    # that exact reservation rather than allocating a second one.
+                    ledger.reserve(call.key("model.implement"))
+                except AdmissionDenied as exc:
+                    prepared.update(status=Status.HALTED, unit_failed_stage="implement",
+                        errors=[{"node": "prepare_attempt", "message":
+                            f"budget denied before new unit {unit.id}: {exc.reason}"}])
+        return prepared
 
     original_model = gm.implement
     bound_model = gm._node_with(original_model, defer_commit=True, **deps.implement_kwargs())
@@ -254,7 +274,8 @@ def build_unit_graph(deps, worktree_manager=None):
     g.add_conditional_edges(START, lambda s: s.get("recovery_entry") or "prepare_attempt",
                             {name: name for name in entries})
     g.add_conditional_edges(
-        "prepare_attempt", lambda s: "finalize_unit" if s.get("unit_human") else "implement"
+        "prepare_attempt", lambda s: "finalize_unit" if (
+            s.get("unit_human") or s.get("status") == Status.HALTED) else "implement"
     )
     g.add_conditional_edges(
         "implement",

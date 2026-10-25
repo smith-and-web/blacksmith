@@ -558,6 +558,7 @@ class CallContext:
     unit_id: str
     attempt_id: str
     key_overrides: dict[str, str] | None = None
+    run_context: dict[str, Any] | None = None
 
     def journal(self) -> OperationJournal:
         return OperationJournal(self.journal_path, self.run_id, self.context_hash)
@@ -592,4 +593,5 @@ def call_context_for(
         unit_id,
         attempt,
         state.get("recovery_call_overrides"),
+        context.model_dump(),
     )

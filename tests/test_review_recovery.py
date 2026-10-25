@@ -177,7 +177,7 @@ def test_budget_amendment_revises_a_blocker_and_reports_latest_clean_without_era
 ):
     configure_review(project, revisions=1)
     project[1].write_text(project[1].read_text().replace(
-        "[limits]\n", "[limits]\nmax_run_cost_usd=0.025\n"))
+        "[limits]\n", "[limits]\nmax_run_cost_usd=0.03\n"))
 
     def change(unit, number, workspace, prompt):
         (workspace / "result.txt").write_text("version " + str(number))
@@ -188,6 +188,12 @@ def test_budget_amendment_revises_a_blocker_and_reports_latest_clean_without_era
     before = saved_values(project[1], "blocked-budget")
     original = before["unit_outcomes"]["U1"]
     assert original["review_receipt"].status == "blocking" and original["review_revisions"] == 0
+    # Three valid $.01 calls exhaust the cap before a code revision. An SDK
+    # overrun is a separate unavailable-policy outcome under S15 admission.
+    from blacksmith.budget import BudgetLedger
+    balance = BudgetLedger(context_from_state(before)).balance()
+    assert balance.charged_usd == .03 and balance.remaining_usd == 0
+    assert balance.overrun_usd == 0 and not balance.accounting_incomplete
     seen = []
 
     def approve(payload, values):

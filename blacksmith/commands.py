@@ -8,6 +8,7 @@ the calling stage owns semantic restart reconciliation.
 from __future__ import annotations
 
 import contextvars
+import functools
 import hashlib
 import json
 import math
@@ -48,6 +49,7 @@ class CommandScope:
     attempt_id: str = "native"
     stage: str = "native"
     credential_vars: tuple[str, ...] = ()
+    context: object = None
 
 
 _scope = contextvars.ContextVar("blacksmith_command_scope", default=None)
@@ -70,6 +72,7 @@ def command_scope(
             attempt_id=attempt_id,
             stage=stage,
             credential_vars=(config.api.key_env_var, config.api.admin_key_env_var),
+            context=context,
         )
     elif limits is not None:
         scope = CommandScope(
@@ -231,6 +234,10 @@ def run_command(
         if timeout is not None
         else (GIT_TIMEOUT_S if executable in {"git", "gh"} else scope.timeout_s)
     )
+    from blacksmith.run_clock import current
+    clock = current()
+    if clock is not None:
+        timeout = min(timeout, clock.check())
     if not math.isfinite(timeout) or timeout <= 0 or scope.max_output_bytes < 128:
         raise ValueError("command bounds must be positive")
     if not math.isfinite(terminate_grace_s) or not 0 <= terminate_grace_s <= 5:
@@ -295,6 +302,7 @@ def run_command(
                 now = time.monotonic()
                 if stopping is None and (
                     now >= deadline or (cancel is not None and cancel.is_set())
+                    or (clock is not None and clock.cancelled.is_set())
                 ):
                     timed_out = now >= deadline
                     cancelled = not timed_out
@@ -373,6 +381,8 @@ def run_command(
     if error:
         error.command_log_dir = log_dir
         raise error
+    if clock is not None and clock.error:
+        raise clock.error
     outputs = [c.output() for c in captures]
     tails = [bytes(c.tail).decode("utf-8", errors="replace") for c in captures]
     for index, capture in enumerate(captures):
@@ -397,3 +407,17 @@ def run_command(
     if timed_out or cancelled or check:
         result.check_returncode(allowed)
     return result
+
+
+_native_command = run_command
+
+
+@functools.wraps(_native_command)
+def run_command(*args, **kwargs):
+    from blacksmith.run_clock import execution_scope, retention_scope
+    scope = _scope.get()
+    if scope is not None and scope.stage in {"recovery_capture", "sdk_cleanup"}:
+        with retention_scope():
+            return _native_command(*args, **kwargs)
+    with execution_scope(scope.context if scope else None):
+        return _native_command(*args, **kwargs)

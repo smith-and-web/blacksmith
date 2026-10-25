@@ -150,7 +150,10 @@ class EditingTransport(Executor):
 
     def __init__(self, monkeypatch, edit):
         monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "test-only-unused-key")
-        super().__init__(BlacksmithConfig())
+        async def forbidden_query(*, prompt, options):
+            pytest.fail("overridden offline transport must never reach an SDK query")
+            yield  # Preserve the actual query async-iterator protocol if reached.
+        super().__init__(BlacksmithConfig(), query_fn=forbidden_query)
         self.edit = edit
         self.calls = []
 
@@ -177,7 +180,9 @@ def test_denied_attempt_halts_without_committing_valid_sibling_work(repository, 
         asyncio.run(options.can_use_tool("Write", {"file_path": "../escape.txt"}, None))
         (repository / "valid.txt").write_text("recover me")
 
-    out = implement(state, executor=EditingTransport(monkeypatch, edit))
+    transport = EditingTransport(monkeypatch, edit)
+    out = implement(state, executor=transport)
+    assert len(transport.calls) == 1
     assert out["status"] == Status.HALTED
     assert out["implement_error_kind"] == "policy_violation"
     assert git(repository, "rev-parse", "HEAD") == state["pr_base_ref"]
@@ -191,7 +196,10 @@ def test_unmediated_protected_edit_cannot_commit_or_publish(repository, monkeypa
     def edit(options):
         (repository / "blacksmith.toml").write_text('test_cmd = "true"\n')
 
-    out = implement(state, executor=EditingTransport(monkeypatch, edit))
+    transport = EditingTransport(monkeypatch, edit)
+    out = implement(state, executor=transport)
+    assert len(transport.calls) == 1
+    assert (repository / "blacksmith.toml").read_text() == 'test_cmd = "true"\n'
     assert out["status"] == Status.HALTED
     assert git(repository, "rev-parse", "HEAD") == state["pr_base_ref"]
 
@@ -213,7 +221,9 @@ def test_prd_rules_reach_implement_guard(repository, monkeypatch):
             "Write", {"file_path": "source.txt"}, None,
         )), PermissionResultDeny)
 
-    out = implement(state, executor=EditingTransport(monkeypatch, edit))
+    transport = EditingTransport(monkeypatch, edit)
+    out = implement(state, executor=transport)
+    assert len(transport.calls) == 1
     assert out["status"] == Status.HALTED
     assert (repository / "source.txt").read_text() == "unchanged\n"
 

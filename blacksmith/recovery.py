@@ -364,6 +364,8 @@ def protect_run(context, checkpointer):
     try:
         yield
     except BaseException as exc:
+        from blacksmith.accounting import print_failure
+        print_failure(context, out=sys.stderr)
         try:
             path = capture(context, checkpointer, reason=f"{type(exc).__name__}: {exc}")
             print(f"Recovery manifest: {path}\nNext action: {action}", file=sys.stderr)

@@ -324,13 +324,15 @@ def create_run_context(
     thread_id: str,
     *,
     required_tools: tuple[str, ...] = ("git", "gh", "claude"),
+    unlimited_cost: bool = False,
 ) -> RunContext:
     """Preflight once; materialize immutable artifacts before the first paid call."""
     with command_scope(limits=config.limits, stage="preflight"):
-        return _create_run_context(config, prd, thread_id, required_tools=required_tools)
+        return _create_run_context(config, prd, thread_id, required_tools=required_tools,
+                                   unlimited_cost=unlimited_cost)
 
 
-def _create_run_context(config, prd, thread_id, *, required_tools):
+def _create_run_context(config, prd, thread_id, *, required_tools, unlimited_cost=False):
     if not thread_id.strip() or any(ord(c) < 32 for c in thread_id):
         raise RunContextError("thread-id must be nonempty and contain no control characters")
     config = config.resolved()
@@ -403,6 +405,10 @@ def _create_run_context(config, prd, thread_id, *, required_tools):
         journal = OperationJournal.create(context)
         from blacksmith.recovery import initialize
         initialize(context)
+        from blacksmith.budget import initialize as initialize_budget
+        initialize_budget(context, unlimited_cost=unlimited_cost)
+        from blacksmith.run_clock import initialize as initialize_clock
+        initialize_clock(context)
         with command_scope(context, stage="bootstrap", attempt_id="bootstrap"):
             operation = OperationKey(
                 context.run_id, "__run__", "bootstrap", "git.planning_snapshot"

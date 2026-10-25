@@ -315,8 +315,8 @@ def _synthesize_summary(
     try:
         # _summary_prompt is INSIDE the fail-open try too: any error building the prompt
         # (e.g. a malformed PRD/state field) must fall back exactly like a model/parse
-        # error, never propagate out of the PR node — the summary is additive and can
-        # never block or crash opening the PR.
+        # error. Critical storage/admission/budget/deadline failures below propagate
+        # so an optional narration path can never bypass a run policy halt.
         prompt = _summary_prompt(state, units)
         kwargs = {"raise_on_error": False}
         if state.get("run_context"):
@@ -519,6 +519,12 @@ def _build_metadata_lines(state: BlacksmithState) -> list[str]:
             if node and model and node not in models_by_node:
                 models_by_node[node] = model
         body_lines = [f"- Total cost: ${total_cost:.4f}"]
+        if state.get("run_context"):
+            from blacksmith.accounting import clock_line, cost_line, snapshot
+            from blacksmith.run_context import context_from_state
+            accounting = snapshot(context_from_state(state))
+            body_lines = ["- " + cost_line(accounting),
+                          "- At publication preparation: " + clock_line(accounting)]
         body_lines.extend(f"- {node}={model}" for node, model in models_by_node.items())
         return [
             "",
@@ -529,6 +535,8 @@ def _build_metadata_lines(state: BlacksmithState) -> list[str]:
             "",
             "</details>",
         ]
+    except ReceiptError:
+        raise
     except Exception:
         return []
 

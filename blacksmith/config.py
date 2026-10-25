@@ -157,8 +157,8 @@ class TranscriptsConfig(_Strict):
     """Per-call transcript capture settings (WU-TRANSCRIPT-CAPTURE).
 
     A purely ADDITIVE observability channel: when ``enabled`` (the default), the
-    executor writes one JSONL file per model call under ``dir``, keyed by the call's
-    session id. It is its OWN directory, never the checkpointer/state — disabling it,
+    executor writes one JSONL file per model call under ``dir``, keyed by its unique
+    call ID even without a provider session. It is separate from state; disabling it,
     or an unwritable ``dir``, writes nothing and the run behaves exactly as today.
     """
 
@@ -180,11 +180,13 @@ class LimitsConfig(_Strict):
       the self-heal loop entirely (escalate-then-halt, the prior behaviour). The bounded
       count is the primary anti-runaway guard: worst case per unit is
       ``1 + max_fix_attempts + 1`` implement attempts.
-    * ``max_run_cost_usd`` — an OPTIONAL hard ceiling on total run spend. Once the run's
-      summed ``cost_events`` cross it, no further retry OR escalation fires and the run
-      halts with a "cost cap reached" error. ``None`` (the default) means no cap; it is
-      left off by default because a hard whole-run cap can strand a multi-unit run's
-      already-committed units, so the value is best chosen per project.
+    * ``max_run_cost_usd`` — the run-wide admission budget, default $50. An intentional
+      uncapped run uses the recorded CLI --unlimited-cost choice. SDK stopping is soft;
+      an actual overrun remains visible and prevents further admission.
+    * ``max_call_cost_usd`` — default $5; each paid call reserves the smaller of this
+      value and remaining unreserved run budget, then receives that SDK budget.
+    * ``model_timeout_s`` / ``max_run_seconds`` — model and accumulated execution
+      deadlines. Run execution excludes human approval waiting and spans resumes.
     * ``max_review_revisions`` — bounds the SEPARATE post-gate review loop
       (WU-REVIEW-CONFIG): the maximum number of review-driven revision attempts on a
       unit that already PASSED the test gate. It is independent of ``max_fix_attempts``
@@ -199,12 +201,16 @@ class LimitsConfig(_Strict):
       CONTINUE (keeping its partial work, fresh turn budget) before the run halts. A
       turn-cap is a budget-shaped failure, not a broken one, so — unlike a gate failure —
       the partial work is kept and finished rather than discarded. ``0`` disables the loop
-      (a turn cap halts immediately, the prior behaviour). Sequential path only, mirroring
-      escalation; a fan-out worker still records the cap and lets the join halt the level.
+      (a turn cap halts immediately). Both scheduling shapes use this same policy.
+      Explicit recovery of started uncertain/budget-stopped model calls consumes
+      the saved allowance; a denied-before-start call does not.
     """
 
     max_fix_attempts: int = Field(default=1, ge=0)
-    max_run_cost_usd: float | None = Field(default=None, gt=0)
+    max_run_cost_usd: float | None = Field(default=50.0, gt=0, allow_inf_nan=False)
+    max_call_cost_usd: float = Field(default=5.0, gt=0, allow_inf_nan=False)
+    model_timeout_s: float = Field(default=1800, gt=0, allow_inf_nan=False)
+    max_run_seconds: float = Field(default=21600, gt=0, allow_inf_nan=False)
     max_review_revisions: int = Field(default=1, ge=0)
     max_implement_turns: int = Field(default=40, ge=1)
     max_implement_continuations: int = Field(default=1, ge=0)

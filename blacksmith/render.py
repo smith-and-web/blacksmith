@@ -92,7 +92,7 @@ class Renderer:
     # -- final report ---------------------------------------------------------
 
     def report(self, *, status, pr_url, errors, cost_line: str, token_line: str,
-               pending_qa=None) -> None:
+               pending_qa=None, clock_line=None) -> None:
         """Render the run-end status summary.
 
         Plain mode prints the same ``status:`` / ``PR:`` / ``error […]`` / cost / token
@@ -111,12 +111,14 @@ class Renderer:
         shown = [] if succeeded else errors
         recovered = len(errors) if succeeded else 0
         if not self.rendered:
-            self._plain_report(status, pr_url, shown, recovered, cost_line, token_line, pending_qa)
+            self._plain_report(status, pr_url, shown, recovered, cost_line, token_line,
+                               pending_qa, clock_line)
             return
-        self._rendered_report(status, pr_url, shown, recovered, cost_line, token_line, pending_qa)
+        self._rendered_report(status, pr_url, shown, recovered, cost_line, token_line,
+                              pending_qa, clock_line)
 
     def _plain_report(self, status, pr_url, errors, recovered, cost_line, token_line,
-                      pending_qa) -> None:
+                      pending_qa, clock_line) -> None:
         print(f"\nstatus: {status}", file=self._out)
         if pr_url:
             print(f"PR: {pr_url}", file=self._out)
@@ -128,9 +130,11 @@ class Renderer:
             print(f"recovered: {recovered} transient failure(s)", file=self._out)
         print(cost_line, file=self._out)
         print(token_line, file=self._out)
+        if clock_line:
+            print(clock_line, file=self._out)
 
     def _rendered_report(self, status, pr_url, errors, recovered, cost_line, token_line,
-                         pending_qa) -> None:
+                         pending_qa, clock_line) -> None:
         style = _STATUS_STYLES.get(status, "bold")
         body = Text()
         body.append("status: ", style="dim")
@@ -152,6 +156,8 @@ class Renderer:
             )
         body.append(f"\n{cost_line}", style="dim")
         body.append(f"\n{token_line}", style="dim")
+        if clock_line:
+            body.append(f"\n{clock_line}", style="dim")
         self._console.print(Panel(body, title="blacksmith", border_style=style, expand=False))
 
     # -- approval gate --------------------------------------------------------

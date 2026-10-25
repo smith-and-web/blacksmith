@@ -21,6 +21,13 @@ implement = "claude-sonnet-5"  # implementation
 # Git/gh use a separate 120-second default. Toolchain credentials are stripped.
 command_timeout_s = 1800
 max_command_output_bytes = 1048576
+# Every paid role reserves min(call cap, remaining run allowance) before transport.
+# SDK stopping can overrun its reservation; actual overrun halts further admission.
+# Missing usage consumes the full reservation and is reported as incomplete.
+max_run_cost_usd = 50.0
+max_call_cost_usd = 5.0
+model_timeout_s = 1800
+max_run_seconds = 21600
 # Gate self-heal loop (WU-GATE-SELF-HEAL). When a unit's test gate fails, blacksmith
 # re-implements the unit with the gate output fed back, instead of discarding the
 # (expensive) run on a fixable error.
@@ -30,11 +37,9 @@ max_command_output_bytes = 1048576
 #   bounded count is the anti-runaway guard: worst case per unit is
 #   1 + max_fix_attempts + 1 implement attempts.
 max_fix_attempts = 1
-# max_run_cost_usd: OPTIONAL hard ceiling on total run spend. Once the run crosses it, no
-#   further retry/escalation fires and it halts with a "cost cap reached" error. Commented
-#   out = no cap. A hard whole-run cap can strand an already-committed multi-unit run, so
-#   pick a value with that in mind (a single-PRD run today costs ~$5-7.50).
-# max_run_cost_usd = 12.0
+# Omission uses the $50 default. Intentional uncapped runs require --unlimited-cost;
+# it is frozen in the saved policy. Per-call and execution-time limits still apply.
+# Budget-only resume requires --add-budget-usd N; ordinary resume cannot reset spend.
 #
 # max_implement_turns: the per-attempt turn budget for the implementer (default 40). A large
 #   unit needs more turns; too small a budget makes implement hit the cap and fail before
@@ -43,7 +48,7 @@ max_fix_attempts = 1
 # max_implement_continuations: how many times a turn-capped implement attempt may CONTINUE —
 #   keeping its partial work, fresh budget — before halting (code default 1). A turn cap is a
 #   budget-shaped failure, not a broken one, so the partial work is finished rather than
-#   discarded. 0 disables it (a turn cap halts immediately). Sequential path only. Set to 2
+#   discarded. 0 disables it (a turn cap halts immediately). Both DAG shapes. Set to 2
 #   here: turn-heavy units (e.g. a new module + config + cli wiring + tests) can need more
 #   than one continuation to finish.
 max_implement_continuations = 2

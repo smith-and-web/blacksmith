@@ -130,32 +130,11 @@ def _costs(context, checkpoints, root):
             if event.get("event_id") not in seen:
                 result = merge_events(result, [event])
                 seen.add(event.get("event_id"))
-    from blacksmith.nodes.plan import usage_breakdown
+    from blacksmith.nodes.plan import journal_cost_event
 
     for event in context.journal().events():
         if event["kind"] == "model_cost" and event["event_id"] not in seen:
-            payload = event["payload"]
-            result = merge_events(
-                result,
-                [
-                    {
-                        **{
-                            k: payload[k]
-                            for k in (
-                                "call_id",
-                                "unit_id",
-                                "model",
-                                "cost_usd",
-                                "num_turns",
-                                "session_id",
-                            )
-                        },
-                        "node": payload["node"].removeprefix("model."),
-                        "usage": usage_breakdown(payload.get("usage")),
-                        "event_id": event["event_id"],
-                    }
-                ],
-            )
+            result = merge_events(result, [journal_cost_event(event)])
             seen.add(event["event_id"])
     return result
 
@@ -264,6 +243,31 @@ def _unknown_commands(context, unit, attempt):
 def _publication_target(context, state):
     from blacksmith.publication import recovery_target
     return recovery_target(context, state)
+
+
+def _needs_model_continuation(operation):
+    return operation.status not in {"completed", "failed"} or (
+        ((operation.outcome or {}).get("result") or {}).get("error_kind") == "budget")
+
+
+def _continue_calls(state, operations, limits):
+    """Replace only acknowledged stopped paid identities, under the saved allowance."""
+    overrides = dict(state.get("recovery_call_overrides") or {})
+    counts = dict(state.get("recovery_plan_continuations") or {})
+    acknowledged = list(state.get("recovery_acknowledged_calls") or [])
+    for operation in operations:
+        identity = encoded([operation.key.unit_id, operation.key.attempt_id, operation.key.kind])
+        identity = next((base for base, target in overrides.items()
+                         if target == operation.key.attempt_id and json.loads(base)[::2]
+                         == [operation.key.unit_id, operation.key.kind]), identity)
+        count = counts.get(identity, 0)
+        if count >= limits["max_implement_continuations"]:
+            raise RecoveryError("model continuation allowance exhausted")
+        counts[identity] = count + 1
+        overrides[identity] = operation.key.attempt_id + f":continuation:{count + 1}"
+        acknowledged.append(operation.key.id)
+    return {"recovery_call_overrides": overrides, "recovery_plan_continuations": counts,
+            "recovery_acknowledged_calls": list(dict.fromkeys(acknowledged))}
 
 
 def _unstarted_units(context, root, saved_units):
@@ -425,47 +429,35 @@ def _prepare(
             patch.update(recovery_target="prepare_pr_approval",
                          pr_approval_round=root.get("pr_approval_round", 0) + 1,
                          pr_approval_proposal=None, pr_approval=None)
-    elif retry_stage and not continue_attempt and not unit_id and (
+    elif (retry_stage or add_budget_usd or continue_attempt) and not unit_id and (
             publication := _publication_target(context, root)):
+        from blacksmith.receipts import call_context_for
+        candidate = root["pr_approval"]["proposal"]["candidate_commit"]
+        call = call_context_for(root, unit_id="__run__", attempt_id=f"summary:{candidate}")
+        operation = context.journal().get(call.key("model.summary"))
+        stopped = operation and _needs_model_continuation(operation)
+        if stopped:
+            if not continue_attempt:
+                raise RecoveryError("stopped/uncertain summary requires --continue-attempt")
+            patch.update(_continue_calls(root, [operation], limits))
+        elif continue_attempt:
+            raise RecoveryError("publication continuation requires a stopped/uncertain summary")
         patch["recovery_target"] = publication
         patch["recovery_fingerprints"] = {"__run__": {
             "path": str(context.workspace_path), "value": fingerprint(context.workspace_path)}}
     elif not root.get("worktree_path"):
         if not continue_attempt and not add_budget_usd:
             raise RecoveryError("planning recovery requires --continue-attempt")
-        overrides = dict(root.get("recovery_call_overrides") or {})
-        counts = dict(root.get("recovery_plan_continuations") or {})
         uncertain = [
             o
             for o in context.journal().operations()
             if o.key.kind.startswith("model.")
-            and o.status not in {"completed", "failed"}
+            and _needs_model_continuation(o)
             and o.key.id not in set(root.get("recovery_acknowledged_calls") or [])
         ]
         if uncertain and not continue_attempt:
             raise RecoveryError("uncertain planner/critic requires --continue-attempt")
-        for operation in uncertain:
-            identity = encoded(
-                [operation.key.unit_id, operation.key.attempt_id, operation.key.kind]
-            )
-            identity = next((base for base, target in overrides.items()
-                             if target == operation.key.attempt_id
-                             and json.loads(base)[::2]
-                             == [operation.key.unit_id, operation.key.kind]), identity)
-            count = counts.get(identity, 0)
-            if count >= limits["max_implement_continuations"]:
-                raise RecoveryError("planning continuation allowance exhausted")
-            counts[identity] = count + 1
-            overrides[identity] = operation.key.attempt_id + f":continuation:{count + 1}"
-        patch.update(
-            recovery_target="plan",
-            recovery_call_overrides=overrides,
-            recovery_plan_continuations=counts,
-            recovery_acknowledged_calls=[
-                *(root.get("recovery_acknowledged_calls") or []),
-                *[o.key.id for o in uncertain],
-            ],
-        )
+        patch.update(recovery_target="plan", **_continue_calls(root, uncertain, limits))
     else:
         root_unit = root.get("selected_unit")
         if root_unit and _unknown_commands(context, root_unit.id, attempt_identity(root)):
@@ -543,6 +535,24 @@ def _prepare(
                 review_resume = stage == "review"
                 review_blocked = bool(review_resume and state.get("review_receipt")
                                       and state["review_receipt"].status == "blocking")
+                from blacksmith.budget import BudgetLedger
+                from blacksmith.receipts import call_context_for
+                ledger = BudgetLedger(context)
+                budget_reuse = False
+                if add_budget_usd and not continue_attempt:
+                    if review_resume and not review_blocked:
+                        panels = getattr(state.get("review_receipt"), "panel_results", ())
+                        missing = [p for p in panels if p.status == "unavailable"]
+                        budget_reuse = bool(missing) and all(
+                            (ledger.denied_before_start(call_context_for(state, unit_id=identity,
+                                attempt_id=attempt_identity(state) + f":review-seat:{p.seat}"
+                            ).key("model.review")) or ledger.completed_overrun(call_context_for(
+                                state, unit_id=identity, attempt_id=attempt_identity(state)
+                                + f":review-seat:{p.seat}").key("model.review"))) for p in missing)
+                    elif stage == "implement":
+                        call_key = call_context_for(state, unit_id=identity).key("model.implement")
+                        budget_reuse = ledger.denied_before_start(call_key) \
+                            or ledger.completed_overrun(call_key)
                 effect_resume = False
                 overrides = dict(state.get("recovery_call_overrides") or {})
                 if review_blocked:
@@ -550,7 +560,8 @@ def _prepare(
                             >= limits["max_review_revisions"]):
                         raise RecoveryError("blocking candidate cannot be re-reviewed unchanged; "
                                             "revision allowance remains exhausted")
-                if review_resume and not continue_attempt and not review_blocked:
+                if review_resume and not continue_attempt and not review_blocked \
+                        and not budget_reuse:
                     raise RecoveryError("review requires --continue-attempt "
                                         "under remaining allowance")
                 if continue_attempt and not review_blocked:
@@ -583,6 +594,11 @@ def _prepare(
                         "Prior usage may be unknown."
                     )
                     stage = "review" if review_resume else "implement"
+                elif budget_reuse:
+                    # A denied call or successful overrun response needs no new paid
+                    # call/continuation; keep identity, options and consumed counters.
+                    if review_resume:
+                        state["review_retry_token"] = key.id
                 elif stage == "implement":
                     raise RecoveryError("model stage requires explicit --continue-attempt")
                 elif not review_blocked:
@@ -603,7 +619,8 @@ def _prepare(
                 state["implementation_attempt_id"] = (
                     state.get("implementation_attempt_id") or old_attempt
                 )
-                state["attempt_id"] = old_attempt if review_resume or effect_resume else (
+                state["attempt_id"] = old_attempt if (
+                    review_resume or effect_resume or budget_reuse) else (
                     old_attempt + f":recovery:{generation}")
                 if add_budget_usd and stage == "test_gate":
                     state["recovery_entry"] = "recovery_decision"
@@ -623,9 +640,13 @@ def _prepare(
                 "path": str(path),
                 "value": fingerprint(path),
             }
-    cap = limits.get("max_run_cost_usd")
-    if cap is not None and sum(float(e.get("cost_usd") or 0) for e in costs) >= cap:
+    from blacksmith.budget import BudgetLedger
+    balance = BudgetLedger(context).balance()
+    remaining = balance.remaining_usd
+    if remaining is not None and remaining + (add_budget_usd or 0) <= 0:
         raise RecoveryError("run budget exhausted; explicit resume --add-budget-usd N required")
+    if balance.unacknowledged_overrun and not add_budget_usd:
+        raise RecoveryError("reservation overrun; explicit resume --add-budget-usd N required")
     # Retain a fresh immutable capture before any attempt transition or replacement.
     manifest = capture(context, saver, reason="explicit recovery amendment", stage="recovery")
     relative = "amendments/" + key.id + ".json"
@@ -638,7 +659,7 @@ def _prepare(
         "patch_sha256": digest(patch_text),
         "acknowledged_operations": [o.key.id for o in context.journal().operations()
                                     if o.key.kind.startswith("model.")
-                                    and o.status not in {"completed", "failed"}
+                                    and _needs_model_continuation(o)
                                     and (not unit_id or o.key.unit_id == unit_id)]
                                    if continue_attempt else [],
     }

@@ -62,7 +62,10 @@ def prd_file(tmp_path, *, parallel):
 class RequirementsTransport(Executor):
     def __init__(self, monkeypatch):
         monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "test-only-unused-key")
-        super().__init__(BlacksmithConfig())
+        async def forbidden_query(*, prompt, options):
+            pytest.fail("overridden offline transport must never reach an SDK query")
+            yield  # Keep the actual query async-iterator protocol if reached.
+        super().__init__(BlacksmithConfig(), query_fn=forbidden_query)
         self.calls = []
 
     async def _collect(self, prompt, options, *, emit_findings=False):
