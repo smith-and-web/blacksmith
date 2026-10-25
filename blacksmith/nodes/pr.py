@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from blacksmith.commands import run_command
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.plan import cost_event
 from blacksmith.path_policy import PolicyViolation, policy_for_state
@@ -246,10 +247,10 @@ def _publication_content(state, executor):
 
 
 def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
-    """Context for the PR title/summary synthesis call: the PRD's purpose (its prose body)
-    plus each built unit's title, files touched, and diff summary."""
-    prd = state.get("prd")
-    purpose = (getattr(prd, "body", "") or "").strip() or "(no PRD body available)"
+    """Full frozen requirements plus the completed units' observed build facts."""
+    prd = requirements_prd(state)
+    requirements = (render_context(state) if prd is not None
+                    else "PRD purpose:\n(no PRD body available)")
     if len(units) == 1:
         impl = state.get("implementation") or {}
         by_id = {units[0].id: impl}
@@ -266,9 +267,10 @@ def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
     ]
     units_block = "\n".join(unit_lines) or "(no units)"
     return (
-        "Write a concise pull request title and summary for the following completed work.\n\n"
-        f"PRD purpose:\n{purpose}\n\n"
-        f"Units built this run:\n{units_block}\n\n"
+        "Write a concise pull request title and summary for the following recorded work.\n\n"
+        f"{requirements}\n\n"
+        f"Units included in this publication:\n{units_block}\n\n"
+        "Human-gated units are pending manual QA; do not describe them as completed checks.\n\n"
         f"Recorded review status: {_review_status(state)}. Disabled review is not clean; "
         "do not invent review approval or equate revision attempts with resolved findings.\n\n"
         "Respond with EXACTLY ONE fenced JSON code block and nothing else:\n"
