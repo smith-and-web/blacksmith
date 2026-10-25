@@ -1,0 +1,15 @@
+{
+  "all_frozen_identities_unchanged": true,
+  "expected1414": true,
+  "goal_turn": 26,
+  "handle": 20455,
+  "implementation_revision": "85fb50e5f6da462ee5c51962c51af994fa100e8c",
+  "log_sha256": "3eb0a4c7b8223f4cfdc6315341f8df79cba36f1661e2f9715045209ccd599b47",
+  "observed_at": "2026-10-25T09:49:35.520330-03:00",
+  "observer_ps_exit1": "expected no PIDs after terminal supervisor, not a pytest failure",
+  "pytest_exit": 0,
+  "source_count": 175,
+  "summary": "1414 passed, 4 warnings in 5466.74s (1:31:06)",
+  "supervisor_exit": 0,
+  "whole_goal": "NOT complete; R02 summary66beb2a requires transfer and exact full1419"
+}

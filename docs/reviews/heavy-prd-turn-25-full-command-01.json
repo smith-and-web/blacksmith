@@ -1,4 +1,14 @@
 {
+  "after": {
+    "config_matches": true,
+    "distributions_match": true,
+    "extra_verification_matches": true,
+    "inputs_match": true,
+    "python_matches": true,
+    "source_matches": true,
+    "sqlite_matches": true
+  },
+  "all_identities_unchanged": true,
   "before": {
     "config_matches": true,
     "distributions_match": true,
@@ -17,14 +27,18 @@
     "--basetemp",
     "/private/tmp/blacksmith-heavy-prd-t25-full-01"
   ],
+  "elapsed_seconds": 5468.050380375003,
   "environment_record": "/Users/josh.smith/Code/blacksmith/docs/reviews/heavy-prd-turn-25-environment-01.json",
   "environment_sha256": "001ff9b4586200c88d485440eef2b1d18ff60dc98634e1e42646d35ef88d95ff",
+  "exit_code": 0,
   "expected_collected_count": 1414,
+  "finished_at": "2026-10-25T09:47:15.273815-03:00",
   "goal_turn": 25,
   "implementation_revision": "85fb50e5f6da462ee5c51962c51af994fa100e8c",
+  "log_sha256": "3eb0a4c7b8223f4cfdc6315341f8df79cba36f1661e2f9715045209ccd599b47",
   "pytest_log": "/Users/josh.smith/Code/blacksmith/docs/reviews/heavy-prd-turn-25-pytest-full-01.log",
   "started_at": "2026-10-25T08:16:06.956324-03:00",
-  "status": "running",
+  "status": "terminal",
   "supervisor_pid": 25554,
   "warning": "Expected count is not a pass; observe this job, never restart on timeout"
 }

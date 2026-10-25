@@ -154,6 +154,13 @@ results, lost streams and cancellation remain explicit uncertain outcomes;
 automatic replay refuses them with `interrupted_attempt_requires_resume`.
 Known streamed turns and reported terminal usage survive stream errors.
 
+Every production paid role also receives exact frozen PRD prose/full contract,
+including tool-free PR title/summary narration. Summary ignores changed original
+and in-memory PRD values, keeping its cached prompt identity stable. Existing
+conflicting prompt intents fail closed rather than replaying a paid call. Human
+QA declarations remain pending checks in narration. No new paid role/cap is added;
+the full context can increase input tokens.
+
 A successful SDK result requires subtype `success` and a false error flag. Model
 intents commit `terminal_policy_version=1` before transport; cached result and
 retained-review acceptance require that exact integer version. Missing, boolean

@@ -1,0 +1,15 @@
+{
+  "all176_sources_config_original_inputs_match": true,
+  "at": "2026-10-25T09:49:36.935071-03:00",
+  "feature_paths": [
+    "blacksmith/nodes/pr.py",
+    "tests/test_summary_requirements.py"
+  ],
+  "final_full1419_required": true,
+  "goal_turn": 26,
+  "metadata_and_unrelated_edits_preserved": true,
+  "patch_sha256": "5db59380634503fa505403d846c0c32f124fa8c449af7c3f88c552b0e10a3e68",
+  "source_record_sha256": "44725a1c11795b0f07b8a7d09b14a8f9ac3206d37e351212f925e01301515737",
+  "stage_revision": "66beb2ab347ca4ad265d273db90135f108f0b855",
+  "transfer_after_old_full_terminal0": true
+}

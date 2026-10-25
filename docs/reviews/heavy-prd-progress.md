@@ -4,7 +4,7 @@
 - Goal turn: 26 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
 - Previous-turn classification: progress; accepted exact full1398/S16-S18, reproduced/fixed fresh and cached terminal-policy gaps, scoped134/Ruff passed, committed85fb50e/d3ebcd4, archived and safely removed completed fixtures, launched final full1414 once on frozen175-source/runtime identity.
-- Current turn: 26; automatic25->26 increment once. Full20455 positively live on frozen85fb50e/175-source/runtime identity, past66% at38:24 with no failure markers. S02 reopened for paid summary full context; isolated2-file fix committed66beb2a, broad72/854.27s then exact-final25/113.42s/Ruff pass;176 sources unchanged after hooks,1419 collected. Source/patch proof turn26-summary-source-01.json. No primary source transfer until full terminal; later corrected full1419 still required. Preserve counter through compaction/tools/status; at30 save exact handoff and pause unfinished.
+- Current turn: 26; automatic25->26 increment once. Full20455 terminal0:1414 passed/4 retained SDK warnings/5466.74s, all175-source/config/input/JS/helper/65-distribution/runtime identities unchanged and100/20 passed. Summary correction committed1d68a64, all176 sources match stage66beb2a after hooks; broad72/exact25/Ruff pass, primary1419 collection0.66s and Ruff pass. Final corrected full1419 not launched; S02/S19 unchecked. Archive10052 verified935878 entries/protected0; fresh owner42810 exit1/no records; safe cleanup31683 now running before new frozen full. Counter26 persists; at30 stop/save precise handoff/pause unfinished, never reset on compaction/status/tools.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,73 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn26; full1414 live, S02 summary-context gap reopened in isolation
+## Current handoff: turn26; final source1d68a64 committed, full1419 awaiting archive headroom
+
+Counter **26/30**, incremented25->26 once only. Current implementation
+**1d68a6492e53898c5011a24b9d14d771bad6275d** committed on feature/heavy-prd-readiness.
+All176 Python sources/config/original inputs/runtime match isolated final candidate
+**66beb2ab347ca4ad265d273db90135f108f0b855** after both commit hooks. Only nodes/pr.py
+and new test_summary_requirements.py transferred; the remaining174 baseline Python
+files are unchanged. Checked delta/complete identity in turn26-summary-source-01.json,
+turn26-summary-feature.patch and turn26-summary-integration.json. Source is corrected
+but S02 and S19 remain unchecked until final corrected full1419 and closeout.
+
+Full **20455 terminal0** on old85fb50e: **1414 passed,4 retained SDK warnings/
+5466.74s (1:31:06)**, no failures/skips/xfails/filtering. Actual100-chain and20-root/
+default2 included and passed. Every175 Python/JS/helper/config/input/65 distributions/
+Python3.12.13/SQLite3.53.1 identity unchanged before/after. Frozen record
+turn25-environment-01.json; terminal turn25-full-command-01.json; terminal proof
+turn26-full1414-terminal-proof.json; logSHA
+3eb0a4c7b8223f4cfdc6315341f8df79cba36f1661e2f9715045209ccd599b47.
+No supervisor/uv/pytest PIDs remain; observer ps exit1 is expected, not test failure.
+This green baseline cannot prove the subsequent summary correction.
+
+R02 audit found summary missing full contract and reading mutable PRD state.
+Real CLI baseline1 failed/18.93s, retained. Shared renderer now gives exact frozen
+prose/full contract to the existing tool-free summary call; pending human QA is
+explicitly not completed checks. No new call class/cap; input tokens may increase.
+Broad scope72/854.27s then exact-final25/113.42s, no warnings/skips/xfails, and Ruff
+pass. New5 cases cover both shapes/normal+QA publication, changed original PRD,
+mutated in-memory PRD and stable cached-prompt identity. Conflicting old SDK prompt
+intents fail closed, never silently rebilled. Primary Ruff-final01 passes;
+collection-primary-final01 **1419/0.66s**. No new dependency/config/schema change.
+Original spec/probe unchanged and untracked/unstaged; original other worktree intact.
+
+Completed old full fixture /private/tmp/blacksmith-heavy-prd-t25-full-01 is being
+archived, not deleted yet. Fresh owner8504 terminal1/no process records; only
+validated unrelated-device HFS warnings in turn26-archive-full1414-lsof-01.log.
+Preparation **10052 terminal0** via /private/tmp/blacksmith-heavy-prd-turn-26-archive-full1414.py,
+log turn26-archive-full1414-prepare-01.log. Fully verified935878 entries/1762288473
+logical payload bytes, protected0; archive346740898 bytes/SHAc708f844e323fecc53f7eed3a185d7db35bacba61514287bfb17c6eb460ea900,
+compressed manifestSHA3b30c1f526145eca4391c05f2a2af46cf89f0dda1d471ba7660f7274a3eae2be.
+Proof turn26-archive-full1414-proof.json; source retained, cleanup not started.
+Fresh post-archive owner42810 terminal1/no process records; only validated
+unrelated-device HFS warnings. Safe cleanup now running; do not launch it again
+after timeout. Observe same handle/PID and completion proof. It requires terminal0/unchanged identities
+and validates every archived byte/mode/symlink, skipping protected .env/special/
+inode aliases. Do not clean until verified archive/proof, protected0 and another
+fresh no-owner check. Cleanup helper /private/tmp/blacksmith-heavy-prd-
+turn-26-archive-full1414-cleanup.py now running as31683, log turn26-archive-full1414-cleanup-01.log.
+It revalidates archive/manifest/source identity and changes only owned directory
+modes before removing this verified closed root. Failed roots untouched. No test
+job live; safe cleanup is the only possible live job.
+
+Next: observe archive handle to terminal, verify proof/hashes/restore prerequisites,
+fresh owner check, safe owned-directory-only cleanup, then execute prepared
+/private/tmp/blacksmith-heavy-prd-turn-26-freeze.py. It requires completed archive/
+cleanup, source176 exactly matching stage66, configs/original inputs/runtime stable,
+primary1419 collection/Ruff and >=4GB free. Prepared full supervisor
+/private/tmp/blacksmith-heavy-prd-turn-26-full-supervisor.py expects fresh root
+/private/tmp/blacksmith-heavy-prd-t26-full-01 and1419 tests; launch exactly once only
+after valid frozen turn26-environment-01.json. Final full NOT launched yet. Then
+observe same handle/PIDs/log and retain failure evidence. Requirement inventory
+must be refreshed to final176-source identity and5 summary cases; each row still
+needs exact final full proof. Human contract review, paid10-dollar canary and real
+Docker enablement smoke remain unrun/prohibited here. At30 stop implementation,
+save precise completed/outstanding/verification/live-job/next-action handoff and
+pause unfinished goal; never reset/resume automatically.
+
+## Historical turn26 audit and full1414 wait; full1414 live, S02 summary-context gap reopened in isolation
 
 Counter **26/30**, incremented25->26 once on this automatic continuation.
 Previous turn was progress. Primary implementation85fb50e5f6da462ee5c51962c51af994fa100e8c;
@@ -104,6 +170,16 @@ full1414.py and corresponding cleanup helper (require terminal0/unchanged old fu
 fresh no-owner proof, protected0/complete archive verification before cleanup);
 /private/tmp/blacksmith-heavy-prd-turn-26-full-supervisor.py expects later1419.
 No current fixture archive/cleanup starts while full20455 remains live.
+Latest09:36 observation:1313 passing markers/no failures; both actual100-chain
+and20-root/default2 now pass. Remaining cases/terminal whole-full result still
+required; no later-summary1419 acceptance inferred.
+Latest09:33 observation:1312 passing markers/no failure markers; actual100-chain
+now passed on this exact frozen source.20-root/default2 is next; whole full is
+still live. Earlier artifact counts below are historical progress observations.
+Full observation at09:07: positively live20455/25554/25555,1311 passing markers,
+100 per-unit plan artifacts and14 workspace unit files. Artifact counts are not
+passing unit/test outcomes. All source175/config/input/JS/helper/dependency
+identities remain frozen; current full cannot accept later summary66beb2a.
 All archive/cleanup jobs terminal;
 full is the only live job. At30 stop implementation, retain live-job details and
 precise completed/outstanding/verification/next action, pause unfinished and do not

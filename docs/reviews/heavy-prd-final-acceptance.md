@@ -1,42 +1,39 @@
 # Heavy-PRD final acceptance audit
 
-Goal turn26/30. **Implementation remains unaccepted as a whole.** S01 and S03–S18 have
-local full-suite proof; S02 is reopened for paid PR-summary context. Prior baseline: full02 on539508be01b498749f6cb49c33c80b9d35047a04
-ended exit0, **1398 passed/5 retained SDK advisories/5047.97s**, including actual
-100-chain and20-root/default2 cases. All174 source/config/input/runtime identities
-were unchanged before/after; turn24-environment-02.json and
-turn24-full-command-02.json retain the proof. The earlier saved-config drift
-failure is corrected with its original assertion intact; failed receipts remain.
-S19 is open: final audit reproduced SDK error/unknown terminal subtypes accepted
-as successful when is_error=false. Positive success is now required; focused
-67/50/9 and Ruff pass. The cached-evidence migration correction is integrated as
-85fb50e5f6da462ee5c51962c51af994fa100e8c: policy1 model intents prove stricter
-normalization before reuse; unsupported historical results refuse execution while
-remaining inspectable. All175 tested sources/config/inputs/runtime match stage
-24dc05b after hooks; final compatibility134/347.66s passes with no warnings/skips/
-xfails, primary Ruff passes and1414 tests collect. Original assertions are retained.
-Final corrected-source full1414 is running exactly once (20455; supervisor25554/uv25555), frozen in turn25-environment-01.json with terminal receipt turn25-full-command-01.json. Its passing terminal result/unchanged identities and acceptance closeout are still required; no pass claimed.
-This audit maps the settled
-specification to production paths and regression evidence. A test's existence is
-not its passing receipt. Exact command/results and frozen source/runtime manifests
-belong in [the evidence ledger](heavy-prd-evidence.md).
+Goal turn26/30. **Implementation remains unaccepted as a whole.** S01 and S03-S18
+have local baseline acceptance. S02's summary-context correction is implemented;
+S02/S19 remain unchecked pending final corrected-source full verification.
 
-The [turn26 inventory](heavy-prd-turn-26-acceptance-inventory.json) maps all12
-requirements,19 slices and21 specification acceptance rows to existing production
-files and collected regression cases on the exact frozen175-source candidate.
-The audit reproduced another R02 gap: summary narration omits the full contract
-and reads mutable state prose. Baseline1 failed/18.93s; isolated five-case correction
-is under verification. S02 is reopened; even a green current1414 cannot accept that
-newer source. Its1414 collected cases are not passing results. Every row remains pending the
-terminal full run, unchanged identities and this acceptance closeout. Sandbox and
-respond rows explicitly use the specification's permitted disabled alternatives.
+Latest terminal full on85fb50e: **1414 passed,4 retained SDK advisories/5466.74s,
+exit0**, including the actual100-chain and20-root/default2 cases. No skips/xfails/
+filtering; all175 source/config/input/JS/helper/65-distribution/Python3.12.13/
+SQLite3.53.1 identities were unchanged before/after. Terminal receipt
+turn25-full-command-01.json and turn26-full1414-terminal-proof.json retain proof.
+This includes the positive-terminal SDK check and missing/boolean/future model-
+policy migration refusal. Original failed receipts/assertions remain intact.
+
+The R02 audit then reproduced missing full contract in paid PR-summary narration,
+1 failed/18.93s. Two-file correction **1d68a6492e53898c5011a24b9d14d771bad6275d**
+is now integrated: summary uses the shared immutable renderer, ignores changed
+original/in-memory PRD, preserves cached prompt identity and names human QA as
+pending. Scope72/854.27s then exact-final25/113.42s pass; all176 source/config/input/
+runtime identities match isolated66beb2a after both hooks. Primary Ruff passes and
+**1419 tests collect/0.66s**. Current completed full1414 does not prove newer code.
+
+Final corrected full1419 **has not launched**; verified archive preparation10052
+on the completed baseline is recovering disk headroom. No test job is live.
+The [evidence ledger](heavy-prd-evidence.md), [original audit inventory](heavy-prd-turn-26-acceptance-inventory.json)
+and final-source inventory record commands, exact sources and the remaining proof.
+Every requirement/acceptance row must bind to the final terminal1419 result and
+unchanged identities before local completion. Sandbox/respond use only the explicit
+permitted disabled alternatives. No live release gate has passed.
 
 ## Required design and production wiring
 
 | Requirement | Production path | Regression groups / existing audit |
 | --- | --- | --- |
 | R01 frozen run/preflight/paths/lock | CLI bootstrap/resume → RunContext manifest, immutable PRD/config/toolchain, flock → run-owned planning/shared/unit clones | test_run_context, test_contract, test_cli_validate, test_clone; heavy-prd-run-context.md |
-| R02 full requirements/approved plans | context renderer → per-unit plan/critic in frozen cwd → critical plan artifacts/approval → shared child implement/review prompts in every retry shape | test_requirements_context, test_plan_integrity, test_unit_subgraph |
+| R02 full requirements/approved plans | context renderer → per-unit plan/critic in frozen cwd → critical plan artifacts/approval → shared child implement/review prompts in every retry shape; tool-free PR summary uses the same frozen renderer | test_requirements_context, test_plan_integrity, test_unit_subgraph, test_summary_requirements |
 | R03 write/verifier boundary | role-specific SDK grants + callback PathPolicy → post-implementation/formatter audit → exact candidate guards before gates/publication; immutable trusted toolchain | test_path_policy, test_gate_integrity, test_receipt_wiring; sandbox enabled settings refused |
 | R04 exact layer gates/joins | checked commit/fix → all declared auto layers → keyed unit outcomes → saved-source joins → joined layer-union gate → final exact candidate → normal/draft publisher guard | test_gate_integrity, test_integration_integrity, test_join_recovery, test_publication_approval |
 | R05 shared owned recovery | unit_state factory → same compiled unit graph in both shapes → bounded continuations/fixes/escalation/review revisions → keyed UnitOutcome | test_unit_state, test_unit_subgraph, test_self_heal, test_fanout_self_heal, test_review_recovery |

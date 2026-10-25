@@ -49,18 +49,22 @@ new configuration, migration, every specification matrix row and remaining gates
 
 ## Final required local verification
 
-Turn26 R02 audit reproduced missing full contract in the paid PR-summary prompt
-(actual CLI/Git/gates/SQLite, baseline1 failed/18.93s). S02 is reopened. A two-file
-correction in summary-stage uses the shared immutable renderer;5 new regressions
-and adjacent approval/receipt paths are under verification. Current full1414 on
-85fb50e remains useful regression evidence but cannot complete the goal; final
-summary-corrected source requires another full suite and Ruff. No primary source
-changes while full20455 is live.
+R02's paid PR-summary gap is corrected in **1d68a6492e53898c5011a24b9d14d771bad6275d**.
+The shared renderer now supplies exact frozen prose/full contract, and narration
+explicitly treats human QA as pending. No added call class/cap; input tokens can
+increase. Five new cases cover both scheduling shapes/normal+QA publication,
+changed source PRD, mutated in-memory PRD and stable cached-prompt identity.
+The real CLI/Git/gate/SQLite negative baseline failed1/18.93s; retained unchanged.
+Broad scope72/854.27s then exact-final25/113.42s and Ruff pass. Checked two-file
+transfer preserves174 other baseline Python files. All176 source/config/input/
+runtime identities match isolated66beb2a after both hooks; source/integration proof
+in turn26-summary-source-01.json and turn26-summary-integration.json.
 
-- Prior full baseline (S02 summary context now reopened): `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t24-full-02`, **1398 passed/5 retained SDK advisory warnings in5047.97s**, exit0, no failures/skips/xfails or warning filtering. Actual100-chain and20-root/default2 cases are included. Exact174-source/config/input/runtime identity before/after is retained in `heavy-prd-turn-24-environment-02.json` and `heavy-prd-turn-24-full-command-02.json`; implementation539508b. This accepts S16 and the permitted S17/S18 deferrals. It does not prove the subsequent terminal-status correction.
-- Latest primary `uv run ruff check`: **passed** in `heavy-prd-turn-25-ruff-primary-final-03.log` on final correction85fb50e5f6da462ee5c51962c51af994fa100e8c. Primary collection1414/0.70s passed; collection is not a suite pass. All175 sources/config/original inputs/runtime match isolated24dc05b after both commit hooks; checked feature delta and complete identity in `heavy-prd-turn-25-terminal-source-03.json` and `heavy-prd-turn-25-terminal-migration-integration.json`.
-- S19 audit reproduced false success for SDK error/unknown terminal subtypes with `is_error=false`; focused67/50/9 and Ruff pass after requiring positive success. Corrected migration baseline06 proves old cached model evidence reached native work without versioned policy. Exact integer policy1 intents now precede transport; absent/boolean/future versions refuse CLI resume/direct dispatch, retained-review verification and library Executor before native/options/credentials/clock/amendment effects. Read-only inspection reports unsupported policy and preserves old evidence. Final compatibility scope **134 passed/347.66s**, exit0, no warnings/skips/xfails; `heavy-prd-turn-25-terminal-migration-08.log`. Final corrected full1414 is now running, handle20455/supervisor25554/uv25555; source175/runtime frozen in turn25-environment-01.json, durable terminal receipt turn25-full-command-01.json. No passing terminal result yet.
-- Per-slice acceptance/crash/migration evidence and source/dependency identity are retained below. Final S19 all-requirement audit remains pending.
+- Latest terminal full baseline: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t25-full-01`, **1414 passed,4 retained SDK advisory warnings in5466.74s (1:31:06)**, exit0. No failures/skips/xfails or warning filtering. Both actual100-chain and20-root/default2 pass. All175 source/JS/helper/config/input/65 distributions/Python3.12.13/SQLite3.53.1 match before/after. Source85fb50e; turn25-environment-01.json, turn25-full-command-01.json and turn26-full1414-terminal-proof.json. LogSHA3eb0a4c7b8223f4cfdc6315341f8df79cba36f1661e2f9715045209ccd599b47. This proves terminal-status/legacy-cache-policy changes, not the subsequent summary correction.
+- Current primary `uv run ruff check`: **passed**, turn26-ruff-primary-final-01.log. Collection **1419 tests/0.66s** passes; collection is not a full-suite pass. Current source1d68a64/176 files matches staged66beb2a exactly after hooks.
+- **Final corrected full1419 has not launched.** Completed old1414 fixture archive10052 is recovering headroom. S02 and S19 remain unchecked until exact final full/unchanged identities and closeout. No test process is live during archive preparation.
+- Prior accepted baseline1398/5 warnings/5047.97s on539508b remains valid historical S16/S17/S18 evidence, with complete174-source/runtime proof in turn24-environment-02.json and turn24-full-command-02.json. It is not proof of later corrections.
+- Fresh SDK terminal subtype and legacy model-policy counterexamples, scoped134/347.66s and exact source175 provenance remain in turn25 records. The full1414 above now covers those same regressions; retained unsupported old receipts are inspectable, never retagged as proven.
 
 ## Acceptance matrix tracking
 

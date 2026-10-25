@@ -1,0 +1,21 @@
+{
+  "all_archived_regular_bytes_modes_symlinks_verified": true,
+  "archive": "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/turn25-full01.tar.gz",
+  "archive_bytes": 346740898,
+  "archive_sha256": "c708f844e323fecc53f7eed3a185d7db35bacba61514287bfb17c6eb460ea900",
+  "archived_entries": 935878,
+  "cleanup_status": "not_started",
+  "completed_test_receipt": "docs/reviews/heavy-prd-turn-25-pytest-full-01.log",
+  "completed_test_result": "1414 passed, 4 warnings in 5466.74s (1:31:06)",
+  "goal_turn": 26,
+  "known_followup_required": "R02 summary-context correction still requires later exact full1419; archive is baseline regression evidence only",
+  "lsof_before_archive": "exit1; no process/file records; only verified other-device HFS stat warnings retained in archive-lsof-01.log",
+  "manifest": "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/turn25-full01-manifest.json.gz",
+  "manifest_entries": 935878,
+  "manifest_sha256": "3b30c1f526145eca4391c05f2a2af46cf89f0dda1d471ba7660f7274a3eae2be",
+  "protected_entries_retained_unread": [],
+  "recorded_at": "2026-10-25T10:03:13.191759-03:00",
+  "restore_command": "tar -xzf /Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/turn25-full01.tar.gz -C /private/tmp",
+  "running_and_failed_test_roots_untouched": true,
+  "source": "/private/tmp/blacksmith-heavy-prd-t25-full-01"
+}

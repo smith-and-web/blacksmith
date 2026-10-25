@@ -1,0 +1,1128 @@
+{
+  "acceptance_matrix": [
+    {
+      "id": "A01",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 10,
+          "path": "tests/test_requirements_context.py",
+          "sha256": "e3fb078c13d106cbc568dfb13b1d7b909a5bd12e03a94400de80d2ccac2b389a"
+        },
+        {
+          "collected_cases_not_passes": 50,
+          "path": "tests/test_run_context.py",
+          "sha256": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579"
+        },
+        {
+          "collected_cases_not_passes": 30,
+          "path": "tests/test_plan_integrity.py",
+          "sha256": "70a777be27c6b06bed9a0dc18ec9e65efc60ce1ac5af4c5b75e29656245c149f"
+        },
+        {
+          "collected_cases_not_passes": 5,
+          "path": "tests/test_summary_requirements.py",
+          "sha256": "bfd2ea0afe0c7e923bf114834038d376ab5b50f37870a27b7ae1cbf01327c041"
+        }
+      ],
+      "required_result": "Planner, critic, implementer and reviewer receive correct context; all reads use snapshot cwd; no source checkout writes",
+      "status": "exact final full1419 pending",
+      "test": "Prose-only requirement + approved-plan sentinel; index on/off; explicit other target"
+    },
+    {
+      "id": "A02",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 34,
+          "path": "tests/test_path_policy.py",
+          "sha256": "dc40a6d706b0a69c6c9cb61a0705b4e28826457d2dc34818a8acf42111b3460c"
+        }
+      ],
+      "required_result": "All denied; source sentinel unchanged; policy error prevents gate/publication",
+      "status": "exact final full1419 pending",
+      "test": "`../`, relative symlink, absolute escape, notebook target, missing path, `.git/config`, PRD path rule, unknown tool"
+    },
+    {
+      "id": "A03",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_integration_integrity.py",
+          "sha256": "009dcedc426895b680bdb7127a200ee8432273d351ce2b8372792d3148254fef"
+        }
+      ],
+      "required_result": "Integration gate fails and no push/PR runner call occurs; both worker artifacts retained",
+      "status": "exact final full1419 pending",
+      "test": "Parallel siblings individually green, combined red"
+    },
+    {
+      "id": "A04",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_gate_integrity.py",
+          "sha256": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702"
+        }
+      ],
+      "required_result": "Unit fails; second layer executed; no publication",
+      "status": "exact final full1419 pending",
+      "test": "Two auto layers: first green, second red"
+    },
+    {
+      "id": "A05",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_gate_integrity.py",
+          "sha256": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702"
+        },
+        {
+          "collected_cases_not_passes": 8,
+          "path": "tests/test_unit_subgraph.py",
+          "sha256": "c1590cfb059b23ed6655841a47ef04eb3fe10d91d061c25fb3fddc2aba050a7c"
+        }
+      ],
+      "required_result": "New receipt is nonpassing; no stale success route",
+      "status": "exact final full1419 pending",
+      "test": "GateError after previous passing unit"
+    },
+    {
+      "id": "A06",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 8,
+          "path": "tests/test_unit_state.py",
+          "sha256": "acc1033d21d46283e1c8daaa9f8ad6b9a47a7b7b4e366fb191a793c3d4476038"
+        }
+      ],
+      "required_result": "Final unit starts cheap, zero counters, no prior feedback, and receives its own review",
+      "status": "exact final full1419 pending",
+      "test": "Sequential escalated/review-clean unit \u2192 parallel level \u2192 sequential unit"
+    },
+    {
+      "id": "A07",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_gate_integrity.py",
+          "sha256": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702"
+        },
+        {
+          "collected_cases_not_passes": 11,
+          "path": "tests/test_effect_recovery.py",
+          "sha256": "c9cca28216d80c94d8b76050ff25b2845cc3646d1d640b3b855fdf364e86cb75"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_receipt_wiring.py",
+          "sha256": "b28b138253b6bb33423219c8169bad4a5f03c0087fc8c633ed20bac251712add"
+        }
+      ],
+      "required_result": "Infrastructure/dirty failure, artifacts retained; no successful receipt for dirty/uncommitted tree",
+      "status": "exact final full1419 pending",
+      "test": "Failing Git add/amend/reset/squash; fixer leaves edits; gate edits source"
+    },
+    {
+      "id": "A08",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_gate_integrity.py",
+          "sha256": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_feature_deferrals.py",
+          "sha256": "edf62df32190198959f645e6f975b3f5c0babc129c2150a4b27c291338d80104"
+        }
+      ],
+      "required_result": "Trusted toolchain unchanged; audit rejects candidate",
+      "status": "exact final full1419 pending",
+      "test": "Agent edits toolchain to `true` or sandbox changes protected path"
+    },
+    {
+      "id": "A09",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 26,
+          "path": "tests/test_publication_approval.py",
+          "sha256": "d5dc9762e8c58de80e678dea9240922ed796f5b5dea38c66aee055c5d20ce047"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_recovery_boundaries.py",
+          "sha256": "b9ad245a4aa7eda08077421c72a90ff5e2e7656c6977da461a8ae633b111e9c0"
+        }
+      ],
+      "required_result": "No push; PR gate denied; recovery path retained",
+      "status": "exact final full1419 pending",
+      "test": "Human terminal unit with `--approve plan`"
+    },
+    {
+      "id": "A10",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 13,
+          "path": "tests/test_contract.py",
+          "sha256": "f5cf22c457f0d002ea205fead9a57d4bb10a0c78e116930cffd23fa8116bb5c8"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_cli_validate.py",
+          "sha256": "90a9137c1641b6b833545fb2e4dd7d3cb63667e94696627c3a3c48bafcb81cc1"
+        },
+        {
+          "collected_cases_not_passes": 50,
+          "path": "tests/test_run_context.py",
+          "sha256": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579"
+        }
+      ],
+      "required_result": "Offline validation error before any model call",
+      "status": "exact final full1419 pending",
+      "test": "Human sibling/mid-DAG/mixed layer/human-only"
+    },
+    {
+      "id": "A11",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 34,
+          "path": "tests/test_review_integrity.py",
+          "sha256": "0f9adac6e917ae8573265e58fc44cf485e914c4f56bb868c1985bf7717844251"
+        },
+        {
+          "collected_cases_not_passes": 16,
+          "path": "tests/test_terminal_status_integrity.py",
+          "sha256": "8412aba7e3c4fe6565159c63c67a4e144159d903178cfc711682ac1868a2d13b"
+        }
+      ],
+      "required_result": "Unavailable/blocking respectively; no clean label or ordinary PR; same in parallel",
+      "status": "exact final full1419 pending",
+      "test": "Review malformed/error/missing terminal result; one of three panelists blocking"
+    },
+    {
+      "id": "A12",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 34,
+          "path": "tests/test_review_integrity.py",
+          "sha256": "0f9adac6e917ae8573265e58fc44cf485e914c4f56bb868c1985bf7717844251"
+        }
+      ],
+      "required_result": "Full cumulative patch and base available; blocking survives until actually resolved",
+      "status": "exact final full1419 pending",
+      "test": "Reviewer sees deletion-only bug and revision retaining earlier defect"
+    },
+    {
+      "id": "A13",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 30,
+          "path": "tests/test_plan_integrity.py",
+          "sha256": "70a777be27c6b06bed9a0dc18ec9e65efc60ce1ac5af4c5b75e29656245c149f"
+        },
+        {
+          "collected_cases_not_passes": 8,
+          "path": "tests/test_unit_subgraph.py",
+          "sha256": "c1590cfb059b23ed6655841a47ef04eb3fe10d91d061c25fb3fddc2aba050a7c"
+        },
+        {
+          "collected_cases_not_passes": 11,
+          "path": "tests/test_effect_recovery.py",
+          "sha256": "c9cca28216d80c94d8b76050ff25b2845cc3646d1d640b3b855fdf364e86cb75"
+        },
+        {
+          "collected_cases_not_passes": 7,
+          "path": "tests/test_join_recovery.py",
+          "sha256": "ab16e92d19900dfe1472598abe2ba39e490b571e1bd99c082f398a590ba0263b"
+        },
+        {
+          "collected_cases_not_passes": 12,
+          "path": "tests/test_publication_recovery.py",
+          "sha256": "b178fa7e034383c61a9595be60a12b3d6902a343d1e8782688992b7d8fb725c1"
+        }
+      ],
+      "required_result": "New process reconciles state; completed work not repeated; no duplicated commits/PRs; ambiguous model call is explicit",
+      "status": "exact final full1419 pending",
+      "test": "Kill after plan 2, commit, worker gate, first cherry-pick, push, PR create"
+    },
+    {
+      "id": "A14",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 50,
+          "path": "tests/test_run_context.py",
+          "sha256": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579"
+        },
+        {
+          "collected_cases_not_passes": 27,
+          "path": "tests/test_recovery_artifacts.py",
+          "sha256": "6234a8f859632bcff3d353c2df45ef3e36233d79605d3904db54bc143a543f38"
+        },
+        {
+          "collected_cases_not_passes": 12,
+          "path": "tests/test_recovery_control.py",
+          "sha256": "cbc53967a01925869b632bb506ea306c78fa0ef9c0045b4c25266ba021fcd2c2"
+        }
+      ],
+      "required_result": "Stop before spend or mutation; retain original evidence",
+      "status": "exact final full1419 pending",
+      "test": "Corrupt manifest, missing workspace, wrong repo/config, concurrent same-run resume"
+    },
+    {
+      "id": "A15",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 50,
+          "path": "tests/test_run_context.py",
+          "sha256": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579"
+        }
+      ],
+      "required_result": "Distinct run/worker paths and remote branches",
+      "status": "exact final full1419 pending",
+      "test": "Retry same unit IDs in different runs, IDs with same slug"
+    },
+    {
+      "id": "A16",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_scheduling_runtime.py",
+          "sha256": "850972308dd75cfd6931dc1c2679f50c27c1bb6121526bfb70e94002a0f1e459"
+        }
+      ],
+      "required_result": "Completes without recursion failure; measured active workers never exceed 2",
+      "status": "exact final full1419 pending",
+      "test": "100-unit chain; 20 roots with bound 2"
+    },
+    {
+      "id": "A17",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 32,
+          "path": "tests/test_executor_admission.py",
+          "sha256": "02159387c76f4f6d276834196b63af937d57d04dc89cb5b6f695be4025ccd35a"
+        },
+        {
+          "collected_cases_not_passes": 18,
+          "path": "tests/test_budget_admission.py",
+          "sha256": "57af831b3806cc106518d552555bed50c6090d80aaed065f2e639e957a8f5005"
+        },
+        {
+          "collected_cases_not_passes": 5,
+          "path": "tests/test_admission_recovery.py",
+          "sha256": "cb8d3b0677fc868dc26087580bc5837313579e66d3dd5b8c91bfa42dab958be9"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_respond_cli.py",
+          "sha256": "829ec00d891ec4aea8c7d22efcbf880094664aef70293d08efeac227cedd8e23"
+        }
+      ],
+      "required_result": "No later paid call admitted; reservations correct; unknown usage consumes reservation; resume cannot reset totals",
+      "status": "exact final full1419 pending",
+      "test": "Cost exhausted during plan/critic/implement/review/summary/respond, two concurrent admissions"
+    },
+    {
+      "id": "A18",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 23,
+          "path": "tests/test_commands.py",
+          "sha256": "cda429ff801af16dca08ff7da306697abd4b3645d439b4ea1e4fabb131825279"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_sdk_deadlines.py",
+          "sha256": "ad2578f46d60175df61da733f2e427b194a797398476e24273a4037509054dcb"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_parallel_cancellation.py",
+          "sha256": "b67278b38c106e7737508ae90b521e2a79df4deb871270f8f15a9f3cbe3f7f3f"
+        }
+      ],
+      "required_result": "Deadline enforced, children terminated, bounded checkpoint/log size, artifacts recoverable",
+      "status": "exact final full1419 pending",
+      "test": "Hanging gate with child process and large output; model timeout"
+    },
+    {
+      "id": "A19",
+      "permitted_disabled_alternative": true,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_feature_deferrals.py",
+          "sha256": "edf62df32190198959f645e6f975b3f5c0babc129c2150a4b27c291338d80104"
+        },
+        {
+          "collected_cases_not_passes": 13,
+          "path": "tests/test_sandbox_lifecycle.py",
+          "sha256": "09ebb80c9fc39bd70e51ad65cc4a13b2564876fd44187303d5a3ca7d35225491"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_sandbox_tool.py",
+          "sha256": "2a522fff2bd42ab5850784a0143009c5ba9aefb630732d7c59111ec547de0969"
+        }
+      ],
+      "required_result": "Each command sees only its own workspace; no shared clone mutation; timed-out command cannot write later",
+      "status": "exact final full1419 pending; disabled alternative only",
+      "test": "Sandbox sentinel per sibling; timeout and resume"
+    },
+    {
+      "id": "A20",
+      "permitted_disabled_alternative": true,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_respond_cli.py",
+          "sha256": "829ec00d891ec4aea8c7d22efcbf880094664aef70293d08efeac227cedd8e23"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_respond_flow.py",
+          "sha256": "ce16c020257805c791363f8c0385e0356e7e8c0ec110967a4115ebaee1f3ef24"
+        }
+      ],
+      "required_result": "Correct synthetic unit; original request preserved; no force-push; candidate retained",
+      "status": "exact final full1419 pending; disabled alternative only",
+      "test": "Respond retry, first PRD unit human, remote advances, failed push"
+    },
+    {
+      "id": "A21",
+      "permitted_disabled_alternative": false,
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_optional_observability.py",
+          "sha256": "4b4d0d669eba3b6fb1759640084cb0b0d417dc7700d204e4a2f5d3fef4fd1bde"
+        },
+        {
+          "collected_cases_not_passes": 26,
+          "path": "tests/test_receipts.py",
+          "sha256": "0da531287786ff613a44c0516b784c0250279064bbd8e6147cfe445442081927"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_receipt_wiring.py",
+          "sha256": "b28b138253b6bb33423219c8169bad4a5f03c0087fc8c633ed20bac251712add"
+        }
+      ],
+      "required_result": "Optional feature degrades visibly; critical failure halts before new effect",
+      "status": "exact final full1419 pending",
+      "test": "Optional store/live/metrics failure; critical journal failure"
+    }
+  ],
+  "baseline_terminal_proof": "heavy-prd-turn-26-full1414-terminal-proof.json",
+  "collected_count_not_a_pass": 1419,
+  "completion_status": "source correction and targeted evidence verified; final corrected full1419 not launched, required before completion",
+  "goal_turn": 26,
+  "implementation_revision": "1d68a6492e53898c5011a24b9d14d771bad6275d",
+  "new_gap": {
+    "baseline": "heavy-prd-turn-26-summary-baseline-01.log",
+    "baseline_sha256": "d5589c8db947965028a4d07a30b3308d42fd27d6723f4ae6f06739e69ef9d270",
+    "candidate_revision": "66beb2ab347ca4ad265d273db90135f108f0b855",
+    "candidate_scope": "only nodes/pr.py and new test_summary_requirements.py;5 new cases",
+    "collection": "1419 tests collected/2.47s in summary-stage;176 sources; not a pass",
+    "isolated_stage": "/private/tmp/blacksmith-heavy-prd-summary-stage",
+    "path": "blacksmith/nodes/pr.py::_summary_prompt",
+    "production_callsite_audit": "all direct paid-role invocations inspected; summary was the only missing shared full-context renderer",
+    "requirement": "R02",
+    "result": "1 failed in18.93s; terminal exit1; actual full-contract assertion missing after real local pipeline",
+    "slice": "S02 reopened",
+    "status": "corrected in1d68a64, scoped25/Ruff verified; full1419 still required",
+    "transfer_status": "checked2-file delta applied after full1414 terminal0; primary1d68a64 committed, all176 sources match stage66 after hooks; final corrected1419 pending",
+    "verification": "broad72/854.27s then exact-final25/113.42s terminal0; Ruff-final02 pass; post-hook176-source/config/input/65-distribution identity verified; source record turn26-summary-source-01.json"
+  },
+  "original_spec_sha256": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
+  "planned_full_environment": "heavy-prd-turn-26-environment-01.json",
+  "planned_full_receipt": "heavy-prd-turn-26-full-command-01.json",
+  "recorded_at": "2026-10-25T09:57:30.431799-03:00",
+  "requirements": [
+    {
+      "id": "R01",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/run_context.py",
+          "sha256": "162172bc43845d11f566cc51362e1e3982b9200833d0edacc004863de230f595"
+        },
+        {
+          "path": "blacksmith/config.py",
+          "sha256": "955e3e6dfee1deb254fc5f63ac3efdaa26528a66f52f9b497e09b5bae8c78543"
+        },
+        {
+          "path": "blacksmith/cli.py",
+          "sha256": "576d1af73961e451e426f4d0fd56c7896bd1c27d7f80485e711902b03f1112c2"
+        },
+        {
+          "path": "blacksmith/contract.py",
+          "sha256": "420eed454195da5827d120a96995ca64dfbdfe088eef8f0fd77c94f903134795"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 50,
+          "path": "tests/test_run_context.py",
+          "sha256": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_cli_validate.py",
+          "sha256": "90a9137c1641b6b833545fb2e4dd7d3cb63667e94696627c3a3c48bafcb81cc1"
+        },
+        {
+          "collected_cases_not_passes": 13,
+          "path": "tests/test_contract.py",
+          "sha256": "f5cf22c457f0d002ea205fead9a57d4bb10a0c78e116930cffd23fa8116bb5c8"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R02",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/context.py",
+          "sha256": "8964f2e136c0d78e2e9191a8b9d2314075af7a1619906409fec8b7406a6f9c7b"
+        },
+        {
+          "path": "blacksmith/plan_artifacts.py",
+          "sha256": "49782bd3de9c7e84f79b705968cc5984f0b4d3250d10b2871a9c71b4b9d45ec9"
+        },
+        {
+          "path": "blacksmith/nodes/plan.py",
+          "sha256": "cdcab419f8d163a6e8e641149222522619d60599638962ef4252e2bf637faca4"
+        },
+        {
+          "path": "blacksmith/nodes/implement.py",
+          "sha256": "82324a7fcfad0d77056aeec129f7d00b545707822dd60cd2f1b76067cb18bb25"
+        },
+        {
+          "path": "blacksmith/nodes/review.py",
+          "sha256": "1fbd2461cda539b7f6534bf2bb213a374a609c3a49a0579c97ec90cb591f2661"
+        },
+        {
+          "path": "blacksmith/nodes/pr.py",
+          "sha256": "db56c27e4b53d538638fe5d2d459ff98a032bf8656e61c27bf33d701f93e504d"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 10,
+          "path": "tests/test_requirements_context.py",
+          "sha256": "e3fb078c13d106cbc568dfb13b1d7b909a5bd12e03a94400de80d2ccac2b389a"
+        },
+        {
+          "collected_cases_not_passes": 50,
+          "path": "tests/test_run_context.py",
+          "sha256": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579"
+        },
+        {
+          "collected_cases_not_passes": 30,
+          "path": "tests/test_plan_integrity.py",
+          "sha256": "70a777be27c6b06bed9a0dc18ec9e65efc60ce1ac5af4c5b75e29656245c149f"
+        },
+        {
+          "collected_cases_not_passes": 5,
+          "path": "tests/test_summary_requirements.py",
+          "sha256": "bfd2ea0afe0c7e923bf114834038d376ab5b50f37870a27b7ae1cbf01327c041"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R03",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/path_policy.py",
+          "sha256": "4de4f1137e7e318511fd5231336298b1a95a854d1c55a1176a447e6e15688d7c"
+        },
+        {
+          "path": "blacksmith/executor.py",
+          "sha256": "28a842234865b54e264374193e13458c2906e022ce6246d2d4bc8adc11efb180"
+        },
+        {
+          "path": "blacksmith/nodes/implement.py",
+          "sha256": "82324a7fcfad0d77056aeec129f7d00b545707822dd60cd2f1b76067cb18bb25"
+        },
+        {
+          "path": "blacksmith/verification.py",
+          "sha256": "05ae4dddf972f85852affaff61bd90d4ccd6759fe049256284729887c36a8250"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 34,
+          "path": "tests/test_path_policy.py",
+          "sha256": "dc40a6d706b0a69c6c9cb61a0705b4e28826457d2dc34818a8acf42111b3460c"
+        },
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_gate_integrity.py",
+          "sha256": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_feature_deferrals.py",
+          "sha256": "edf62df32190198959f645e6f975b3f5c0babc129c2150a4b27c291338d80104"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R04",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/verification.py",
+          "sha256": "05ae4dddf972f85852affaff61bd90d4ccd6759fe049256284729887c36a8250"
+        },
+        {
+          "path": "blacksmith/integration.py",
+          "sha256": "2ff55bc7a6d3acb471302d8c4111aa703385a26314c28a73d06c35c95a1d40e6"
+        },
+        {
+          "path": "blacksmith/joins.py",
+          "sha256": "01ccb669b6efd0416349c1cf9880c540721c2593aef4a59990679d8f628cf22d"
+        },
+        {
+          "path": "blacksmith/publication_approval.py",
+          "sha256": "baa49326a0b14619c3920211a7ff9ced65c738cacd112db661b7c2dae5a52a06"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_gate_integrity.py",
+          "sha256": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702"
+        },
+        {
+          "collected_cases_not_passes": 35,
+          "path": "tests/test_integration_integrity.py",
+          "sha256": "009dcedc426895b680bdb7127a200ee8432273d351ce2b8372792d3148254fef"
+        },
+        {
+          "collected_cases_not_passes": 26,
+          "path": "tests/test_publication_approval.py",
+          "sha256": "d5dc9762e8c58de80e678dea9240922ed796f5b5dea38c66aee055c5d20ce047"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R05",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/unit_state.py",
+          "sha256": "34279f512094c9c47b8c0fcb54e25e1a5d9214df9090fb11a8839979f66752fa"
+        },
+        {
+          "path": "blacksmith/unit_graph.py",
+          "sha256": "d340bda9c5f836b43ef855aa75ca1994e71e449023657cfdf5a9a63c52b5ca15"
+        },
+        {
+          "path": "blacksmith/graph.py",
+          "sha256": "4982b2501c68234c6d8c45cb2fc92cfbd29c06766a7ef0ea25a5ce0e7da68655"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 8,
+          "path": "tests/test_unit_state.py",
+          "sha256": "acc1033d21d46283e1c8daaa9f8ad6b9a47a7b7b4e366fb191a793c3d4476038"
+        },
+        {
+          "collected_cases_not_passes": 8,
+          "path": "tests/test_unit_subgraph.py",
+          "sha256": "c1590cfb059b23ed6655841a47ef04eb3fe10d91d061c25fb3fddc2aba050a7c"
+        },
+        {
+          "collected_cases_not_passes": 11,
+          "path": "tests/test_review_recovery.py",
+          "sha256": "77d33f6d35e0e6aac9189bae7743b4783fffd2fde0c819872321728dc75f2ec5"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R06",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/receipts.py",
+          "sha256": "3cf9b4e2fbaa6aae7f3c98b39c131ef3db8261df8070909ceac0a58f8f2fcbe6"
+        },
+        {
+          "path": "blacksmith/recovery.py",
+          "sha256": "370495a2c748683c81425a28b7e2760ff1f08cc8502b293b4be32f918db6b3da"
+        },
+        {
+          "path": "blacksmith/recovery_control.py",
+          "sha256": "0742d6c58b0413553772ca2b4dc3547f71c4713cb23f8718240b5dd3f615fc0d"
+        },
+        {
+          "path": "blacksmith/recovery_repair.py",
+          "sha256": "25ef76d70824f0bcec5c3483c866c3a0f4c3367c431b80925c457ccaee257ddc"
+        },
+        {
+          "path": "blacksmith/join_recovery.py",
+          "sha256": "42ae73fdd39b7070caee33639df8ab5d981965f5617c7b82dee6d8968db9750b"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 26,
+          "path": "tests/test_receipts.py",
+          "sha256": "0da531287786ff613a44c0516b784c0250279064bbd8e6147cfe445442081927"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_receipt_wiring.py",
+          "sha256": "b28b138253b6bb33423219c8169bad4a5f03c0087fc8c633ed20bac251712add"
+        },
+        {
+          "collected_cases_not_passes": 30,
+          "path": "tests/test_plan_integrity.py",
+          "sha256": "70a777be27c6b06bed9a0dc18ec9e65efc60ce1ac5af4c5b75e29656245c149f"
+        },
+        {
+          "collected_cases_not_passes": 11,
+          "path": "tests/test_effect_recovery.py",
+          "sha256": "c9cca28216d80c94d8b76050ff25b2845cc3646d1d640b3b855fdf364e86cb75"
+        },
+        {
+          "collected_cases_not_passes": 7,
+          "path": "tests/test_join_recovery.py",
+          "sha256": "ab16e92d19900dfe1472598abe2ba39e490b571e1bd99c082f398a590ba0263b"
+        },
+        {
+          "collected_cases_not_passes": 27,
+          "path": "tests/test_recovery_artifacts.py",
+          "sha256": "6234a8f859632bcff3d353c2df45ef3e36233d79605d3904db54bc143a543f38"
+        },
+        {
+          "collected_cases_not_passes": 12,
+          "path": "tests/test_recovery_control.py",
+          "sha256": "cbc53967a01925869b632bb506ea306c78fa0ef9c0045b4c25266ba021fcd2c2"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_recovery_boundaries.py",
+          "sha256": "b9ad245a4aa7eda08077421c72a90ff5e2e7656c6977da461a8ae633b111e9c0"
+        },
+        {
+          "collected_cases_not_passes": 10,
+          "path": "tests/test_recovery_repair.py",
+          "sha256": "c86e029c24dcc0149d3508aa206599b6eaefe8ad66d7dde6569549d14ade9d0c"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R07",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/publication_approval.py",
+          "sha256": "baa49326a0b14619c3920211a7ff9ced65c738cacd112db661b7c2dae5a52a06"
+        },
+        {
+          "path": "blacksmith/publication.py",
+          "sha256": "e8889440a983f1654c755d8d6836c2e0834624395bdce7fbe14d424f4f08aabe"
+        },
+        {
+          "path": "blacksmith/nodes/pr.py",
+          "sha256": "db56c27e4b53d538638fe5d2d459ff98a032bf8656e61c27bf33d701f93e504d"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 26,
+          "path": "tests/test_publication_approval.py",
+          "sha256": "d5dc9762e8c58de80e678dea9240922ed796f5b5dea38c66aee055c5d20ce047"
+        },
+        {
+          "collected_cases_not_passes": 12,
+          "path": "tests/test_approval_recovery.py",
+          "sha256": "f51096be33bdca62881b340f5af94356ce492e59abb71c3e8ccce14225b0bf6a"
+        },
+        {
+          "collected_cases_not_passes": 24,
+          "path": "tests/test_publication_integrity.py",
+          "sha256": "904a5aeb59a9f6f683b1c30d0d3054f00df4ebf515047b12f7afe95e11e31f7d"
+        },
+        {
+          "collected_cases_not_passes": 12,
+          "path": "tests/test_publication_recovery.py",
+          "sha256": "b178fa7e034383c61a9595be60a12b3d6902a343d1e8782688992b7d8fb725c1"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R08",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/budget.py",
+          "sha256": "d7eb87aa6915fb8ef6ec5dfe7bf93dc2b613ba00ce376163d8b003177c91c56f"
+        },
+        {
+          "path": "blacksmith/run_clock.py",
+          "sha256": "d8e39a15213eb0649ccec590150b55cdf1bd669bdeffd45bba8d9fa7c50eb5e3"
+        },
+        {
+          "path": "blacksmith/commands.py",
+          "sha256": "dfac6f3991b0c6141e5e42e471693dc1e03aedd9fbc7d0de10b1911e757b5ec0"
+        },
+        {
+          "path": "blacksmith/sdk_transport.py",
+          "sha256": "f751b8cb24a485714393d0a22e2c241581d411d358c06a27726012c5b50d2d64"
+        },
+        {
+          "path": "blacksmith/scheduling.py",
+          "sha256": "26759b4d572e7c86133633c0a2e686340f66e0bb652280c8660791fce48912db"
+        },
+        {
+          "path": "blacksmith/executor.py",
+          "sha256": "28a842234865b54e264374193e13458c2906e022ce6246d2d4bc8adc11efb180"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 18,
+          "path": "tests/test_budget_admission.py",
+          "sha256": "57af831b3806cc106518d552555bed50c6090d80aaed065f2e639e957a8f5005"
+        },
+        {
+          "collected_cases_not_passes": 32,
+          "path": "tests/test_executor_admission.py",
+          "sha256": "02159387c76f4f6d276834196b63af937d57d04dc89cb5b6f695be4025ccd35a"
+        },
+        {
+          "collected_cases_not_passes": 5,
+          "path": "tests/test_admission_recovery.py",
+          "sha256": "cb8d3b0677fc868dc26087580bc5837313579e66d3dd5b8c91bfa42dab958be9"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_admission_migration.py",
+          "sha256": "23c0a6ee50367601efcb5f53f7dae0ab2e9d9b91c9b7c5c346291ab93e8884cb"
+        },
+        {
+          "collected_cases_not_passes": 5,
+          "path": "tests/test_run_clock.py",
+          "sha256": "a923ba537d816f79df760b7100abd135c80465aa3a641111e1c8b2e40152dc54"
+        },
+        {
+          "collected_cases_not_passes": 2,
+          "path": "tests/test_clock_forwarding.py",
+          "sha256": "b8cbd455947d0f23fba64d36c9affd8dc67ad4727218c8edc1d574b165b8d61f"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_sdk_deadlines.py",
+          "sha256": "ad2578f46d60175df61da733f2e427b194a797398476e24273a4037509054dcb"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_parallel_cancellation.py",
+          "sha256": "b67278b38c106e7737508ae90b521e2a79df4deb871270f8f15a9f3cbe3f7f3f"
+        },
+        {
+          "collected_cases_not_passes": 23,
+          "path": "tests/test_commands.py",
+          "sha256": "cda429ff801af16dca08ff7da306697abd4b3645d439b4ea1e4fabb131825279"
+        },
+        {
+          "collected_cases_not_passes": 21,
+          "path": "tests/test_scheduling.py",
+          "sha256": "86f5221d74d26cbdae809a3066ea91f45430376dfcc58321230d8683b8594dc9"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_scheduling_runtime.py",
+          "sha256": "850972308dd75cfd6931dc1c2679f50c27c1bb6121526bfb70e94002a0f1e459"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R09",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/review_patch.py",
+          "sha256": "d4020f1d809de8d8baf2a19b72971f19b8240f0ab7843e185bf2bcbe6fc7e57b"
+        },
+        {
+          "path": "blacksmith/review_receipts.py",
+          "sha256": "94d7be743fd36e04b14f1e11cdc2dd19034aa94ddaa3224116f77b386ea9209d"
+        },
+        {
+          "path": "blacksmith/nodes/review.py",
+          "sha256": "1fbd2461cda539b7f6534bf2bb213a374a609c3a49a0579c97ec90cb591f2661"
+        },
+        {
+          "path": "blacksmith/executor.py",
+          "sha256": "28a842234865b54e264374193e13458c2906e022ce6246d2d4bc8adc11efb180"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 34,
+          "path": "tests/test_review_integrity.py",
+          "sha256": "0f9adac6e917ae8573265e58fc44cf485e914c4f56bb868c1985bf7717844251"
+        },
+        {
+          "collected_cases_not_passes": 11,
+          "path": "tests/test_review_recovery.py",
+          "sha256": "77d33f6d35e0e6aac9189bae7743b4783fffd2fde0c819872321728dc75f2ec5"
+        },
+        {
+          "collected_cases_not_passes": 16,
+          "path": "tests/test_terminal_status_integrity.py",
+          "sha256": "8412aba7e3c4fe6565159c63c67a4e144159d903178cfc711682ac1868a2d13b"
+        },
+        {
+          "collected_cases_not_passes": 10,
+          "path": "tests/test_activity_integrity.py",
+          "sha256": "763c610ba17e5d856a42684b2413615328e1572f9b33088637c5c4c3b633526a"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    },
+    {
+      "id": "R10",
+      "permitted_disabled_alternative": true,
+      "production_sources": [
+        {
+          "path": "blacksmith/config.py",
+          "sha256": "955e3e6dfee1deb254fc5f63ac3efdaa26528a66f52f9b497e09b5bae8c78543"
+        },
+        {
+          "path": "blacksmith/sandbox.py",
+          "sha256": "54d03eed3e29243a1982aa6e4d848b844f6bb163d785c374a4db122b8076d035"
+        },
+        {
+          "path": "blacksmith/graph.py",
+          "sha256": "4982b2501c68234c6d8c45cb2fc92cfbd29c06766a7ef0ea25a5ce0e7da68655"
+        },
+        {
+          "path": "blacksmith/cli.py",
+          "sha256": "576d1af73961e451e426f4d0fd56c7896bd1c27d7f80485e711902b03f1112c2"
+        },
+        {
+          "path": "blacksmith/executor.py",
+          "sha256": "28a842234865b54e264374193e13458c2906e022ce6246d2d4bc8adc11efb180"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_feature_deferrals.py",
+          "sha256": "edf62df32190198959f645e6f975b3f5c0babc129c2150a4b27c291338d80104"
+        },
+        {
+          "collected_cases_not_passes": 13,
+          "path": "tests/test_sandbox_lifecycle.py",
+          "sha256": "09ebb80c9fc39bd70e51ad65cc4a13b2564876fd44187303d5a3ca7d35225491"
+        },
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_sandbox_tool.py",
+          "sha256": "2a522fff2bd42ab5850784a0143009c5ba9aefb630732d7c59111ec547de0969"
+        }
+      ],
+      "status": "permitted disabled alternative implemented; final full pending; enabled feature remains unimplemented and unaccepted"
+    },
+    {
+      "id": "R11",
+      "permitted_disabled_alternative": true,
+      "production_sources": [
+        {
+          "path": "blacksmith/respond.py",
+          "sha256": "d18d0be66d09cf5a7e966c72e3c5e4796d388a22f41ee3a2a2d72e1271a704da"
+        },
+        {
+          "path": "blacksmith/cli.py",
+          "sha256": "576d1af73961e451e426f4d0fd56c7896bd1c27d7f80485e711902b03f1112c2"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_respond_cli.py",
+          "sha256": "829ec00d891ec4aea8c7d22efcbf880094664aef70293d08efeac227cedd8e23"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_respond_flow.py",
+          "sha256": "ce16c020257805c791363f8c0385e0356e7e8c0ec110967a4115ebaee1f3ef24"
+        }
+      ],
+      "status": "permitted disabled alternative implemented; final full pending; enabled feature remains unimplemented and unaccepted"
+    },
+    {
+      "id": "R12",
+      "permitted_disabled_alternative": false,
+      "production_sources": [
+        {
+          "path": "blacksmith/observability.py",
+          "sha256": "053917467a9ec96bdc01501f7489aaa8411b5c420c680e6ef31d584722d74374"
+        },
+        {
+          "path": "blacksmith/events.py",
+          "sha256": "8f1bee215d4e325877cfd65c47f0745bd9f3b90568159c8635c50c0fc6678eb1"
+        },
+        {
+          "path": "blacksmith/metrics.py",
+          "sha256": "80e5f1fcc8a7e6942f78bf318072ea08660984225b21caef0bcb4b94ec14b65f"
+        },
+        {
+          "path": "blacksmith/memory.py",
+          "sha256": "8e95b77ec24b662272b98e71924b5ce3939c47146e9e88002923b4c7ca89ad40"
+        },
+        {
+          "path": "blacksmith/transcript.py",
+          "sha256": "5313c778baef4b74845433970c308d79707417650288f89863ec46aec2c20a3c"
+        },
+        {
+          "path": "blacksmith/render.py",
+          "sha256": "ab5f89b1f127ada3ceb4cd776f4059e2ccf9f30948bc1aa664eef7539cfad19f"
+        },
+        {
+          "path": "blacksmith/dashboard.py",
+          "sha256": "a31a845ee6ae13af8e814b4537a6be2cf788aa771e9605576e7ab690d90b6e8f"
+        }
+      ],
+      "regressions": [
+        {
+          "collected_cases_not_passes": 9,
+          "path": "tests/test_optional_observability.py",
+          "sha256": "4b4d0d669eba3b6fb1759640084cb0b0d417dc7700d204e4a2f5d3fef4fd1bde"
+        },
+        {
+          "collected_cases_not_passes": 3,
+          "path": "tests/test_observability_integrity.py",
+          "sha256": "256ed0e53384c41bbf06318f724630829bd471248a483045ef94561ff47fc64b"
+        },
+        {
+          "collected_cases_not_passes": 13,
+          "path": "tests/test_presentation_integrity.py",
+          "sha256": "33dc38ce12ce5e8a0124ef1c58a38b2e5966ddb4796c9babb1e27ae88f98ec03"
+        },
+        {
+          "collected_cases_not_passes": 10,
+          "path": "tests/test_activity_integrity.py",
+          "sha256": "763c610ba17e5d856a42684b2413615328e1572f9b33088637c5c4c3b633526a"
+        },
+        {
+          "collected_cases_not_passes": 12,
+          "path": "tests/test_transcript.py",
+          "sha256": "9842f2dc0484966264f386f5902468d9ca32aeed92825c978f0861025d386ec2"
+        },
+        {
+          "collected_cases_not_passes": 4,
+          "path": "tests/test_transcript_surface.py",
+          "sha256": "da6a3a4e0410d7c60ff18638d788cd9c4d27ca2608dffa3cc08dd3a648e9c2c6"
+        }
+      ],
+      "status": "corrected production source; exact final full1419 pending"
+    }
+  ],
+  "slices": {
+    "S01": [
+      "R03"
+    ],
+    "S02": [
+      "R02"
+    ],
+    "S03": [
+      "R01"
+    ],
+    "S04": [
+      "R06"
+    ],
+    "S05": [
+      "R08"
+    ],
+    "S06": [
+      "R03",
+      "R04"
+    ],
+    "S07": [
+      "R05"
+    ],
+    "S08": [
+      "R05"
+    ],
+    "S09": [
+      "R02",
+      "R06"
+    ],
+    "S10": [
+      "R04",
+      "R06"
+    ],
+    "S11": [
+      "R06"
+    ],
+    "S12": [
+      "R09"
+    ],
+    "S13": [
+      "R01",
+      "R07"
+    ],
+    "S14": [
+      "R07"
+    ],
+    "S15": [
+      "R08"
+    ],
+    "S16": [
+      "R08"
+    ],
+    "S17": [
+      "R10"
+    ],
+    "S18": [
+      "R11"
+    ],
+    "S19": [
+      "R09",
+      "R12"
+    ]
+  },
+  "source_count": 176,
+  "source_lookup_correction": "presentation helpers are in observability.py and render.py, not a presentation module",
+  "stage_source_record": "heavy-prd-turn-26-summary-source-01.json",
+  "test_honesty": "actual test bodies sampled for full sentinels, no downstream effects, cumulative patches, gates, snapshots, owned process cleanup and exact publication identity; real fixtures, paid/GitHub transport replaced",
+  "unrun_live_gates": [
+    "explicit human contract.py review before merge",
+    "authorized10-dollar disposable paid canary",
+    "real Docker smoke before sandbox enablement"
+  ]
+}

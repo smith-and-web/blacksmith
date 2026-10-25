@@ -426,7 +426,7 @@
     }
   ],
   "collected_count_not_a_pass": 1414,
-  "completion_status": "incomplete: R02 paid summary omits full contract; isolated correction/scoped verification pending; full1414 on85fb50e cannot accept newer source",
+  "completion_status": "summary implementation corrected and integrated; exact corrected full1419 not yet launched, required before acceptance",
   "final_command_receipt": "heavy-prd-turn-25-full-command-01.json",
   "final_full_handle": 20455,
   "frozen_environment": "heavy-prd-turn-25-environment-01.json",
@@ -444,7 +444,7 @@
     "requirement": "R02",
     "result": "1 failed in18.93s; terminal exit1; actual full-contract assertion missing after real local pipeline",
     "slice": "S02 reopened",
-    "transfer_status": "not transferred; primary20455 full live/frozen",
+    "transfer_status": "checked2-file delta applied after full1414 terminal0; primary1d68a64 committed, all176 sources match stage66 after hooks; final corrected1419 pending",
     "verification": "broad72/854.27s then exact-final25/113.42s terminal0; Ruff-final02 pass; post-hook176-source/config/input/65-distribution identity verified; source record turn26-summary-source-01.json"
   },
   "original_spec_sha256": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",

@@ -21,8 +21,9 @@ accepted. [Bounded scheduling](docs/heavy-prd-scheduling.md) passed the integrat
 [Sandbox and respond are explicitly disabled](docs/heavy-prd-disabled-features.md)
 under the specification's permitted deferrals. [Observation and recovery reporting](docs/heavy-prd-observability.md)
 describe current preview limits and diagnostic behavior. S01 and S03–S18 are accepted
-locally. S02's paid-summary context is under correction after a full-contract audit
-regression; S19 remains open for complete acceptance and final combined verification.
+locally. S02's paid-summary context is corrected and awaiting final full verification;
+S19 remains open for acceptance closeout. The latest completed baseline passed
+1,414 tests; the summary-corrected1,419-test suite is still required.
 Local tests do not satisfy the live release gates.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)

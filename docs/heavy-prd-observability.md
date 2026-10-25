@@ -37,6 +37,12 @@ responses cannot create a plausible finding preview. Review status comes from ty
 receipts: disabled and unavailable remain distinct from clean. Observation loss is
 not a clean review. Full review text, findings and critical receipts are preserved.
 
+Tool-free PR narration uses the same full immutable requirements renderer as other
+paid roles. Original or in-memory PRD changes cannot replace that context or change
+the cached summary prompt identity. The prompt distinguishes pending manual QA
+from completed automated work. This improves narration input; deterministic
+receipts and exact-candidate approval still control publication.
+
 Model intents record `terminal_policy_version=1` before transport. Cached responses
 and retained review decisions require that exact integer version. Missing, boolean
 and future versions refuse execution before native work, options/credentials,
