@@ -39,6 +39,16 @@ class ConfigError(Exception):
     """Raised when blacksmith's runtime config is missing, malformed, or invalid."""
 
 
+def reject_enabled_sandbox(enabled: bool) -> None:
+    """Keep historical settings readable while refusing unsupported execution."""
+    if enabled:
+        raise ConfigError(
+            "sandbox_unsupported_until_hardened: [sandbox].enabled=true is disabled "
+            "until per-workspace ownership, timeout/restart recovery and real Docker "
+            "smoke evidence are implemented; set enabled=false. Retained runs remain "
+            "available for read-only recovery inspection.")
+
+
 def find_git_root(start: str | Path | None = None) -> Path | None:
     """Return the git repository root containing ``start`` (default: cwd), or ``None``.
 
@@ -243,16 +253,16 @@ class ReviewConfig(_Strict):
 
 
 class SandboxConfig(_Strict):
-    """Additive, opt-in sandbox self-verify channel settings (WU-SANDBOX-CONFIG).
+    """Structurally readable historical sandbox settings; execution stays disabled.
 
     OFF by default (``enabled=false``): with the default config, a run's tool surface,
     prompt, and behaviour are byte-for-byte unchanged from today — no HOST command
-    execution is ever added. When explicitly enabled, this section only configures
-    where an agent-run command is allowed to execute: inside a container built from
-    ``image``, over the mounted clone, never on the host. It never alters the test
-    gate's (``blacksmith/gate.py``) authoritative pass/fail semantics.
+    execution is ever added. Enabled configuration is rejected at runtime loading
+    and execution boundaries until per-workspace ownership, reliable timeout/restart
+    recovery and real Docker smoke evidence are implemented. Parsing saved settings
+    remains available for read-only recovery inspection; it does not authorize use.
 
-    * ``enabled`` — plain on/off toggle, default ``False``.
+    * ``enabled`` — historical flag, default ``False``; ``True`` cannot execute.
     * ``image`` — the container image name to run the sandbox in.
     * ``setup_cmd`` — optional command run once in the container after it starts (e.g.
       installing the target toolchain). ``None`` (the default) runs no setup step.
@@ -423,6 +433,10 @@ class BlacksmithConfig(_Strict):
     def config_dir(self) -> Path:
         return self._source_path.parent if self._source_path else Path.cwd().resolve()
 
+    def require_supported_execution(self) -> None:
+        """Execution policy is separate from parsing immutable historical inputs."""
+        reject_enabled_sandbox(self.sandbox.enabled)
+
     def resolved(self, base: Path | None = None) -> BlacksmithConfig:
         """Normalize storage and explicit target paths against one stable config directory."""
         base = (base or self.config_dir).resolve()
@@ -460,6 +474,7 @@ class BlacksmithConfig(_Strict):
             raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
         try:
             config = cls.model_validate(raw)
+            config.require_supported_execution()
             config._source_path = path
             return config.resolved(path.parent)
         except ValidationError as exc:

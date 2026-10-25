@@ -327,6 +327,7 @@ def create_run_context(
     unlimited_cost: bool = False,
 ) -> RunContext:
     """Preflight once; materialize immutable artifacts before the first paid call."""
+    config.require_supported_execution()
     with command_scope(limits=config.limits, stage="preflight"):
         return _create_run_context(config, prd, thread_id, required_tools=required_tools,
                                    unlimited_cost=unlimited_cost)

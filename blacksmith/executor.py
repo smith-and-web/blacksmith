@@ -187,6 +187,7 @@ class Executor:
     """Programmatic Claude execution for graph nodes (PRD §3)."""
 
     def __init__(self, config: BlacksmithConfig, *, query_fn: QueryFn = query) -> None:
+        config.require_supported_execution()
         self._config = config
         self._query = query_fn
 

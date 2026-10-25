@@ -65,6 +65,8 @@ def _tag(state, phase, update):
 
 def build_unit_graph(deps, worktree_manager=None):
     """Compile once; a parent invocation inherits isolated checkpoint namespaces."""
+    from blacksmith.config import reject_enabled_sandbox
+    reject_enabled_sandbox(deps.sandbox is not None and deps.sandbox.config.enabled)
     from blacksmith import graph as gm
 
     def wrap(phase, fn):

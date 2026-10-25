@@ -184,7 +184,7 @@ def test_sandbox_defaults_when_optional_sections_omitted():
     assert cfg.sandbox == SandboxConfig()
 
 
-def test_explicit_sandbox_config_loads(tmp_path):
+def test_historical_sandbox_settings_parse_but_enabled_execution_load_refuses(tmp_path):
     cfg_file = tmp_path / "blacksmith.config.toml"
     cfg_file.write_text(
         "[target]\n"
@@ -196,12 +196,17 @@ def test_explicit_sandbox_config_loads(tmp_path):
         'setup_cmd = "pip install -e ."\n'
         "exec_timeout_s = 30\n"
     )
-    cfg = BlacksmithConfig.load(cfg_file)
+    import tomllib
+
+    cfg = BlacksmithConfig.model_validate(tomllib.loads(cfg_file.read_text()))
     assert cfg.sandbox.enabled is True
     assert cfg.sandbox.image == "kindling-sandbox:latest"
     assert cfg.sandbox.setup_cmd == "pip install -e ."
     assert cfg.sandbox.exec_timeout_s == 30
 
+
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        BlacksmithConfig.load(cfg_file)
 
 def test_index_section_defaults():
     # WU-INDEX-CONFIG: [index] is off by default, with sane defaults for the other

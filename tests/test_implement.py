@@ -488,41 +488,21 @@ class FakeSandboxForImplement:
         raise AssertionError("run_command must never be invoked from these tests")
 
 
-def test_implement_grants_run_command_tool_and_self_verify_prompt_when_sandbox_enabled(tmp_path):
-    from blacksmith.nodes.implement import (
-        _DISALLOWED_TOOLS,
-        _SANDBOX_SERVER_NAME,
-        _SANDBOX_TOOL_NAME,
-    )
-    from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME
+def test_enabled_sandbox_refuses_before_model_tools_or_workspace_edits(tmp_path):
+    from blacksmith.config import ConfigError
 
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
     fake = EditingFakeExecutor()
-    sandbox = FakeSandboxForImplement(enabled=True)
-
-    out = implement(
-        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
-        executor=fake,
-        sandbox=sandbox,
-    )
-
-    assert out["status"] == Status.TESTING
-    call = fake.calls[0]
-    # (a) the run_command sandbox tool is granted...
-    assert RUN_COMMAND_TOOL_NAME in _SANDBOX_TOOL_NAME
-    assert _SANDBOX_TOOL_NAME in call["allowed_tools"]
-    assert _SANDBOX_SERVER_NAME in call["mcp_servers"]
-    # ...while raw Bash (and every other escape tool) stays disallowed, unchanged.
-    assert call["disallowed_tools"] == _DISALLOWED_TOOLS
-    assert "Bash" in call["disallowed_tools"]
-    # ...and the prompt instructs the agent to self-verify in the sandbox before finishing.
-    prompt = call["prompt"].lower()
-    assert "run_command" in prompt
-    assert "sandbox" in prompt
-    assert "before you finish" in prompt
-    assert "fix" in prompt
+    before = subprocess.run(["git", "-C", str(wt.path), "status", "--porcelain"],
+                            check=True, capture_output=True).stdout
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        implement({"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+                  executor=fake, sandbox=FakeSandboxForImplement(enabled=True))
+    assert fake.calls == []
+    assert subprocess.run(["git", "-C", str(wt.path), "status", "--porcelain"],
+                          check=True, capture_output=True).stdout == before
 
 
 def test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_unchanged(tmp_path):
@@ -569,8 +549,8 @@ def test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_un
     assert "sandbox" not in baseline_call["prompt"].lower()
 
 
-def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path):
-    # (c) the pre-edit guard (AC-7) is unaffected by the sandbox being enabled.
+def test_implement_untouchable_guard_still_blocks_with_disabled_sandbox(tmp_path):
+    # (c) the pre-edit guard (AC-7) is unaffected by the a disabled sandbox dependency.
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
@@ -578,7 +558,7 @@ def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path)
     out = implement(
         {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
         executor=BlockingFakeExecutor(),
-        sandbox=FakeSandboxForImplement(enabled=True),
+        sandbox=FakeSandboxForImplement(enabled=False),
     )
 
     assert out["implementation"]["blocked"]
@@ -586,18 +566,16 @@ def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path)
     assert "untouchable" in out["errors"][0]["message"]
 
 
-def test_implement_prompt_sandbox_enabled_reverses_no_shell_instruction():
+def test_implement_prompt_refuses_unavailable_sandbox_advertisement():
+    from blacksmith.config import ConfigError
     from blacksmith.nodes.implement import _implement_prompt
 
     unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
     disabled = _implement_prompt(unit)
-    enabled = _implement_prompt(unit, sandbox_enabled=True)
-
     assert "no shell" in disabled.lower() and "cannot run" in disabled.lower()
-    assert "no shell" not in enabled.lower()
-    assert "run_command" in enabled.lower()
-    assert "sandbox" in enabled.lower()
-    assert "before you finish" in enabled.lower()
+    assert "run_command" not in disabled.lower()
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        _implement_prompt(unit, sandbox_enabled=True)
 
 
 # --- repo map injection (WU-REPO-MAP-INJECT) ---------------------------------

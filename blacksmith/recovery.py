@@ -240,6 +240,7 @@ def _workspace(context, source, destination, *, readonly=False):
 
 
 def capture(context, checkpointer, *, reason, stage="cli"):
+    context.execution_config().require_supported_execution()
     index = validate(context)
     name = str(uuid4())
     root = _directory(context)

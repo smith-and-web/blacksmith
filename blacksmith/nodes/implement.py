@@ -47,7 +47,7 @@ from blacksmith.path_policy import (
 )
 from blacksmith.plan_artifacts import PlanIntegrityError, verify_approved_plan
 from blacksmith.receipts import CallContext, ReceiptError, call_context_for
-from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
+from blacksmith.sandbox import SandboxManager
 from blacksmith.state import BlacksmithState, Status
 
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
@@ -71,19 +71,9 @@ _DISALLOWED_TOOLS = [
 ]
 _IMPLEMENT_MAX_TURNS = 40
 
-# Sandbox self-verify tool (WU-SANDBOX-IMPLEMENT): ADDITIVE and off by default. When a
-# started, enabled ``SandboxManager`` is passed in, the implementer is granted the
-# ``run_command`` tool (WU-SANDBOX-TOOL) via an in-process MCP server bound to it -- every
-# command it runs still executes ONLY inside the sandbox container over the mounted clone,
-# never on the host, and raw Bash stays in ``_DISALLOWED_TOOLS`` regardless. With no sandbox
-# (or ``sandbox.config.enabled`` False, the default), none of this is wired in and the call
-# is byte-for-byte identical to today.
-_SANDBOX_SERVER_NAME = "blacksmith-sandbox"  # must match blacksmith.sandbox's server name
-_SANDBOX_TOOL_NAME = f"mcp__{_SANDBOX_SERVER_NAME}__{RUN_COMMAND_TOOL_NAME}"
-# The SandboxManager this node receives carries only start/exec/stop settings (its own
-# ``blacksmith.sandbox.SandboxConfig``), not the exec timeout -- that lives on blacksmith's
-# own ``blacksmith.config.SandboxConfig`` ([sandbox].exec_timeout_s, default 120). Graph
-# wiring may pass the configured value through explicitly; this is the fallback.
+# S17: sandbox execution is disabled pending workspace ownership and real Docker
+# timeout/restart evidence. Keep the injection signature for disabled callers;
+# enabled managers reject before model/native work and never grant a tool.
 _DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
 
 # Index tools (WU-SEARCH-TOOL / WU-STRUCT-WIRE): ADDITIVE and off by default, mirroring the
@@ -192,6 +182,8 @@ def implement(
     index_config: IndexConfig | None = None,
     defer_commit: bool = False,
 ) -> dict:
+    from blacksmith.config import reject_enabled_sandbox
+    reject_enabled_sandbox(sandbox is not None and sandbox.config.enabled)
     if executor is None:
         return {"status": Status.IMPLEMENTING}  # skeleton pass-through
 
@@ -256,19 +248,13 @@ def implement(
     # A continuation (resume_partial_implement) keeps the prior capped attempt's partial work in
     # the worktree and asks the agent to FINISH it, rather than re-implementing from scratch.
     resuming = bool(state.get("resume_partial_implement"))
-    # Sandbox self-verify (WU-SANDBOX-IMPLEMENT): ADDITIVE and off by default. Only when an
-    # enabled, started sandbox is injected does the tool surface or prompt change at all --
-    # mirroring the same ``sandbox is not None and sandbox.config.enabled`` check used by the
-    # run-level lifecycle wiring (WU-SANDBOX-LIFECYCLE) in graph.py.
-    sandbox_enabled = bool(sandbox is not None and sandbox.config.enabled)
+    sandbox_enabled = False  # S17: no sandbox tool is advertised until ownership is hardened.
     # Index tools (WU-SEARCH-TOOL / WU-STRUCT-WIRE): same additive gating as the sandbox tool
     # above -- only an explicitly enabled IndexConfig wires the server, grants the tools, and
     # advertises them. The grant, the server, and the prompt advertisement all key off this one
     # ``index_enabled`` flag so they can never diverge.
     index_enabled = bool(index_config is not None and index_config.enabled)
     allowed_tools = list(_ALLOWED_TOOLS)
-    if sandbox_enabled:
-        allowed_tools.append(_SANDBOX_TOOL_NAME)
     if index_enabled:
         allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
     guard = make_pre_edit_guard(
@@ -300,10 +286,6 @@ def implement(
         "raise_on_error": False,  # surface failures into state, don't crash the graph
     }
     mcp_servers: dict = {}
-    if sandbox_enabled:
-        mcp_servers[_SANDBOX_SERVER_NAME] = create_sandbox_mcp_server(
-            sandbox, exec_timeout_s=sandbox_exec_timeout_s
-        )
     if index_enabled:
         mcp_servers[INDEX_MCP_SERVER_NAME] = create_index_mcp_server(
             worktree_path, exclude=index_config.exclude
@@ -616,19 +598,6 @@ _NO_SANDBOX_EXECUTION_NOTE = (
     "implementing — do not waste turns looking for a way to run commands."
 )
 
-# The sandboxed execution note (WU-SANDBOX-IMPLEMENT) REVERSES the instruction above: with a
-# real self-verify channel available, the agent is told to use it and fix failures itself
-# BEFORE finishing, rather than leaving all verification to the (still authoritative) gate.
-_SANDBOX_EXECUTION_NOTE = (
-    "You HAVE a sandbox: call the `run_command` tool to run commands INSIDE an isolated "
-    "container over this working directory — never on the host, and never via a shell of "
-    "your own (raw Bash stays disallowed; `run_command` is the only execution channel, and "
-    "it is sandboxed). Before you finish, RUN the target project's own tests and build/lint "
-    "commands in the sandbox and FIX any failures — do not finish while a test or the build "
-    "is still failing. The test gate still runs afterward as the authoritative check, but "
-    "your job is to make it pass on the first try, not to leave verification to it."
-)
-
 
 def _implement_prompt(
     unit: WorkUnit,
@@ -641,7 +610,9 @@ def _implement_prompt(
     index_enabled: bool = False,
     worktree_path: str | Path | None = None,
 ) -> str:
-    execution_note = _SANDBOX_EXECUTION_NOTE if sandbox_enabled else _NO_SANDBOX_EXECUTION_NOTE
+    from blacksmith.config import reject_enabled_sandbox
+    reject_enabled_sandbox(sandbox_enabled)
+    execution_note = _NO_SANDBOX_EXECUTION_NOTE
     # When the index is enabled, the system prompt tells the agent this worktree's absolute
     # path and requires every Read/Edit to use an absolute path under it (killing observed
     # failed relative-path Read turns). This scope note MUST agree with that — an agent told

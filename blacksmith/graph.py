@@ -28,6 +28,7 @@ from blacksmith.config import (
     LimitsConfig,
     ReviewConfig,
     SBFLConfig,
+    reject_enabled_sandbox,
 )
 from blacksmith.context import selected_plan
 from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
@@ -43,7 +44,7 @@ from blacksmith.nodes.review import review as _run_review
 from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
 from blacksmith.receipts import ReceiptError
 from blacksmith.run_context import RunContextError, context_from_state
-from blacksmith.sandbox import SandboxError, SandboxManager
+from blacksmith.sandbox import SandboxManager
 from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
 from blacksmith.scheduling import execution_batches
 from blacksmith.state import BlacksmithState, Status
@@ -152,14 +153,10 @@ def prepare_worktree(
     The isolation path is stored under ``worktree_path`` (the name predates the clone
     model).
 
-    When ``sandbox`` is injected AND ``sandbox.config.enabled`` (WU-SANDBOX-LIFECYCLE),
-    this also starts the run's ONE sandbox container over the freshly-created clone —
-    reused across every unit built on this clone, never recreated per-unit. Best-effort:
-    a start failure is swallowed here (it disables the sandbox tool for the run, an
-    additive self-verify channel) and NEVER halts the run — the test gate remains the
-    sole authoritative pass/fail backstop regardless. Left unset (``sandbox=None``, the
-    default, every graph compiled without one) or disabled, this is a byte-for-byte
-    no-op."""
+    Enabled sandbox settings are unsupported until workspace ownership and real
+    Docker timeout/restart evidence are hardened. Reject before any clone/native
+    effect; disabled/unwired managers remain inert."""
+    reject_enabled_sandbox(sandbox is not None and sandbox.config.enabled)
     if worktree_manager is None:
         return {}  # skeleton pass-through
     prd = state.get("prd")
@@ -259,16 +256,7 @@ def prepare_worktree(
         ref_result = _git_run(str(worktree.path), "rev-parse", "HEAD")
         if ref_result.returncode == 0:
             update["pr_base_ref"] = ref_result.stdout.strip()
-    # Start the run's ONE sandbox container over this clone (WU-SANDBOX-LIFECYCLE), reused
-    # across every unit built on it. Additive and opt-in: a graph compiled without a sandbox
-    # (``sandbox=None``, every existing test) or one wired with ``enabled=False`` is a
-    # byte-for-byte no-op. A start failure never halts the run -- it just leaves the sandbox
-    # tool unavailable for this run; the test gate is unaffected either way.
-    if sandbox is not None and sandbox.config.enabled:
-        try:
-            sandbox.start(worktree.path)
-        except SandboxError:
-            pass
+    # S17 deliberately starts no sandbox; enabled settings refuse before cloning.
     return update
 
 
@@ -835,16 +823,10 @@ def cleanup_worktree(
     branch lives in the shared source repo, so the worktree's branch is kept when a PR
     was opened (the PR needs it) and deleted otherwise so re-runs don't collide.
 
-    Stops the run's sandbox container FIRST (WU-SANDBOX-LIFECYCLE), best-effort and
-    unconditional on every terminal path -- including after a halt, since ``human_halt``
-    routes here too -- so a started container is never leaked. A graph compiled without a
-    sandbox, or one wired with ``enabled=False``, is a byte-for-byte no-op; ``stop()`` is
-    idempotent, so this is safe even when ``start`` was never called or already failed."""
-    if sandbox is not None and sandbox.config.enabled:
-        try:
-            sandbox.stop()
-        except SandboxError:
-            pass
+    Enabled sandbox managers are rejected before cleanup effects. Historical
+    containers have no verified ownership evidence and are not automatically
+    stopped/deleted by this disabled feature. Disabled/unwired managers are inert."""
+    reject_enabled_sandbox(sandbox is not None and sandbox.config.enabled)
     if state.get("run_context") or state.get("status") == Status.HALTED:
         return {}  # Versioned runs retain every workspace; collection is explicit future work.
     if worktree_manager is None:
@@ -1196,12 +1178,9 @@ def build_graph(
     can route a PASS to ``review`` instead of straight to next_unit/approve_pr. Left unset
     (every graph wired without it) review records disabled without a model call.
 
-    ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE):
-    when provided AND ``sandbox.config.enabled``, ``prepare_worktree`` starts it once over the
-    run's clone (reused across every unit) and ``cleanup_worktree`` stops it, best-effort, on
-    every terminal path. Left unset (the default, every existing test) or disabled, neither
-    node touches it and the graph behaves exactly as today -- the test gate's pass/fail
-    semantics are never affected either way.
+    ``sandbox`` may be absent or disabled. An enabled manager is rejected before
+    topology construction; no container/tool is started or advertised. Historical
+    data remains inspectable, but enabling requires the deferred ownership work.
 
     ``index`` wires the additive, opt-in repo-map injection into the plan node's SHARED
     system prompt (WU-PLAN-REPO-MAP): when provided AND ``index.enabled``, the plan node
@@ -1239,6 +1218,7 @@ def build_graph(
     gate's interrupt payload gains a ``diff_text`` key. Left unset (the default, every
     existing test) or with a zero byte ceiling, the payload is byte-for-byte unchanged --
     the approver's bool contract and routing are never touched either way."""
+    reject_enabled_sandbox(sandbox is not None and sandbox.config.enabled)
     graph = StateGraph(BlacksmithState)
 
     plan_repo_path = str(worktree_manager.repo_path) if worktree_manager is not None else None
@@ -1423,9 +1403,8 @@ def compile_graph(
     ``review`` enables the additive post-gate review loop (WU-REVIEW-LOOP); ``None`` (the
     default) records disabled review without admitting reviewer calls.
 
-    ``sandbox`` wires the run's additive, opt-in self-verify container (WU-SANDBOX-LIFECYCLE);
-    ``None`` (the default) or one with ``config.enabled=False`` leaves ``prepare_worktree``/
-    ``cleanup_worktree`` byte-for-byte unchanged -- no container is ever started or stopped.
+    ``sandbox`` must be absent or disabled. Enabled managers reject before graph
+    construction; no container is started/stopped and no execution tool is granted.
 
     ``index`` wires the additive, opt-in repo-map injection into the plan node's shared
     system prompt (WU-PLAN-REPO-MAP); ``None`` (the default) or one with ``enabled=False``

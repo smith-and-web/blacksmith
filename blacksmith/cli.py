@@ -85,6 +85,7 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
     the self-targeting hazard). A push from the clone still targets the real GitHub remote,
     so opening a PR works exactly as before from the caller's perspective.
     """
+    config.require_supported_execution()
     return compile_graph(
         checkpointer,
         executor=Executor(config),
@@ -102,11 +103,8 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         # on real runs regardless of [index].enabled. IndexConfig.enabled (default False) is the
         # on/off switch.
         index=config.index,
-        # Wire the sandbox self-verify container (WU-SANDBOX-*) into production. build_graph_for is
-        # the ONLY place a live SandboxManager is constructed — bridge blacksmith's own
-        # [sandbox] config into the manager's own SandboxConfig (the two were built separately and
-        # never connected, so the feature was dark on real runs). SandboxConfig.enabled (default
-        # False) is the on/off switch; the manager is inert until prepare_worktree starts it.
+        # S17 keeps the default disabled dependency inert. Enabled runtime and
+        # saved configurations refuse before construction/spend; no tool is granted.
         sandbox=SandboxManager(
             config=SandboxSettings(
                 enabled=config.sandbox.enabled,
@@ -206,6 +204,8 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     values = payload if isinstance(payload, dict) and payload.get("run_context") else (
         graph.get_state(config).values)
     context = context_from_state(values) if values.get("run_context") else None
+    if context is not None:
+        context.execution_config().require_supported_execution()
     from blacksmith.scheduling import invocation_config, node_execution
     inputs = values or (payload if isinstance(payload, dict) else {})
     defaults = (getattr(graph, "config", None) or {}).get("configurable", {})
@@ -1018,6 +1018,7 @@ def _resume(argv: list[str] | None = None) -> int:
             # Policy/inputs are read-only checks. Refuse legacy metadata before
             # native observations can append command or active-clock receipts.
             context.verify_inputs()
+            context.execution_config().require_supported_execution()
             from blacksmith.budget import BudgetLedger
             from blacksmith.run_clock import used
             BudgetLedger(context).balance()

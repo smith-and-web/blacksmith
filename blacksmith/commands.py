@@ -62,6 +62,7 @@ def command_scope(
     previous = _scope.get() or CommandScope()
     if context is not None:
         config = context.execution_config()
+        config.require_supported_execution()
         limits = config.limits
         scope = CommandScope(
             timeout_s=limits.command_timeout_s,

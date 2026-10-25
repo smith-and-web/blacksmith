@@ -84,6 +84,7 @@ class BudgetLedger:
         if not call.run_context:
             raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
         context = RunContext.model_validate(call.run_context)
+        context.execution_config().require_supported_execution()
         journal = context.journal()
         if (journal.path != Path(call.journal_path).absolute() or context.run_id != call.run_id
                 or journal.context_hash != call.context_hash):

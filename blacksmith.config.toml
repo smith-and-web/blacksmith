@@ -83,3 +83,8 @@ graph_rank = true
 # critique fed back; revisions exhausted -> proceeds with the latest plan (never halts).
 # Off by default (enabled=false); turned on here for the hackathon demo run.
 enabled = true
+
+# Disabled until per-workspace ownership and real Docker smoke evidence exist.
+# enabled=true is rejected before execution; this is not an isolation guarantee.
+[sandbox]
+enabled = false
