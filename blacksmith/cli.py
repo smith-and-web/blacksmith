@@ -49,7 +49,7 @@ from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_r
 from blacksmith.nodes.pr import Runner, subprocess_runner
 from blacksmith.receipts import ReceiptError
 from blacksmith.render import Renderer
-from blacksmith.respond import RespondError, RespondResult, respond_to_pr
+from blacksmith.respond import RESPOND_UNSUPPORTED, RespondResult
 from blacksmith.run_context import (
     STATE_VERSION,
     RunContext,
@@ -1269,63 +1269,16 @@ def run_respond(
     contract: PRDContract | None = None,
     out=print,
 ) -> int:
-    """Drive ``blacksmith respond`` for an already-resolved PR: look up its branch, run
-    the revise flow (WU-RESPOND-FLOW), and render the outcome.
-
-    This is a NEW, additive entry point — it never runs the normal ingest→plan→
-    implement→gate→PR graph and ``respond_to_pr`` never opens a new PR (it only ever
-    appends a commit to the PR's existing branch on a passing revision). Returns 0 when
-    there was nothing to do or the revision was pushed; 1 when the revision never passed
-    the gate, or the PR's branch could not be resolved.
-
-    ``contract``, when given (WU-RESPOND-PRD-CONTRACT), is forwarded to
-    ``respond_to_pr`` so the revision's implementer system-prompt constitution carries
-    the PRD's real untouchables instead of the ``_default_contract`` placeholder. Left
-    as ``None`` (the default), ``respond_to_pr`` behaves byte-for-byte as before.
-    """
-    repo_path = Path(repo_path)
-    try:
-        branch = _pr_branch(pr_number, repo=repo, runner=pr_runner, cwd=repo_path)
-    except RespondCLIError as exc:
-        out(f"respond: {exc}")
-        return 1
-
-    try:
-        result = respond_to_pr(
-            pr_number=pr_number,
-            branch=branch,
-            repo_path=repo_path,
-            config=config,
-            executor=executor,
-            gate=gate,
-            fix=fix,
-            clone_manager=clone_manager,
-            pr_runner=pr_runner,
-            repo=repo,
-            contract=contract,
-        )
-    except RespondError as exc:
-        # A push failure on a PASSING revision surfaces as the same clean "respond: ..."
-        # message as the branch-lookup failure above, not a raw traceback (reviewer nit).
-        out(f"respond: {exc}")
-        return 1
-    _render_respond_result(result, out=out)
-    return 0 if result.reason in ("pushed", "no_comments") else 1
+    """Return the explicit unsupported result before branch/model/native access."""
+    out(f"respond: {RESPOND_UNSUPPORTED}")
+    return 1
 
 
 def _respond(argv: list[str] | None = None) -> int:
-    """``blacksmith respond --pr N``: revise an already-open PR from its review comments.
-
-    ADDITIVE entry point (WU-RESPOND-CLI): loads config + .env, fetches the PR's review
-    comments (WU-PR-COMMENTS), and runs the revise flow (WU-RESPOND-FLOW) against that
-    PR's own branch. It never runs the normal ingest→plan→implement→gate→PR graph and
-    never opens a new PR — only ever appends a commit to the PR's existing branch, and
-    only once the revision passes the authoritative test gate.
-    """
+    """Keep respond/help available with an explicit unsupported execution result."""
     parser = argparse.ArgumentParser(
         prog="blacksmith respond",
-        description="Revise an already-open PR from its human review comments "
-        "(never runs the normal PRD graph; never opens a new PR).",
+        description="Currently unsupported until integrity and recovery are hardened.",
     )
     parser.add_argument(
         "--pr", type=int, required=True, dest="pr_number", metavar="N",
@@ -1337,37 +1290,16 @@ def _respond(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--prd", default=None, dest="prd_path", metavar="PATH",
-        help="Optional contract-conforming PRD markdown file. When given, its contract's "
-        "real untouchables are threaded into the revision's implementer system-prompt "
-        "constitution in place of the placeholder default.",
+        help="Reserved PRD path for the deferred revision workflow.",
     )
     parser.add_argument(
         "--config",
         default=None,
         help="blacksmith config path (default: discovered by walking up to the git root).",
     )
-    args = parser.parse_args(argv)
-
-    load_dotenv(Path.cwd() / ".env")
-    config = _load_config(args.config)
-    repo_path = config.resolve_repo_path()
-
-    contract = None
-    if args.prd_path is not None:
-        try:
-            contract = parse_prd(args.prd_path).contract
-        except ContractError as exc:
-            print(f"respond: {exc}")
-            return 1
-
-    return run_respond(
-        args.pr_number,
-        config=config,
-        repo_path=repo_path,
-        executor=Executor(config),
-        repo=args.repo,
-        contract=contract,
-    )
+    parser.parse_args(argv)
+    print(f"respond: {RESPOND_UNSUPPORTED}", file=sys.stderr)
+    return 1
 
 
 def _costs(argv: list[str] | None = None) -> int:

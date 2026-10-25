@@ -1,21 +1,20 @@
-"""Tests for ``blacksmith respond`` (WU-RESPOND-FLOW): revise a PR branch from review
-comments, gate it, and push the update.
+"""S18 disabled-flow refusals with real scratch Git branch preservation.
 
-A fake executor, a fake gate, and a fake PR runner drive the flow — no `gh`, no model
-call, and no network. Git itself runs for REAL against scratch repos in ``tmp_path``
-(mirroring test_clone.py / test_pr.py), so the clone/checkout/push plumbing is exercised
-against a real bare "remote", never faked.
+Only the low-level branch clone helper remains independently exercisable. No
+passing mocked revision is promoted to an enabled respond workflow.
 """
 
 import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from blacksmith.config import BlacksmithConfig, RespondConfig
 from blacksmith.executor import ExecutorResult
 from blacksmith.gate import FixResult, GateResult
 from blacksmith.nodes.pr import CommandResult, subprocess_runner
-from blacksmith.respond import PRBranchCloneManager, respond_to_pr
+from blacksmith.respond import PRBranchCloneManager, RespondUnsupportedError, respond_to_pr
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -124,86 +123,47 @@ def _branch_log(bare: Path, branch: str) -> list[str]:
     return _git(bare, "log", "--oneline", branch).strip().splitlines()
 
 
-# --- (a) comments -> a passing revision is pushed as one appended commit -----
+# --- disabled entry points preserve exact remote history -------------------
 
 
-def test_passing_revision_is_pushed_and_no_new_pr_is_created(tmp_path):
+def test_disabled_respond_preserves_branch_without_comment_model_gate_clone_or_push(tmp_path):
     branch = "blacksmith/wu-01"
     repo, bare = _repo_with_pr_branch(tmp_path, branch)
     baseline = _branch_log(bare, branch)
-    runner = _fake_pr_runner(
-        reviews=[{"body": "please fix the docstring", "author": {"login": "alice"}}]
-    )
+    runner = _fake_pr_runner(reviews=[{"body": "please revise", "author": {"login": "reviewer"}}])
     manager = PRBranchCloneManager(repo, base_dir=tmp_path / "clones")
     executor = FakeExecutor()
     gate = FakeGate([GateResult(passed=True, output="ok", command="pytest")])
-
-    result = respond_to_pr(
-        pr_number=42,
-        branch=branch,
-        repo_path=repo,
-        config=_config(),
-        executor=executor,
-        gate=gate,
-        fix=_no_op_fix,
-        clone_manager=manager,
-        pr_runner=runner,
-    )
-
-    assert result.pushed is True
-    assert result.attempts == 1
-    assert result.reason == "pushed"
-    assert result.comment_count == 1
-    assert result.gate_output is None
-    assert len(executor.calls) == 1  # exactly one revise attempt
-    assert gate.calls == 1
-    # No new PR was ever opened for this update.
-    assert not any(call[:3] == ["gh", "pr", "create"] for call in runner.calls)
-
-    after = _branch_log(bare, branch)
-    assert len(after) == len(baseline) + 1  # exactly one appended commit
-    assert "feat(respond)" in after[0]
+    with pytest.raises(RespondUnsupportedError, match="respond_unsupported_until_hardened"):
+        respond_to_pr(pr_number=42, branch=branch, repo_path=repo, config=_config(),
+                      executor=executor, gate=gate, fix=_no_op_fix,
+                      clone_manager=manager, pr_runner=runner)
+    assert runner.calls == [] and executor.calls == [] and gate.calls == 0
+    assert _branch_log(bare, branch) == baseline
+    assert not (tmp_path / "clones").exists()
 
 
-# --- (b) a revision that fails the gate is retried, then stops with no push --
+# --- retries and gate/push failures are unreachable while disabled ---------
 
 
-def test_failing_gate_retries_up_to_max_attempts_then_stops_without_pushing(tmp_path):
+def test_disabled_respond_never_enters_retry_or_failed_push_paths(tmp_path):
     branch = "blacksmith/wu-02"
     repo, bare = _repo_with_pr_branch(tmp_path, branch)
     baseline = _branch_log(bare, branch)
-    runner = _fake_pr_runner(
-        reviews=[{"body": "please fix the bug", "author": {"login": "alice"}}]
-    )
-    manager = PRBranchCloneManager(repo, base_dir=tmp_path / "clones")
+    runner = _fake_pr_runner(reviews=[{"body": "please revise", "author": {"login": "reviewer"}}])
     executor = FakeExecutor()
     gate = FakeGate([GateResult(passed=False, output="tests failed", command="pytest")])
-
-    result = respond_to_pr(
-        pr_number=43,
-        branch=branch,
-        repo_path=repo,
-        config=_config(max_attempts=3),
-        executor=executor,
-        gate=gate,
-        fix=_no_op_fix,
-        clone_manager=manager,
-        pr_runner=runner,
-    )
-
-    assert result.pushed is False
-    assert result.attempts == 3
-    assert result.reason == "gate_failed"
-    assert result.gate_output == "tests failed"
-    assert gate.calls == 3
-    assert len(executor.calls) == 3
-    assert not any(call[:2] == ["git", "push"] for call in runner.calls)
-
-    after = _branch_log(bare, branch)
-    assert after == baseline  # nothing was ever pushed
+    with pytest.raises(RespondUnsupportedError, match="respond_unsupported_until_hardened"):
+        respond_to_pr(pr_number=43, branch=branch, repo_path=repo,
+                      config=_config(max_attempts=3), executor=executor, gate=gate,
+                      fix=_no_op_fix, clone_manager=PRBranchCloneManager(
+                          repo, base_dir=tmp_path / "clones"), pr_runner=runner)
+    assert runner.calls == [] and executor.calls == [] and gate.calls == 0
+    assert _branch_log(bare, branch) == baseline
+    assert not (tmp_path / "clones").exists()
 
 
-# --- (c) empty comments -> a no-op -------------------------------------------
+# --- no comment fetch is attempted, even for an empty review ----------------
 
 
 class _ExplodingCloneManager:
@@ -225,29 +185,17 @@ def _exploding_gate(path, layer):
     raise AssertionError("gate must not run for empty comments")
 
 
-def test_empty_comments_is_a_noop(tmp_path):
+def test_disabled_respond_refuses_before_even_an_empty_comment_lookup(tmp_path):
     branch = "blacksmith/wu-03"
-    repo, _bare = _repo_with_pr_branch(tmp_path, branch)
+    repo, bare = _repo_with_pr_branch(tmp_path, branch)
+    baseline = _branch_log(bare, branch)
     runner = _fake_pr_runner(reviews=[], inline=[])
-
-    result = respond_to_pr(
-        pr_number=44,
-        branch=branch,
-        repo_path=repo,
-        config=_config(),
-        executor=_ExplodingExecutor(),
-        gate=_exploding_gate,
-        clone_manager=_ExplodingCloneManager(),
-        pr_runner=runner,
-    )
-
-    assert result.pushed is False
-    assert result.attempts == 0
-    assert result.reason == "no_comments"
-    assert result.comment_count == 0
-    # No push, no PR creation — only the (faked) comment-fetch `gh` calls happened.
-    assert not any(call[:2] == ["git", "push"] for call in runner.calls)
-    assert not any(call[:3] == ["gh", "pr", "create"] for call in runner.calls)
+    with pytest.raises(RespondUnsupportedError, match="respond_unsupported_until_hardened"):
+        respond_to_pr(pr_number=44, branch=branch, repo_path=repo, config=_config(),
+                      executor=_ExplodingExecutor(), gate=_exploding_gate,
+                      clone_manager=_ExplodingCloneManager(), pr_runner=runner)
+    assert runner.calls == []
+    assert _branch_log(bare, branch) == baseline
 
 
 def test_pr_branch_clone_manager_fetches_a_remote_only_branch(tmp_path):

@@ -20,5 +20,18 @@ capture refuse without rewriting the original evidence. The disabled feature doe
 not stop/delete historical containers whose ownership is unproven; inspect those
 separately before any manual cleanup. Do not edit saved settings to bypass refusal.
 
-S18's respond integration or explicit unsupported-command alternative is still
-pending. This document does not establish that command's safety or availability.
+S18 also uses the explicit disabled-command alternative. respond --help remains
+available (exit0). A well-formed execution request returns exit1 with
+respond_unsupported_until_hardened before loading environment/configuration,
+reading a supplied PRD, querying GitHub, constructing an executor or cloning.
+Missing/invalid required arguments retain argparse's exit2. The programmatic
+run_respond wrapper returns1 with the same diagnostic; respond_to_pr raises
+RespondUnsupportedError before any dependency/effect. Existing branches and
+workspaces are untouched. Reserved [respond] settings do not enable the command.
+
+Future enablement requires immutable original feedback and addressed comment IDs,
+a correctly scoped synthetic unit, full supplied requirements/untouchables,
+common admission/attempt/review/approval/gate services, exact fetched-head checks,
+non-force publication and retained recovery evidence for races or failed pushes.
+The disabled variant does not claim that those revision behaviors were implemented
+or verified. It provides an explicit refusal under the specification's exception.

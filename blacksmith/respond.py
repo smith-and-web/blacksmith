@@ -1,47 +1,22 @@
-"""``blacksmith respond`` — revise an already-open PR from its review comments
-(WU-RESPOND-FLOW).
+"""Respond execution is disabled until it uses the common integrity/recovery services.
 
-ADDITIVE, PRD §7-compliant entry point: a NEW code path that never touches the normal
-ingest→plan→implement→gate→PR graph run. A repo that never calls :func:`respond_to_pr`
-behaves exactly as today.
-
-Given a PR blacksmith itself opened, this drives a BOUNDED revise loop:
-
-1. Fetch the PR's human review feedback (``blacksmith.pr_comments``, WU-PR-COMMENTS).
-   Empty feedback is a no-op — nothing is cloned, revised, or pushed.
-2. Clone the PR's branch in an isolated :class:`CloneManager`-based clone (never the
-   canonical target repo's working tree).
-3. Run the implementer with the review comments fed in as the revision instruction —
-   by calling the EXISTING ``blacksmith.nodes.implement.implement`` node itself, so the
-   revision reuses, unchanged, the untouchable pre-edit guard (PRD §7) and the same
-   feedback channel (``last_gate_output``) a gate-failure retry already uses.
-4. Run the deterministic auto-fixer, then the authoritative test gate. The gate's
-   pass/fail semantics are NEVER altered here.
-5. On PASS, push the appended commit to the PR's EXISTING branch via the existing
-   ``Runner`` machinery (``blacksmith.nodes.pr``) — one more commit on the open PR,
-   never a new PR, never a force-push, never rewritten history.
-6. On FAIL, discard the failed attempt and retry — feeding the gate's own output back
-   in, exactly like the self-heal loop — up to ``config.respond.max_attempts``. If every
-   attempt fails, ``respond_to_pr`` stops WITHOUT pushing anything: the gate stays
-   authoritative for a revision too.
+The command and library signatures remain recognizable. Historical result models,
+formatting and branch helpers are retained for compatibility/inspection; they do
+not enable the deferred revision workflow.
 """
 
 from __future__ import annotations
 
-import functools
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from blacksmith.commands import run_command
 from blacksmith.config import BlacksmithConfig
-from blacksmith.contract import PRD, PRDContract, WorkUnit
+from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
-from blacksmith.gate import FixResult, GateResult, TargetToolchain, run_fix, run_gate
-from blacksmith.nodes.implement import implement
+from blacksmith.gate import FixResult, GateResult, TargetToolchain
 from blacksmith.nodes.pr import Runner, subprocess_runner
-from blacksmith.pr_comments import fetch_pr_review_comments
-from blacksmith.state import Status
 from blacksmith.worktree import Clone, CloneManager
 
 GateFn = Callable[[str | Path, str | None], GateResult]
@@ -56,7 +31,17 @@ _DEFAULT_UNTOUCHABLES = ["No PRD contract is associated with this PR revision."]
 
 
 class RespondError(Exception):
-    """Raised when pushing a passing revision to the PR's branch fails."""
+    """A respond operation is unavailable or failed."""
+
+
+RESPOND_UNSUPPORTED = (
+    "respond_unsupported_until_hardened: respond is disabled until its shared "
+    "integrity, execution and recovery services are hardened."
+)
+
+
+class RespondUnsupportedError(RespondError):
+    """The revision workflow cannot execute under the current readiness policy."""
 
 
 @dataclass(frozen=True)
@@ -194,80 +179,5 @@ def respond_to_pr(
     contract: PRDContract | None = None,
     remote: str = "origin",
 ) -> RespondResult:
-    """Revise ``pr_number`` (whose branch is ``branch``) from its human review comments,
-    gate the revision, and — only on a PASS — push the appended commit to the PR's
-    existing branch.
-
-    Bounded by ``config.respond.max_attempts``: each failing gate discards the attempt
-    and retries with the gate's own output fed back in, mirroring the self-heal loop.
-    If every attempt fails, this returns WITHOUT pushing anything — the gate stays
-    authoritative for a revision exactly as it is for a fresh unit. Empty review
-    comments are a no-op: nothing is cloned, revised, or pushed.
-    """
-    repo_path = Path(repo_path)
-    comments = fetch_pr_review_comments(
-        pr_number, repo=repo, own_login=own_login, runner=pr_runner, cwd=repo_path
-    )
-    if not comments:
-        return RespondResult(
-            pr_number=pr_number,
-            branch=branch,
-            comment_count=0,
-            attempts=0,
-            pushed=False,
-            reason="no_comments",
-        )
-
-    gate = gate or functools.partial(run_gate, toolchain=toolchain)
-    fix = fix or functools.partial(run_fix, toolchain=toolchain)
-    contract = contract or _default_contract()
-    unit = contract.work_units[0]
-    manager = clone_manager or PRBranchCloneManager(repo_path)
-
-    clone = manager.create(branch)
-    try:
-        feedback = format_review_feedback(comments)
-        max_attempts = max(1, config.respond.max_attempts)
-        pre_attempt_ref = _git(clone.path, "rev-parse", "HEAD").strip()
-        last_gate_output: str | None = None
-        for attempt in range(1, max_attempts + 1):
-            state = {
-                "prd": PRD(path=Path("<respond>"), contract=contract, body=""),
-                "selected_unit": unit,
-                "worktree_path": str(clone.path),
-                "last_gate_output": feedback,
-            }
-            impl_update = implement(state, executor=executor)
-            if impl_update.get("status") != Status.TESTING or impl_update.get("errors"):
-                # No usable revision this attempt (nothing changed, a commit failure, or
-                # the guard blocked an untouchable edit) — discard and retry.
-                _reset_hard(clone.path, pre_attempt_ref)
-                feedback = _implement_failure_message(impl_update)
-                continue
-
-            fix(clone.path, layer)
-            gate_result = gate(clone.path, layer)
-            if gate_result.passed:
-                _push_revision(clone, branch, remote=remote, runner=pr_runner)
-                return RespondResult(
-                    pr_number=pr_number,
-                    branch=branch,
-                    comment_count=len(comments),
-                    attempts=attempt,
-                    pushed=True,
-                    reason="pushed",
-                )
-            _reset_hard(clone.path, pre_attempt_ref)
-            feedback = gate_result.output
-            last_gate_output = gate_result.output
-        return RespondResult(
-            pr_number=pr_number,
-            branch=branch,
-            comment_count=len(comments),
-            attempts=max_attempts,
-            pushed=False,
-            reason="gate_failed",
-            gate_output=last_gate_output,
-        )
-    finally:
-        manager.remove(clone)
+    """Refuse the deferred revision workflow before comment fetch or any effect."""
+    raise RespondUnsupportedError(RESPOND_UNSUPPORTED)

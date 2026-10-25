@@ -306,17 +306,11 @@ class IndexConfig(_Strict):
 
 
 class RespondConfig(_Strict):
-    """Additive ``blacksmith respond`` revise-loop settings (WU-RESPOND-CONFIG).
+    """Historical/reserved revision settings retained for config compatibility.
 
-    ``respond`` is a NEW, separate entry point (PRD-additive) for revising an already
-    opened PR from review comments; it never changes the normal ingest→plan→implement→
-    gate→PR run. This section only bounds how many revise→gate attempts a single
-    ``respond`` invocation makes before it stops.
-
-    * ``max_attempts`` — an int >= 1, default 2, capping the revise→gate cycles a single
-      ``respond`` invocation may run. A default of 2 mirrors the build loop's self-heal
-      (``max_fix_attempts`` default 1 = two implement attempts): on a failed revision,
-      ``respond`` re-implements once with the gate's own output fed back before giving up.
+    Respond execution is explicitly unsupported until shared integrity/recovery
+    services are integrated. max_attempts remains structurally validated for old
+    configurations; it cannot enable the disabled command or library workflow.
     """
 
     max_attempts: int = Field(default=2, ge=1)
