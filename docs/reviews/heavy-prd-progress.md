@@ -60,7 +60,7 @@ See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results,
 
 ## Current handoff: turn20; corrected S15 full02 and isolated S16 scale audit
 
-Counter **20/30**, never increment on compaction, status questions or tools. S01-S14 accepted. S15/S16 unchecked; S17-S19 outstanding. Primary feature/heavy-prd-readiness/docs HEAD021b88a has uncommitted S15 source durably matched to admission-stage **b123b50f7c3d70683e95e24730d43a491488143c**. Original spec/probe unchanged/untracked. No primary Python edits after final full02 launch.
+Counter **20/30**, never increment on compaction, status questions or tools. S01-S14 accepted. S15/S16 unchecked; S17-S19 outstanding. Primary feature/heavy-prd-readiness/turn19 documentation base021b88a has uncommitted S15 source durably matched to admission-stage **b123b50f7c3d70683e95e24730d43a491488143c**. Original spec/probe unchanged/untracked. No primary Python edits after final full02 launch.
 
 **Live primary full02 handle3281**: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t20-full-02 > docs/reviews/heavy-prd-turn-20-pytest-02.log 2>&1`. Exact complete165-source/config/input/Python/dependency/receipt record is **turn20-environment-02.json**. All165 sources match the durable admission-stage WIP exactly, including the strict accepted S14 query fixture and new receipt assertions. Primary final scope02 passed **96/126.74s**, ruff20 and source/config whitespace passed. No final full S15 pass is claimed. Poll same3281, never restart on observation timeout.
 
