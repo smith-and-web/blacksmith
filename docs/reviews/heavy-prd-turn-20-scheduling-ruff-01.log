@@ -1,0 +1,98 @@
+E501 Line too long (102 > 100)
+   --> blacksmith/cli.py:210:101
+    |
+208 |     context = context_from_state(values) if values.get("run_context") else None
+209 |     from blacksmith.scheduling import invocation_config
+210 |     config = {**config, **invocation_config(values or (payload if isinstance(payload, dict) else {}))}
+    |                                                                                                     ^^
+211 |     with execution_scope(context) as clock, cancellation_signals(clock):
+212 |         return _execute_step(graph, payload, config, on_node=on_node, on_event=on_event)
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/graph.py:8:1
+   |
+ 6 |   """
+ 7 |
+ 8 | / from __future__ import annotations
+ 9 | |
+10 | | import shutil
+11 | | import sqlite3
+12 | | from collections.abc import Callable, Sequence
+13 | | from dataclasses import dataclass
+14 | | from pathlib import Path
+15 | |
+16 | | from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+17 | | from langgraph.checkpoint.sqlite import SqliteSaver
+18 | | from langgraph.graph import END, START, StateGraph
+19 | | from langgraph.graph.state import CompiledStateGraph
+20 | | from langgraph.store.base import BaseStore
+21 | | from langgraph.types import Send
+22 | |
+23 | | from blacksmith.commands import command_scope_for_state, run_command
+24 | | from blacksmith.config import (
+25 | |     CriticConfig,
+26 | |     HitlConfig,
+27 | |     IndexConfig,
+28 | |     LimitsConfig,
+29 | |     ReviewConfig,
+30 | |     SBFLConfig,
+31 | | )
+32 | | from blacksmith.context import selected_plan
+33 | | from blacksmith.contract import PRD, ContractError, PRDContract, WorkUnit, parse_prd
+34 | | from blacksmith.executor import Executor
+35 | | from blacksmith.gate import FixResult, GateError, GateResult
+36 | | from blacksmith.gate_receipts import FixReceipt, GateCommandReceipt, GateLayerReceipt, GateReceipt
+37 | | from blacksmith.memory import current_store, record_lesson
+38 | | from blacksmith.nodes.hitl import approve_plan, approve_pr, prepare_pr_approval
+39 | | from blacksmith.nodes.implement import implement as implement
+40 | | from blacksmith.nodes.plan import plan
+41 | | from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
+42 | | from blacksmith.nodes.review import review as _run_review
+43 | | from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
+44 | | from blacksmith.scheduling import execution_batches
+45 | | from blacksmith.receipts import ReceiptError
+46 | | from blacksmith.run_context import RunContextError, context_from_state
+47 | | from blacksmith.sandbox import SandboxError, SandboxManager
+48 | | from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
+49 | | from blacksmith.state import BlacksmithState, Status
+50 | | from blacksmith.unit_state import new_unit_attempt, next_attempt
+51 | | from blacksmith.verification import fix_candidate, run_candidate_gate
+52 | | from blacksmith.worktree import (
+53 | |     Clone,
+54 | |     CloneManager,
+55 | |     RunCloneManager,
+56 | |     Worktree,
+57 | |     WorktreeError,
+58 | |     WorktreeManager,
+59 | |     branch_for,
+60 | | )
+   | |_^
+61 |
+62 |   # A gate callable: (worktree_path, layer) -> GateResult. Injected so tests can
+   |
+help: Organize imports
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/integration.py:3:1
+   |
+ 1 |   """Parent-only completeness checks and exact-candidate layer-union gates."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | from pathlib import Path
+ 6 | |
+ 7 | | from blacksmith import verification
+ 8 | | from blacksmith.commands import run_command
+ 9 | | from blacksmith.gate import GateError, GateResult
+10 | | from blacksmith.path_policy import policy_for_state
+11 | | from blacksmith.scheduling import execution_batches, validate_schedule
+12 | | from blacksmith.receipts import OperationKey, ReceiptError
+13 | | from blacksmith.run_context import context_from_state, run_branch
+14 | | from blacksmith.state import Status
+   | |___________________________________^
+   |
+help: Organize imports
+
+Found 3 errors.
+[*] 2 fixable with the `--fix` option.

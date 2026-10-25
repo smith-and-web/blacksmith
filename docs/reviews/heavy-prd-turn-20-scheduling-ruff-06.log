@@ -1,0 +1,12 @@
+E501 Line too long (105 > 100)
+   --> tests/test_scheduling_runtime.py:211:101
+    |
+209 |     before = saved_values(project[1], "publication")
+210 |     assert len(calls) == 2 and not before.get("worktree_path")
+211 |     project[1].write_text(project[1].read_text().replace("max_parallel_units=3", "max_parallel_units=1"))
+    |                                                                                                     ^^^^^
+212 |     monkeypatch.setattr(cli, "_resolve_approver", original_approver)
+213 |     seen = observe_workers(monkeypatch, 3)
+    |
+
+Found 1 error.

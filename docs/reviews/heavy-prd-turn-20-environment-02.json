@@ -1,0 +1,500 @@
+{
+  "all_installed_distributions": [
+    [
+      "PyJWT",
+      "2.13.0"
+    ],
+    [
+      "PyYAML",
+      "6.0.3"
+    ],
+    [
+      "Pygments",
+      "2.20.0"
+    ],
+    [
+      "aiosqlite",
+      "0.22.1"
+    ],
+    [
+      "annotated-types",
+      "0.7.0"
+    ],
+    [
+      "anyio",
+      "4.14.0"
+    ],
+    [
+      "attrs",
+      "26.1.0"
+    ],
+    [
+      "blacksmith",
+      "0.0.0"
+    ],
+    [
+      "certifi",
+      "2026.5.20"
+    ],
+    [
+      "cffi",
+      "2.0.0"
+    ],
+    [
+      "charset-normalizer",
+      "3.4.7"
+    ],
+    [
+      "claude-agent-sdk",
+      "0.2.115"
+    ],
+    [
+      "click",
+      "8.4.1"
+    ],
+    [
+      "cryptography",
+      "49.0.0"
+    ],
+    [
+      "h11",
+      "0.16.0"
+    ],
+    [
+      "httpcore",
+      "1.0.9"
+    ],
+    [
+      "httpx",
+      "0.28.1"
+    ],
+    [
+      "httpx-sse",
+      "0.4.3"
+    ],
+    [
+      "idna",
+      "3.18"
+    ],
+    [
+      "iniconfig",
+      "2.3.0"
+    ],
+    [
+      "jsonpatch",
+      "1.33"
+    ],
+    [
+      "jsonpointer",
+      "3.1.1"
+    ],
+    [
+      "jsonschema",
+      "4.26.0"
+    ],
+    [
+      "jsonschema-specifications",
+      "2025.9.1"
+    ],
+    [
+      "langchain-core",
+      "1.4.7"
+    ],
+    [
+      "langchain-protocol",
+      "0.0.17"
+    ],
+    [
+      "langgraph",
+      "1.2.9"
+    ],
+    [
+      "langgraph-checkpoint",
+      "4.1.1"
+    ],
+    [
+      "langgraph-checkpoint-sqlite",
+      "3.1.0"
+    ],
+    [
+      "langgraph-prebuilt",
+      "1.1.0"
+    ],
+    [
+      "langgraph-sdk",
+      "0.4.2"
+    ],
+    [
+      "langsmith",
+      "0.8.16"
+    ],
+    [
+      "markdown-it-py",
+      "4.2.0"
+    ],
+    [
+      "mcp",
+      "1.27.2"
+    ],
+    [
+      "mdurl",
+      "0.1.2"
+    ],
+    [
+      "orjson",
+      "3.11.9"
+    ],
+    [
+      "ormsgpack",
+      "1.12.2"
+    ],
+    [
+      "packaging",
+      "26.2"
+    ],
+    [
+      "pluggy",
+      "1.6.0"
+    ],
+    [
+      "pycparser",
+      "3.0"
+    ],
+    [
+      "pydantic",
+      "2.13.4"
+    ],
+    [
+      "pydantic-settings",
+      "2.14.1"
+    ],
+    [
+      "pydantic_core",
+      "2.46.4"
+    ],
+    [
+      "pytest",
+      "9.1.1"
+    ],
+    [
+      "python-dotenv",
+      "1.2.2"
+    ],
+    [
+      "python-multipart",
+      "0.0.32"
+    ],
+    [
+      "referencing",
+      "0.37.0"
+    ],
+    [
+      "requests",
+      "2.34.2"
+    ],
+    [
+      "requests-toolbelt",
+      "1.0.0"
+    ],
+    [
+      "rich",
+      "15.0.0"
+    ],
+    [
+      "rpds-py",
+      "2026.5.1"
+    ],
+    [
+      "ruff",
+      "0.15.21"
+    ],
+    [
+      "sniffio",
+      "1.3.1"
+    ],
+    [
+      "sqlite-vec",
+      "0.1.9"
+    ],
+    [
+      "sse-starlette",
+      "3.4.4"
+    ],
+    [
+      "starlette",
+      "1.3.1"
+    ],
+    [
+      "tenacity",
+      "9.1.4"
+    ],
+    [
+      "typing-inspection",
+      "0.4.2"
+    ],
+    [
+      "typing_extensions",
+      "4.15.0"
+    ],
+    [
+      "urllib3",
+      "2.7.0"
+    ],
+    [
+      "uuid_utils",
+      "0.16.1"
+    ],
+    [
+      "uvicorn",
+      "0.49.0"
+    ],
+    [
+      "websockets",
+      "15.0.1"
+    ],
+    [
+      "xxhash",
+      "3.7.0"
+    ],
+    [
+      "zstandard",
+      "0.25.0"
+    ]
+  ],
+  "base_revision": "021b88a7fc005dd48e65dcc04f9c0355be06dde1",
+  "brain_verification": {
+    "exact_whole_note_readback": true,
+    "index_errors": 0,
+    "invalid_frontmatter": 0,
+    "lint_errors": 0,
+    "lint_warnings": 0,
+    "path": "Projects/blacksmith.md",
+    "semantic_request_id": "88c81828-92b5-49c4-a9bb-0edc1b53c42f",
+    "wait_seconds_at_least": 83
+  },
+  "config_sha256": {
+    "blacksmith.config.toml": "3962509f83f076d44421d8bafb50d371a98f81e8efcdb30c9d548418443c88bb",
+    "pyproject.toml": "d0afa4787e97268fc66a93ca0ca7937b86c7de6d434335e3dda83bd27deac85f",
+    "uv.lock": "2edace3af5bbea0da7531b9b43cfad3a636bbc7ae7fa6905b2a02e95097536a3"
+  },
+  "expected_warnings": "Intentional SDK Read/Glob/Grep allowed-tools advisory; retained, not filtered",
+  "full_command": "uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t20-full-02 > docs/reviews/heavy-prd-turn-20-pytest-02.log 2>&1",
+  "full_session_id": 3281,
+  "goal_turn": 20,
+  "input_sha256": {
+    "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
+    "docs/reviews/2026-10-24-readiness-probes.py": "70e36e96aba1a449244bddca13150eeeda7fe0874e663f8b75a8f44ad0e2901c"
+  },
+  "prior_full_result": {
+    "file": "heavy-prd-turn-19-environment-01.json",
+    "result": "13failed/910passed/6warnings/2181.76s, intentionally SIGINT stopped; exact165 source/config/input/runtime hashes unchanged"
+  },
+  "python": "3.12.13",
+  "receipt_sha256": {
+    "docs/reviews/heavy-prd-turn-20-admission-final-02.log": "c158ab2a9b53f72a502a47dce167e046e0b9d6994be1a7c79a55732fd9003794",
+    "docs/reviews/heavy-prd-turn-20-admission-guard-01.log": "03868cd5f811f9e92379387355ad735ce32dadb1f5cac12db493c59820607f27",
+    "docs/reviews/heavy-prd-turn-20-admission-guard-ruff-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-receipts-01.log": "00c351a811d4db64f34a083e5b1804643d1e57e0e0392c8c30ced99ad3ea3b1e",
+    "docs/reviews/heavy-prd-turn-20-receipts-imports-02.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-ruff-primary-final-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-scheduling-collection-01.log": "a28d8eb59ebb3257b1ee4170efb63f974c31f75f62e3ff95b2b2f865e2916116",
+    "docs/reviews/heavy-prd-turn-20-scheduling-consolidated-01.log": "b8d7e850e0617d1672dd5d069ffef07afb695fcff72187eebfdb7123ee3caf82",
+    "docs/reviews/heavy-prd-turn-20-scheduling-foundation-01.log": "0e18abaafa1cbf49edee6c2c2de93c8a7c7db6e3a19eb8b257aad76d54c1b44d",
+    "docs/reviews/heavy-prd-turn-20-scheduling-foundation-02.log": "c94673157a536249694f4ceec52ec6cfa788637b2d57097baa525ca1b5f3d9a3",
+    "docs/reviews/heavy-prd-turn-20-scheduling-imports-02.log": "6f4e3c8cb6a43f32a8b47add0b65207f17bd814c84308623b3720ad789c0d769",
+    "docs/reviews/heavy-prd-turn-20-scheduling-rollback-02.log": "98aa8df4c6491771891bda25307c4b11ac74c78146acf3bab8420416b78166e3",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-01.log": "864ee24b739a8854d60e00db4da48273c5c0453f98c56a24484e1dcb23e424e1",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-02.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-03.log": "43e4e824dee7881b997d25a4b50a42ab82ace0865b9e612e63b08e031dec5a34",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-04.log": "a112907bacc6256f779c0ab7a5265491b1230307d50577e969ea61fc1a0b481d",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-05.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-06.log": "5c37af8f0eccc83a8dd1357c78fa302126bc1a4be598a59aebde925fd3a98031",
+    "docs/reviews/heavy-prd-turn-20-scheduling-ruff-final-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-scheduling-runtime-01.log": "b071888199450aca32f4e70db5859cae6bfa88003ed2266745ce37af0844c009",
+    "docs/reviews/heavy-prd-turn-20-scheduling-runtime-02.log": "ddf344191f769030c83a489859014a5cdff3d13c36c835bc0bb4625517cb24d6",
+    "docs/reviews/heavy-prd-turn-20-scheduling-runtime-03.log": "f6533290a6a84a8007a3aa0f0ee9861ea174b479c35b3efe2b603755580cfc92"
+  },
+  "recorded_at": "2026-10-25T01:43:59.874400-03:00",
+  "scope_proof": "Primary final02 96passed/126.74s; final ruff passed. Admission-stage65passed/189.14s includes7 new default SDK missing-context refusals. All original receipt no-effect/replay/cost/native assertions preserved.",
+  "source_count": 165,
+  "source_matches_staging_exactly": true,
+  "source_sha256": {
+    "blacksmith/__init__.py": "a29b1335302a733a2758cf9b947a88616b1f85e141ef7bf926660a9213e12bf5",
+    "blacksmith/__main__.py": "af0dbc0b8e4250e5e8c2d0d499fd2c42afc2114b28ef8b9876c5c9c15a059b12",
+    "blacksmith/_sdk_launcher.py": "6a95fb1ed2a6b8f3ad7255a73ba6a1b7758ec35eea59548746f30ec82bdca143",
+    "blacksmith/accounting.py": "6dd291d7f1c6f0e88b607514d561f5422bbfd2fd87ba123e6d40d86890765ae3",
+    "blacksmith/budget.py": "bb3da02102e91ff86ffaaaac488009044e3345a0da96e6421fc1113882d7238c",
+    "blacksmith/cli.py": "0fc43cd4db10d477d0f1e9cc6671217c3ca52d731c3b4d9c4b3269c25f336622",
+    "blacksmith/commands.py": "ab10d681aa18e6cc6c5d88eeb2073f6afa6a783268caf0eb406795441a801618",
+    "blacksmith/config.py": "478c62c64a41a8cbf8a1836c77cee48db1b23491c78f86ff45352ed388fc7736",
+    "blacksmith/context.py": "8964f2e136c0d78e2e9191a8b9d2314075af7a1619906409fec8b7406a6f9c7b",
+    "blacksmith/contract.py": "420eed454195da5827d120a96995ca64dfbdfe088eef8f0fd77c94f903134795",
+    "blacksmith/costs.py": "9f7aa7d1152a9193d2fa8bfdd609b09aa1d9abdffd2091cea57162eca48f094e",
+    "blacksmith/dashboard.py": "8fa30e20956bef08804452df6091f04237f594cb0eee8dfc01b87f6c104ee460",
+    "blacksmith/events.py": "eefa9ca75a0f04cd2d7d8d8b322c94a585b1a35f17d3061003a257c09330e525",
+    "blacksmith/executor.py": "17059e6e7be9eb7c7d6e42c2bafbda147e2db5a5ad717b6b940757cb891f90ea",
+    "blacksmith/formatter_recovery.py": "d959ac0ee953164ffbb4d2aea21a62e4a7608e7a6a7d94f41b2ec0f37005d2bd",
+    "blacksmith/gate.py": "d1fd32b25cb51fc96d7ea7f85e170449da17cfeb63bc34e9f626fd63485d2c43",
+    "blacksmith/gate_receipts.py": "2d024f1b833a01daf27c21cae5dd4864dcae8df2cecff983d85e3fb81b7e523b",
+    "blacksmith/graph.py": "6104e3f076944fac09555caa5b2cd773dd19e48d699dc692f427f77d22302a7b",
+    "blacksmith/index.py": "5a9de50297fd2839255a6a79e34448c438166bed173d3bb112ef07aea7941b91",
+    "blacksmith/integration.py": "b9d00f64b3fc1acf2492077321d588761d486a2001a756d0554edd87d85fdbf1",
+    "blacksmith/issue.py": "4be625f2f86bacab81881726727f738060e6554ee01787c943cbc0b6b2148962",
+    "blacksmith/join_recovery.py": "42ae73fdd39b7070caee33639df8ab5d981965f5617c7b82dee6d8968db9750b",
+    "blacksmith/joins.py": "01ccb669b6efd0416349c1cf9880c540721c2593aef4a59990679d8f628cf22d",
+    "blacksmith/memory.py": "27e6f2728c1e2e6c52742ddde9bf53a14d2e0df4c6b5ecc9cd645119082ac758",
+    "blacksmith/metrics.py": "80e5f1fcc8a7e6942f78bf318072ea08660984225b21caef0bcb4b94ec14b65f",
+    "blacksmith/nodes/__init__.py": "2ded37ab1f5f43bc7ebb1112f45eff68b8489ffdf828ab03063531bdd9b37e22",
+    "blacksmith/nodes/hitl.py": "8354aaca34fbae089eab9c45faaab1ec41ac280a8058ed0ea3d88b4e11dde9f3",
+    "blacksmith/nodes/implement.py": "4eb8a3961a8b62d8b49d27e57e2542e01a35414a790e993022e71a6bdb4b4e83",
+    "blacksmith/nodes/plan.py": "c555a40f4def89f9ab67f13ffed8164c85a49deac145df04df468a553e093836",
+    "blacksmith/nodes/pr.py": "7c3c2568a98ce4b2a597747983bdb9ab0363e387911fb3ffb304977b737afa06",
+    "blacksmith/nodes/review.py": "1fbd2461cda539b7f6534bf2bb213a374a609c3a49a0579c97ec90cb591f2661",
+    "blacksmith/path_policy.py": "4de4f1137e7e318511fd5231336298b1a95a854d1c55a1176a447e6e15688d7c",
+    "blacksmith/plan_artifacts.py": "49782bd3de9c7e84f79b705968cc5984f0b4d3250d10b2871a9c71b4b9d45ec9",
+    "blacksmith/planner.py": "92f5e25c973f8042567f6dfcc3a6408c2971a67e5a46f93e7dbfeab04e1b5d69",
+    "blacksmith/pr_comments.py": "de4317366bb0d882f203386135864acdc79629218a4b8dea8fca95768efc83cb",
+    "blacksmith/publication.py": "e8889440a983f1654c755d8d6836c2e0834624395bdce7fbe14d424f4f08aabe",
+    "blacksmith/publication_approval.py": "baa49326a0b14619c3920211a7ff9ced65c738cacd112db661b7c2dae5a52a06",
+    "blacksmith/receipts.py": "2927eac32dd816fffd87e6558fdbd1de3f36680f63ada6c1c788f2a1cce8b8c6",
+    "blacksmith/recovery.py": "e2a3ede6d88639ec18073d1e57d9d03e7701810feeecf5f430fd8da4e6af1d8d",
+    "blacksmith/recovery_control.py": "b092af4afe61810e4231605034590a9296bbbe584c5fec875441a421d854ba74",
+    "blacksmith/recovery_repair.py": "25ef76d70824f0bcec5c3483c866c3a0f4c3367c431b80925c457ccaee257ddc",
+    "blacksmith/remote/__init__.py": "1ef0b6f90bbe2a029bfb21b0a295ca7a33cfaac895539ca647aca66db858ed6b",
+    "blacksmith/remote/client.py": "ad63544d1adb5c4f0d2ca0c322e33e5123f01ceb168e49b69b892c0569b43aff",
+    "blacksmith/remote/spike.py": "0ef43937c365069f3eaf2214436a293d797c3070278c4f36518839a888123d9e",
+    "blacksmith/remote/workspace_graph.py": "fa1609426723b341cc2cb99380e93966c53fc6cab41b5e62050041bbef47dec4",
+    "blacksmith/render.py": "a886a688f479fdbb4971536ae9ae912188566c47fd7e450ec8dbd1aca7517568",
+    "blacksmith/respond.py": "676429cd3799a4e8b095fa25ccbac6239159b1d8720a8202cfff9bcfc7093dd8",
+    "blacksmith/review_patch.py": "d4020f1d809de8d8baf2a19b72971f19b8240f0ab7843e185bf2bcbe6fc7e57b",
+    "blacksmith/review_receipts.py": "679d8555c4125e31d38893d378e63f47aed0130955325e00b4937f22a78beebd",
+    "blacksmith/run_clock.py": "d8e39a15213eb0649ccec590150b55cdf1bd669bdeffd45bba8d9fa7c50eb5e3",
+    "blacksmith/run_context.py": "d209f13ab02a273a0413fe832f8887f0ddccf3b141d9d249ac834ce6f0bb2072",
+    "blacksmith/sandbox.py": "54d03eed3e29243a1982aa6e4d848b844f6bb163d785c374a4db122b8076d035",
+    "blacksmith/sbfl.py": "f9284901d7a0ea7d5b35ac5240f08dc2d5383ec0c22d6ad57779636089a22e97",
+    "blacksmith/sdk_transport.py": "f751b8cb24a485714393d0a22e2c241581d411d358c06a27726012c5b50d2d64",
+    "blacksmith/state.py": "51352701e332d0cc2de8d23efae236d8b8c8f85da2bf3fa13a7d6f55d653bba6",
+    "blacksmith/transcript.py": "5313c778baef4b74845433970c308d79707417650288f89863ec46aec2c20a3c",
+    "blacksmith/unit_graph.py": "2738d2b5eb741116a8836a2dd762034a71a29f3695f93ecb33ed12e7fd6fd618",
+    "blacksmith/unit_state.py": "34279f512094c9c47b8c0fcb54e25e1a5d9214df9090fb11a8839979f66752fa",
+    "blacksmith/verification.py": "05ae4dddf972f85852affaff61bd90d4ccd6759fe049256284729887c36a8250",
+    "blacksmith/worktree.py": "f0b16b7f943bb1218a2e0efc7a8aad7404d0991d7b015aeb54a894d3165430b5",
+    "tests/conftest.py": "a1f01bc7f94d9e6162537a68b145e2690b106bf5e25bf492a3f9da02c6493765",
+    "tests/test_accounting_reports.py": "e491fd9a19a817b50028904a4e531c243249ee0f0e02e10ea0899ddcbeb42941",
+    "tests/test_admission_migration.py": "23c0a6ee50367601efcb5f53f7dae0ab2e9d9b91c9b7c5c346291ab93e8884cb",
+    "tests/test_admission_recovery.py": "cb8d3b0677fc868dc26087580bc5837313579e66d3dd5b8c91bfa42dab958be9",
+    "tests/test_approval_recovery.py": "f51096be33bdca62881b340f5af94356ce492e59abb71c3e8ccce14225b0bf6a",
+    "tests/test_budget_admission.py": "57af831b3806cc106518d552555bed50c6090d80aaed065f2e639e957a8f5005",
+    "tests/test_cli_approval.py": "21a82baa28d9b7a7a536dce5b9cf7d144b37ea93c32251df27dea6679b36eb53",
+    "tests/test_cli_gate_render.py": "07888a43df69d2d49140493e54e9d529bb3bbe97dae03799be471999bcbf1681",
+    "tests/test_cli_progress.py": "330a46efe6e2c4b41989a6e6e1042a8a95dbb81ebdcae17fa45797489c30a88c",
+    "tests/test_cli_render.py": "9ab9edfb5a1f7812a5ae812956ad73c2916d5b5ebbfa6c5b122cdf2ef3521646",
+    "tests/test_cli_resume.py": "22f14852ec766a858b5d56a5e6bd3a283ba54ee44b4d5f0fef20309145262b4a",
+    "tests/test_cli_validate.py": "90a9137c1641b6b833545fb2e4dd7d3cb63667e94696627c3a3c48bafcb81cc1",
+    "tests/test_cli_version.py": "e8daf430b4ee9104f10abf71161cee3b29289c95282a504ff54db2b4bcf153eb",
+    "tests/test_clock_forwarding.py": "b8cbd455947d0f23fba64d36c9affd8dc67ad4727218c8edc1d574b165b8d61f",
+    "tests/test_clock_recovery.py": "085f552aef924dd9eb5279bc0ba4dcc840278f6e8513eaec21f60a677162f02e",
+    "tests/test_clone.py": "d7442e85820396f573f6a6dc3ffebff51c5457d07d59b3a4e6bc397188f8eea4",
+    "tests/test_commands.py": "cda429ff801af16dca08ff7da306697abd4b3645d439b4ea1e4fabb131825279",
+    "tests/test_config.py": "653976755cd7512f29bf75a9b79e54e73858630e72d4849c1bca297a32b4cee6",
+    "tests/test_config_no_dead_fields.py": "f5f19838a738529852eeb655ed6d333db4449a5b75cb9acba9ca5ef1564839d3",
+    "tests/test_contract.py": "f5cf22c457f0d002ea205fead9a57d4bb10a0c78e116930cffd23fa8116bb5c8",
+    "tests/test_cost_events.py": "4cfcbb4e4b40bb5a434a6d8e8c6c6f8973a161863bf1cafafccd0118e2206729",
+    "tests/test_cost_instrumentation.py": "124bebeddad64d920e2474df4a9ee5ac998eea7006b8d5e9c630451466fc3d70",
+    "tests/test_cost_summary.py": "a3885e98ce2f8967fb1570be884c02a1d8687b26fb4de9c3eec766125bfbdfc8",
+    "tests/test_costs.py": "746f48ab0a4e9601f704839bd3605783365bd391fa19894e117e6fcde3d99ac9",
+    "tests/test_dashboard_cli_wiring.py": "fa1164c5c31cd2b820a77f51add6e345afa2f1779be865cbe7031f2cb4ee41cf",
+    "tests/test_dashboard_live.py": "98ff12d98a7eee3dd2b9f5bf0273d2e4f1e6a68284a5eee40188935c9fbbe1d1",
+    "tests/test_dashboard_server.py": "819cfb4ffcb2b5aeb55b15ba2901d96afb31b9a44dc0bf386dc205a80aefc1fe",
+    "tests/test_dashboard_ui.py": "3e304e153f5688634f0d0b9b5dac8325e5702ef408b8c3e0dfd98d296557d696",
+    "tests/test_e2e.py": "030aaa08073126e4cde2991e2205f3ceea59c1f0df86a9fc73dd4ace70ac6227",
+    "tests/test_effect_recovery.py": "c9cca28216d80c94d8b76050ff25b2845cc3646d1d640b3b855fdf364e86cb75",
+    "tests/test_escalation.py": "8e6216fad19e24e7d8d19ae0f245f5fa0f81e1083e6f2bdf194f0d160a16be82",
+    "tests/test_executor.py": "0b20b6c39b94b55553854138bbe15d33f95c0f4d523239d005af519a1398e60f",
+    "tests/test_executor_admission.py": "5e1fdc20aff025b87bae38f1b1e3b4699c9f48277f4f7fece2f6e9f0058a14f9",
+    "tests/test_fanout_self_heal.py": "24d9573e806b0436e546789178525f0df94e21999e3648b66c84215172d10254",
+    "tests/test_fix.py": "9f0a8098ec35dbc2020f69cfd32ed2f63c11f5da2e88155da41bdc4aac119c08",
+    "tests/test_fresh_run.py": "ff52f9a7a87945582491d419871a6cb0721c0c2664d9c96535dc48b563927ca8",
+    "tests/test_gate.py": "6d3a6d3098b3918b040ff89372f3bfd89716ceacea826f6426d208aba1029121",
+    "tests/test_gate_integrity.py": "998fa68f9e590c33aa3b5c6e7b97c640fda375136e8163586f32404b3eebc702",
+    "tests/test_graph.py": "c495997ad6bfa6956000afb688c1bf3366ab24261a9e2f9a79e7342316a3e293",
+    "tests/test_graph_sbfl.py": "6eb434f2ee5685bbcc04b59110e034e8cfee775da75b9f9bea94dff938f18a8b",
+    "tests/test_hitl.py": "42ddd270411e5b4a618bd4c6ff1e56a3ddb522b85a65f45b10e04e0a82cefd59",
+    "tests/test_human_qa.py": "d2a535c7025a3590e2f5d44afdba2c91ae21a4866955997c2f3fe373887aacd4",
+    "tests/test_implement.py": "a6ef0dedda5e6d42e41d335bcbc08121fb1fc020eb27392c55c472731eea7fc6",
+    "tests/test_implement_continuation.py": "d83836993401cfccab0e21356301fa1835d02b4debe0ca5277233cca7ee358c6",
+    "tests/test_index.py": "3a7dbe8524bde7e304ca58d10968a20677aef83397b1fca069e354bbb434b91f",
+    "tests/test_integration_integrity.py": "9e0a9c3ae516b5ebad86d82e4c92bac450fa07ef2f3670d116e8b99ccb85cb36",
+    "tests/test_interrupted_accounting.py": "6b57318f381b4fb81c3705557e570cca4553fa7fde98993898fba7b792a47dc0",
+    "tests/test_issue_ingestion.py": "1dd49b71df78140a649a0ad5f3cf47c44522261259ac20a67a668afc6fe5365a",
+    "tests/test_join_recovery.py": "ab16e92d19900dfe1472598abe2ba39e490b571e1bd99c082f398a590ba0263b",
+    "tests/test_live_intra_node.py": "b66f3f436fb771b8a34f2a4fc44184bb2d8079602939aef6e4eaf0a978445384",
+    "tests/test_main.py": "20179333b5ad621f9901e27e7d8b35dd824d5a3b0876c7e6ea802f8348cc67f7",
+    "tests/test_memory.py": "3f15557f30e4c266c7490140658c988ec13d969bc08522d021b76c568860472f",
+    "tests/test_memory_lessons.py": "00b84c08a9e6da6b4e9e2f4a12c867d46a99ab744431f2ceae15109de5492f72",
+    "tests/test_metrics.py": "a674974f0d64e18aafb7abda13cc7707cafa4ec007f84887b99e910492a7f028",
+    "tests/test_multi_unit.py": "338a6318884c44be9ed5157af8895341cf536fb0cf36f6f2fd3970513acd3e2a",
+    "tests/test_parallel.py": "a218b33a1eea3becfd176143901b2a97ccf9e64908a62e1382a6daab274adce1",
+    "tests/test_parallel_cancellation.py": "b67278b38c106e7737508ae90b521e2a79df4deb871270f8f15a9f3cbe3f7f3f",
+    "tests/test_path_policy.py": "13724cdc9793196fde0957410ee3607d9c1bbd7ff68a208e363667c23c35e468",
+    "tests/test_plan.py": "7ad09fa035e25b0d98466c6e14fbab55d905147b3396e433374ebc2acab6c7e9",
+    "tests/test_plan_integrity.py": "70a777be27c6b06bed9a0dc18ec9e65efc60ce1ac5af4c5b75e29656245c149f",
+    "tests/test_planner.py": "7fc9370e384155a564970bb756785dfb448fa07168ebbb7a4f2d16f963c04929",
+    "tests/test_pr.py": "96410c0620cc220c7c618bc72a0ded78f1eb2d984a98a2ccef81c6d00ed08acf",
+    "tests/test_pr_comments.py": "9363a35ea52cd5177268cf9e4a163aa9726288eeb558efcdaa068021746975c5",
+    "tests/test_publication_approval.py": "d5dc9762e8c58de80e678dea9240922ed796f5b5dea38c66aee055c5d20ce047",
+    "tests/test_publication_integrity.py": "904a5aeb59a9f6f683b1c30d0d3054f00df4ebf515047b12f7afe95e11e31f7d",
+    "tests/test_publication_recovery.py": "b178fa7e034383c61a9595be60a12b3d6902a343d1e8782688992b7d8fb725c1",
+    "tests/test_receipt_wiring.py": "b28b138253b6bb33423219c8169bad4a5f03c0087fc8c633ed20bac251712add",
+    "tests/test_receipts.py": "0da531287786ff613a44c0516b784c0250279064bbd8e6147cfe445442081927",
+    "tests/test_recovery_artifacts.py": "6234a8f859632bcff3d353c2df45ef3e36233d79605d3904db54bc143a543f38",
+    "tests/test_recovery_boundaries.py": "b9ad245a4aa7eda08077421c72a90ff5e2e7656c6977da461a8ae633b111e9c0",
+    "tests/test_recovery_control.py": "cbc53967a01925869b632bb506ea306c78fa0ef9c0045b4c25266ba021fcd2c2",
+    "tests/test_recovery_repair.py": "c86e029c24dcc0149d3508aa206599b6eaefe8ad66d7dde6569549d14ade9d0c",
+    "tests/test_remote_client.py": "d0b575ca6f7e0f06adab85ee7787477a4522d797ec6cab64c860556a9ef66405",
+    "tests/test_remote_spike.py": "f242b3f0dc859945c4c1f3d01251dbd793a611cce3fb3722b9c12cd172ddbbf4",
+    "tests/test_remote_workspace_graph.py": "0e8535fd9d31211764059e67adc3d47130ae5c5b865d66b9bca3f394849503af",
+    "tests/test_render.py": "1c82e92e8c706bee8ccff2163434e95c682caa96398ac7706fa2c68e43f295d6",
+    "tests/test_repo_consistency.py": "0b553fbda7ebc6e52b13fe57470dac4b05651dc6ea91ce039df92516d8189890",
+    "tests/test_requirements_context.py": "ee5e45519f3d5267d49f246315faa333eb5042ba5a07b4e75581b4cedaf708e4",
+    "tests/test_respond_cli.py": "a370ea0240c0929490ae1c13b243c9eb3e8ffa8a60252419680640324a0b0eef",
+    "tests/test_respond_flow.py": "10017f75102e5bfc4f3116aea33d578ec4524123bb49ddcd99b6dfa53879ad61",
+    "tests/test_review_integrity.py": "0f9adac6e917ae8573265e58fc44cf485e914c4f56bb868c1985bf7717844251",
+    "tests/test_review_loop.py": "3b1058649d3ef04e685c255f7e159d2e2679f5d501de06994126875e65fe656e",
+    "tests/test_review_node.py": "539b42c895db546dea3d62bfad4b895f2c789b935455250ac70e50192666cc39",
+    "tests/test_review_panel.py": "d1a06c8a653c558dfef09ec92fba2e357396754dc5d402cfafb3f6e3e2749b16",
+    "tests/test_review_recovery.py": "77d33f6d35e0e6aac9189bae7743b4783fffd2fde0c819872321728dc75f2ec5",
+    "tests/test_reviewer_wiring.py": "2ef57bf74694c54d9a5dc1cbde5c17936b01832d3852e076423faa1dd4c7e5fc",
+    "tests/test_run_clock.py": "a923ba537d816f79df760b7100abd135c80465aa3a641111e1c8b2e40152dc54",
+    "tests/test_run_context.py": "e0771d07e8b4ce534d041f029b44ae7974d57bc4aeefa59e79082c9321760579",
+    "tests/test_run_events.py": "0eef34ce82a45a1dd7075ae159ef92627e2d197fa68ed545ff9ccea5c06da927",
+    "tests/test_runs_cli.py": "e4461e749cef12da687964ccb6d9ff5350ca72aeb937a6cf37f657bc424745eb",
+    "tests/test_sandbox.py": "032b599a8a767e88e6b712ce6f5d2026289d5bc9174ff39754194a3ac5ec9650",
+    "tests/test_sandbox_lifecycle.py": "55519b856872145b2e79f574e9264df93089499e34a9ab477be0312db27bc138",
+    "tests/test_sandbox_tool.py": "2a522fff2bd42ab5850784a0143009c5ba9aefb630732d7c59111ec547de0969",
+    "tests/test_sbfl.py": "502e3bc6efcea6582ce597e82a4c5b0592f7723eb87462a697d73c4e85a813f4",
+    "tests/test_sdk_deadlines.py": "ad2578f46d60175df61da733f2e427b194a797398476e24273a4037509054dcb",
+    "tests/test_sdk_transport_signals.py": "24eaf5f2020d757013ed68c04e1427ef1fef0077252e46d02d9701780217542d",
+    "tests/test_search_tool.py": "58ad325e1c55335797911d5db6bb75c0762dc68f67afa9d56581c31f296eef40",
+    "tests/test_self_heal.py": "189dacb64d9920c784ba62a91bba33c0f53db12cf9f16769cda40d5866a54a5d",
+    "tests/test_started_call_recovery.py": "92de60fba23931dd3a0ab8d9629bbcb27491fad60db6fcb2bb339d7c5b3bba7b",
+    "tests/test_transcript.py": "9842f2dc0484966264f386f5902468d9ca32aeed92825c978f0861025d386ec2",
+    "tests/test_transcript_surface.py": "da6a3a4e0410d7c60ff18638d788cd9c4d27ca2608dffa3cc08dd3a648e9c2c6",
+    "tests/test_unit_admission.py": "c6200d3ca01a74cc406a040f17417fc902c999205065856eccf18de6b0dad671",
+    "tests/test_unit_state.py": "acc1033d21d46283e1c8daaa9f8ad6b9a47a7b7b4e366fb191a793c3d4476038",
+    "tests/test_unit_subgraph.py": "c1590cfb059b23ed6655841a47ef04eb3fe10d91d061c25fb3fddc2aba050a7c",
+    "tests/test_worktree.py": "e2917ca1788bdea946ad70f19f97b1dcecd36c8fca3fcb495222c489fe756027"
+  },
+  "staging_path": "/private/tmp/blacksmith-heavy-prd-admission-stage",
+  "staging_revision": "b123b50f7c3d70683e95e24730d43a491488143c",
+  "status": "final S15 full02 running; primary165 sources frozen after launch",
+  "versions": {
+    "claude-agent-sdk": "0.2.115",
+    "langgraph": "1.2.9",
+    "langgraph-checkpoint": "4.1.1",
+    "langgraph-checkpoint-sqlite": "3.1.0",
+    "pydantic": "2.13.4",
+    "pytest": "9.1.1",
+    "ruff": "0.15.21"
+  }
+}

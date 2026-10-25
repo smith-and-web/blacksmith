@@ -27,6 +27,10 @@ and PR summary share atomic admission. Before transport they reserve
 the authoritative balance before paid execution. Legacy `respond` remains subject
 to S18 hardening or explicit rejection; it is not an accepted heavy-PRD entry point.
 
+Default SDK library entry points also require immutable run/call admission context.
+Missing context refuses before options, credential resolution or transport with
+`run_admission_context_required`; it cannot start an unaccounted managed call.
+
 Admission plus SDK stopping is not an exact invoice ceiling. Actual overrun remains
 in receipts/reports, stops further paid calls and preserves work. Missing/nonterminal
 usage consumes its full reservation conservatively, keeping any observed cost

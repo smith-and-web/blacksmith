@@ -1,0 +1,5 @@
+..............................
+!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt: no publication !!!!!!!!!!!!!!!!!!!!!!!
+/private/tmp/blacksmith-heavy-prd-scheduling-stage/tests/test_integration_integrity.py:81: KeyboardInterrupt: no publication
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+30 passed in 223.38s (0:03:43)

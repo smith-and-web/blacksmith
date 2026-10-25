@@ -1,0 +1,635 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 16%]
+........................................................................ [ 21%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 38%]
+........................................................................ [ 43%]
+........................................................................ [ 49%]
+........................................................................ [ 54%]
+........................................................................ [ 60%]
+...............................................................FF....... [ 65%]
+..............FFFFFFFFFFF..................................
+=================================== FAILURES ===================================
+________ test_bootstrap_intent_failure_prevents_planning_clone_and_sdk _________
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t19-full-01/test_bootstrap_intent_failure_0/target'), PosixPath('/privat...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c1d1ee0>
+capsys = <_pytest.capture.CaptureFixture object at 0x10c1dfaa0>
+
+    def test_bootstrap_intent_failure_prevents_planning_clone_and_sdk(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_bootstrap BEFORE INSERT ON operations "
+            "WHEN NEW.kind='git.planning_snapshot' BEGIN "
+            "SELECT RAISE(ABORT,'critical write unavailable'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config)]) == 1
+        path = database(project)
+>       assert operations(path) == [("recovery.initialize", "completed"),
+                                    ("recovery.capture", "completed"),
+                                    ("recovery.capture.seal", "completed")]
+E       AssertionError: assert [('recovery.i... 'completed')] == [('recovery.i... 'completed')]
+E         
+E         At index 1 diff: ('budget.policy', 'completed') != ('recovery.capture', 'completed')
+E         Left contains 2 more items, first extra item: ('recovery.capture', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:51: AssertionError
+----------------------------- Captured stderr call -----------------------------
+blacksmith: preflight snapshot failed; retained artifacts: /private/tmp/blacksmith-heavy-prd-t19-full-01/test_bootstrap_intent_failure_0/.blacksmith/runs/8b5e5a62-b220-44d4-8c6a-bb5d565337b4
+Next action: blacksmith recovery inspect --run-dir /private/tmp/blacksmith-heavy-prd-t19-full-01/test_bootstrap_intent_failure_0/.blacksmith/runs/8b5e5a62-b220-44d4-8c6a-bb5d565337b4
+_____________ test_sdk_intent_failure_prevents_first_provider_call _____________
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t19-full-01/test_sdk_intent_failure_preven0/target'), PosixPath('/privat...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c1d3530>
+capsys = <_pytest.capture.CaptureFixture object at 0x10c1ceff0>
+
+    def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_sdk BEFORE INSERT ON operations "
+            "WHEN NEW.kind LIKE 'model.%' BEGIN SELECT RAISE(ABORT,'no receipt'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
+        assert calls == []
+        path = database(project)
+        rows = operations(path)
+>       assert rows[:10] == [
+            ("recovery.initialize", "completed"), ("git.planning_snapshot", "completed"),
+        ] + [(f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)]
+E       AssertionError: assert [('recovery.i...pleted'), ...] == [('recovery.i...pleted'), ...]
+E         
+E         At index 1 diff: ('budget.policy', 'completed') != ('git.planning_snapshot', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:73: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run fe949464-200b-406b-8de9-b1a94fb0f101: selected committed HEAD de32638d9970756a19825d2a3aa143ac823b9726
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t19-full-01/test_sdk_intent_failure_preven0/.blacksmith/runs/fe949464-200b-406b-8de9-b1a94fb0f101
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+total cost: reported $0.00; charged $0.00; reserved $5.00; accounting incomplete; run cap $50.00, remaining $45.00
+execution time: 0.23s / 21600.00s; remaining 21599.77s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t19-full-01/test_sdk_intent_failure_preven0/.blacksmith/runs/fe949464-200b-406b-8de9-b1a94fb0f101/recovery/b081bc06-4be1-4d3f-ae38-5c5ac7fcdbe0/manifest.json
+Next action: blacksmith recovery inspect --thread-id run --config /private/tmp/blacksmith-heavy-prd-t19-full-01/test_sdk_intent_failure_preven0/runtime.toml
+blacksmith: critical journal read/write failed: /private/tmp/blacksmith-heavy-prd-t19-full-01/test_sdk_intent_failure_preven0/.blacksmith/runs/fe949464-200b-406b-8de9-b1a94fb0f101/operations.sqlite
+_ test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_plan-model.plan] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c1d0b00>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c1d3e30>
+method = 'run_plan', kind = 'model.plan'
+
+    @pytest.mark.parametrize(
+        "method,kind",
+        [
+            ("run_plan", "model.plan"),
+            ("run_plan_critique", "model.critic"),
+            ("run_implement", "model.implement"),
+            ("run_implement_escalate", "model.implement"),
+            ("run_review", "model.review"),
+            ("run_summary", "model.summary"),
+        ],
+    )
+    def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
+        journal,
+        monkeypatch,
+        method,
+        kind,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            assert journal.get(context.key(kind)).status == "intent"
+            assert options.setting_sources == [] and options.strict_mcp_config is True
+            if method == "run_summary":
+                assert options.tools == [] and options.mcp_servers == {}
+            calls.append((prompt, options))
+            yield sdk_result()
+    
+>       first = getattr(executor(monkeypatch, query), method)("original request", call_context=context)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_receipts.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:392: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_every_sdk_role_persists_i0/operations.sql...7aaa78d7b2f079811cf92bd7dc58d0053a9a8d146', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_ test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_plan_critique-model.critic] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c3c3e00>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c1d26c0>
+method = 'run_plan_critique', kind = 'model.critic'
+
+    @pytest.mark.parametrize(
+        "method,kind",
+        [
+            ("run_plan", "model.plan"),
+            ("run_plan_critique", "model.critic"),
+            ("run_implement", "model.implement"),
+            ("run_implement_escalate", "model.implement"),
+            ("run_review", "model.review"),
+            ("run_summary", "model.summary"),
+        ],
+    )
+    def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
+        journal,
+        monkeypatch,
+        method,
+        kind,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            assert journal.get(context.key(kind)).status == "intent"
+            assert options.setting_sources == [] and options.strict_mcp_config is True
+            if method == "run_summary":
+                assert options.tools == [] and options.mcp_servers == {}
+            calls.append((prompt, options))
+            yield sdk_result()
+    
+>       first = getattr(executor(monkeypatch, query), method)("original request", call_context=context)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_receipts.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:414: in run_plan_critique
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_every_sdk_role_persists_i1/operations.sql...00de372c834e8063902fec985531fd87a744b9327', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_ test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_implement-model.implement] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c0854f0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c085640>
+method = 'run_implement', kind = 'model.implement'
+
+    @pytest.mark.parametrize(
+        "method,kind",
+        [
+            ("run_plan", "model.plan"),
+            ("run_plan_critique", "model.critic"),
+            ("run_implement", "model.implement"),
+            ("run_implement_escalate", "model.implement"),
+            ("run_review", "model.review"),
+            ("run_summary", "model.summary"),
+        ],
+    )
+    def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
+        journal,
+        monkeypatch,
+        method,
+        kind,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            assert journal.get(context.key(kind)).status == "intent"
+            assert options.setting_sources == [] and options.strict_mcp_config is True
+            if method == "run_summary":
+                assert options.tools == [] and options.mcp_servers == {}
+            calls.append((prompt, options))
+            yield sdk_result()
+    
+>       first = getattr(executor(monkeypatch, query), method)("original request", call_context=context)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_receipts.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:419: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_every_sdk_role_persists_i2/operations.sql...99070f0a2adb8b3a9e77de0313582fe827961fb91', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_ test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_implement_escalate-model.implement] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c1d01d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c086540>
+method = 'run_implement_escalate', kind = 'model.implement'
+
+    @pytest.mark.parametrize(
+        "method,kind",
+        [
+            ("run_plan", "model.plan"),
+            ("run_plan_critique", "model.critic"),
+            ("run_implement", "model.implement"),
+            ("run_implement_escalate", "model.implement"),
+            ("run_review", "model.review"),
+            ("run_summary", "model.summary"),
+        ],
+    )
+    def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
+        journal,
+        monkeypatch,
+        method,
+        kind,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            assert journal.get(context.key(kind)).status == "intent"
+            assert options.setting_sources == [] and options.strict_mcp_config is True
+            if method == "run_summary":
+                assert options.tools == [] and options.mcp_servers == {}
+            calls.append((prompt, options))
+            yield sdk_result()
+    
+>       first = getattr(executor(monkeypatch, query), method)("original request", call_context=context)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_receipts.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:429: in run_implement_escalate
+    return self.run(prompt, model=self._config.models.implement_escalate,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_every_sdk_role_persists_i3/operations.sql...bce21c73837c83d71af1c61661e7e76dffca50f79', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_ test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_review-model.review] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c3c33e0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c087a70>
+method = 'run_review', kind = 'model.review'
+
+    @pytest.mark.parametrize(
+        "method,kind",
+        [
+            ("run_plan", "model.plan"),
+            ("run_plan_critique", "model.critic"),
+            ("run_implement", "model.implement"),
+            ("run_implement_escalate", "model.implement"),
+            ("run_review", "model.review"),
+            ("run_summary", "model.summary"),
+        ],
+    )
+    def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
+        journal,
+        monkeypatch,
+        method,
+        kind,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            assert journal.get(context.key(kind)).status == "intent"
+            assert options.setting_sources == [] and options.strict_mcp_config is True
+            if method == "run_summary":
+                assert options.tools == [] and options.mcp_servers == {}
+            calls.append((prompt, options))
+            yield sdk_result()
+    
+>       first = getattr(executor(monkeypatch, query), method)("original request", call_context=context)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_receipts.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:439: in run_review
+    return self.run(prompt, model=self._config.models.review, emit_findings=True,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_every_sdk_role_persists_i4/operations.sql...87e5d7b2dc5cf91b942465b84f9c844e964011673', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_ test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_summary-model.summary] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c3c2c30>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c3c27e0>
+method = 'run_summary', kind = 'model.summary'
+
+    @pytest.mark.parametrize(
+        "method,kind",
+        [
+            ("run_plan", "model.plan"),
+            ("run_plan_critique", "model.critic"),
+            ("run_implement", "model.implement"),
+            ("run_implement_escalate", "model.implement"),
+            ("run_review", "model.review"),
+            ("run_summary", "model.summary"),
+        ],
+    )
+    def test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result(
+        journal,
+        monkeypatch,
+        method,
+        kind,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            assert journal.get(context.key(kind)).status == "intent"
+            assert options.setting_sources == [] and options.strict_mcp_config is True
+            if method == "run_summary":
+                assert options.tools == [] and options.mcp_servers == {}
+            calls.append((prompt, options))
+            yield sdk_result()
+    
+>       first = getattr(executor(monkeypatch, query), method)("original request", call_context=context)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_receipts.py:268: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:403: in run_summary
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_every_sdk_role_persists_i5/operations.sql...2eadc9e1e91ba86e6df09453f130b6e2b060167e1', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_________ test_sdk_failed_terminal_result_is_retained_and_not_rebilled _________
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c309dc0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c3c3b90>
+
+    def test_sdk_failed_terminal_result_is_retained_and_not_rebilled(journal, monkeypatch):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            calls.append(prompt)
+            yield sdk_result(error=True)
+    
+        ex = executor(monkeypatch, query)
+        for _ in range(2):
+            with pytest.raises(ExecutorError):
+>               ex.run_plan("same task", call_context=context)
+
+tests/test_receipts.py:289: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:392: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_sdk_failed_terminal_resul0/operations.sql...bcaed89dd8b18ffbb074e721e800fd1f01c0ac0a7', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_ test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically[missing-terminal] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10bf53530>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c3c3770>
+ending = 'missing-terminal'
+
+    @pytest.mark.parametrize("ending", ["missing-terminal", "stream-error", "cancellation"])
+    def test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically(
+        journal,
+        monkeypatch,
+        ending,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            calls.append(prompt)
+            yield AssistantMessage(content=[TextBlock(text="partial")], model=options.model)
+            yield AssistantMessage(content=[TextBlock(text="more partial")], model=options.model)
+            if ending == "stream-error":
+                raise RuntimeError("SDK stream lost")
+            if ending == "cancellation":
+                raise asyncio.CancelledError()
+    
+        ex = executor(monkeypatch, query)
+        if ending == "cancellation":
+            with pytest.raises(asyncio.CancelledError):
+                ex.run_plan("work", call_context=context)
+        else:
+>           with pytest.raises(ReceiptError, match="interrupted_attempt_requires_resume"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AssertionError: Regex pattern did not match.
+E             Expected regex: 'interrupted_attempt_requires_resume'
+E             Actual message: 'legacy_admission_requires_manual_recovery: missing call context'
+
+tests/test_receipts.py:318: AssertionError
+_ test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically[stream-error] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c156930>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c3c1ca0>
+ending = 'stream-error'
+
+    @pytest.mark.parametrize("ending", ["missing-terminal", "stream-error", "cancellation"])
+    def test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically(
+        journal,
+        monkeypatch,
+        ending,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            calls.append(prompt)
+            yield AssistantMessage(content=[TextBlock(text="partial")], model=options.model)
+            yield AssistantMessage(content=[TextBlock(text="more partial")], model=options.model)
+            if ending == "stream-error":
+                raise RuntimeError("SDK stream lost")
+            if ending == "cancellation":
+                raise asyncio.CancelledError()
+    
+        ex = executor(monkeypatch, query)
+        if ending == "cancellation":
+            with pytest.raises(asyncio.CancelledError):
+                ex.run_plan("work", call_context=context)
+        else:
+>           with pytest.raises(ReceiptError, match="interrupted_attempt_requires_resume"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           AssertionError: Regex pattern did not match.
+E             Expected regex: 'interrupted_attempt_requires_resume'
+E             Actual message: 'legacy_admission_requires_manual_recovery: missing call context'
+
+tests/test_receipts.py:318: AssertionError
+_ test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically[cancellation] _
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c156db0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c157050>
+ending = 'cancellation'
+
+    @pytest.mark.parametrize("ending", ["missing-terminal", "stream-error", "cancellation"])
+    def test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically(
+        journal,
+        monkeypatch,
+        ending,
+    ):
+        context = call_context(journal)
+        calls = []
+    
+        async def query(*, prompt, options):
+            calls.append(prompt)
+            yield AssistantMessage(content=[TextBlock(text="partial")], model=options.model)
+            yield AssistantMessage(content=[TextBlock(text="more partial")], model=options.model)
+            if ending == "stream-error":
+                raise RuntimeError("SDK stream lost")
+            if ending == "cancellation":
+                raise asyncio.CancelledError()
+    
+        ex = executor(monkeypatch, query)
+        if ending == "cancellation":
+            with pytest.raises(asyncio.CancelledError):
+>               ex.run_plan("work", call_context=context)
+
+tests/test_receipts.py:316: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:392: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:248: in run
+    context = BudgetLedger.for_call(call_context).context if call_context else None
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'blacksmith.budget.BudgetLedger'>
+call = CallContext(journal_path='/private/tmp/blacksmith-heavy-prd-t19-full-01/test_uncertain_sdk_call_retain2/operations.sql...83af7095bc8c11de7d5b3ff7125902fe1592d4a8f', unit_id='U1', attempt_id='attempt-1', key_overrides=None, run_context=None)
+
+    @classmethod
+    def for_call(cls, call):
+        from blacksmith.run_context import RunContext
+        if not call.run_context:
+>           raise ReceiptError("legacy_admission_requires_manual_recovery: missing call context")
+E           blacksmith.receipts.ReceiptError: legacy_admission_requires_manual_recovery: missing call context
+
+blacksmith/budget.py:85: ReceiptError
+_______ test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk _______
+
+journal = <blacksmith.receipts.OperationJournal object at 0x10c157aa0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c1568a0>
+
+    def test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk(journal, monkeypatch):
+        context = call_context(journal)
+        journal.intent(context.key("model.plan"), {"different": "intent"})
+    
+        async def forbidden_query(*, prompt, options):
+            pytest.fail("conflicting or corrupt receipt must prevent SDK transport")
+            yield sdk_result()
+    
+        ex = executor(monkeypatch, forbidden_query)
+>       with pytest.raises(ReceiptError, match="intent changed"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'intent changed'
+E         Actual message: 'legacy_admission_requires_manual_recovery: missing call context'
+
+tests/test_receipts.py:339: AssertionError
+=============================== warnings summary ===============================
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[worker_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[worker_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigint]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigterm]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_receipt_wiring.py::test_bootstrap_intent_failure_prevents_planning_clone_and_sdk
+FAILED tests/test_receipt_wiring.py::test_sdk_intent_failure_prevents_first_provider_call
+FAILED tests/test_receipts.py::test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_plan-model.plan]
+FAILED tests/test_receipts.py::test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_plan_critique-model.critic]
+FAILED tests/test_receipts.py::test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_implement-model.implement]
+FAILED tests/test_receipts.py::test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_implement_escalate-model.implement]
+FAILED tests/test_receipts.py::test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_review-model.review]
+FAILED tests/test_receipts.py::test_every_sdk_role_persists_intent_before_transport_and_reuses_completed_result[run_summary-model.summary]
+FAILED tests/test_receipts.py::test_sdk_failed_terminal_result_is_retained_and_not_rebilled
+FAILED tests/test_receipts.py::test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically[missing-terminal]
+FAILED tests/test_receipts.py::test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically[stream-error]
+FAILED tests/test_receipts.py::test_uncertain_sdk_call_retains_progress_and_cannot_repeat_automatically[cancellation]
+FAILED tests/test_receipts.py::test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/selectors.py:415: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+13 failed, 910 passed, 6 warnings in 2181.76s (0:36:21)

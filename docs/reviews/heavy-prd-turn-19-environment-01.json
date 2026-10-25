@@ -281,6 +281,15 @@
   "full_command": "uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t19-full-01 > docs/reviews/heavy-prd-turn-19-pytest-01.log 2>&1",
   "full_launched_at": "2026-10-25T01:02:21.007065-03:00",
   "full_session_id": 26162,
+  "full_session_terminal": true,
+  "full_suite_result": {
+    "duration_s": 2181.76,
+    "exit_code": 2,
+    "failed": 13,
+    "passed": 910,
+    "stop_reason": "Known legacy receipt fixtures lack required immutable admission context and exact bootstrap row expectations omit new policies/clock records; verified pytest PID87889 SIGINT, no timeout restart",
+    "warnings": 6
+  },
   "goal_turn": 19,
   "input_sha256": {
     "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
@@ -302,6 +311,7 @@
     "docs/reviews/heavy-prd-turn-19-clock-03.log": "1afd63ea7179b208e2b0d32142952cbdfee5c9202fc325879bf7eebfe8d8d09f",
     "docs/reviews/heavy-prd-turn-19-consolidated-01.log": "1cc0f0abe41e06fad372d609c30083ab1eb27574534c5e6b298ddc2ff1174950",
     "docs/reviews/heavy-prd-turn-19-final-audit-02.log": "e6bf6fdf0e34dfce68cb8feb163470632c248de345290c4e1c58d43e2c52b90b",
+    "docs/reviews/heavy-prd-turn-19-pytest-01.log": "4a5869f1bd460ab9f5efb846999ec80d506d697df86fde283bd5dbddb54e7e3d",
     "docs/reviews/heavy-prd-turn-19-review-03.log": "cef2e25c80592d9da93b791a2eb84617145bfc0fe803f4231358ba96ea7005a8",
     "docs/reviews/heavy-prd-turn-19-ruff-01.log": "c795a1694ecc269fee44ac93b7573b8a9f0dca34c302ebd184fbfc01ef827111",
     "docs/reviews/heavy-prd-turn-19-ruff-02.log": "aac3a0503d8b95052cc85fb9f1717dc82b74aa55853a5aa9749b41e30275d472",
@@ -516,8 +526,9 @@
   },
   "staging_clean_tracked": true,
   "staging_revision": "7a48358eebf855bd48a02ab2d0422b76fd0284ba",
-  "status": "full primary S15 suite running; no Python edits after launch",
+  "status": "terminal intentionally SIGINT-stopped after13 known failures; no source edits during run",
   "transfer_baseline": "23ad7ff",
+  "verified_goal_turn": 20,
   "versions": {
     "claude-agent-sdk": "0.2.115",
     "langgraph": "1.2.9",

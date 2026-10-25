@@ -1,0 +1,27 @@
+........................F..........                                      [100%]
+=================================== FAILURES ===================================
+_______ test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk _______
+
+admitted = (<blacksmith.receipts.OperationJournal object at 0x10b875100>, CallContext(journal_path='/private/tmp/blacksmith-heavy...ith-heavy-prd-t20-receipts-01/test_changed_prompt_and_critic0/.blacksmith/runs/613b22e6-f114-411f-b2c6-a5c762d118dc'}))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c02cd10>
+
+    def test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk(admitted, monkeypatch):
+        journal, context = admitted
+        BudgetLedger.for_call(context).reserve(context.key("model.plan"))
+        journal.intent(context.key("model.plan"), {"different": "intent"})
+    
+        async def forbidden_query(*, prompt, options):
+            pytest.fail("conflicting or corrupt receipt must prevent SDK transport")
+            yield sdk_result()
+    
+        ex = executor(monkeypatch, forbidden_query)
+>       with pytest.raises(ReceiptError, match="intent changed"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'intent changed'
+E         Actual message: 'model SDK budget differs from its critical reservation'
+
+tests/test_receipts.py:351: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_receipts.py::test_changed_prompt_and_critical_intent_failure_cannot_reach_sdk
+1 failed, 34 passed in 28.19s

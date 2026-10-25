@@ -1,0 +1,136 @@
+...................F...                                                  [100%]
+=================================== FAILURES ===================================
+____________ test_nondefault_parallel_limit_reaches_actual_workers _____________
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t20-scheduling-runtime-02/test_nondefault_parallel_limit0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d6a6a20>
+
+    def test_nondefault_parallel_limit_reaches_actual_workers(project, monkeypatch):
+>       execute(project, monkeypatch, 6, bound=3)
+
+tests/test_scheduling_runtime.py:107: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t20-scheduling-runtime-02/test_nondefault_parallel_limit0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d6a6a20>, count = 6
+chain = False, bound = 3
+
+    def execute(project, monkeypatch, count, *, chain=False, bound=2):
+        original = setup_units(project, count, chain=chain)
+        if bound != 2:
+            project[1].write_text(project[1].read_text() + f"[limits]\nmax_parallel_units={bound}\n")
+        calls, remote, _ = install(project, monkeypatch)
+        seen = observe_workers(monkeypatch, 1 if chain else bound)
+        assert cli.main([str(project[2]), "--config", str(project[1]), "--thread-id", "publication",
+                         "--approve", "plan,pr"]) == 0
+        state = saved_values(project[1], "publication")
+        assert state["status"] == Status.DONE and state["scheduling_version"] == 1
+        assert state["prd"].contract.model_dump() == original
+        assert len(state["unit_outcomes"]) == count
+        assert all(o["ok"] and o["gate_receipt"].outcome == "passed" and o["review_receipt"].status == "clean"
+                   for o in state["unit_outcomes"].values())
+        context = context_from_state(state)
+        balance = BudgetLedger(context).balance()
+        assert not balance.accounting_incomplete
+        assert balance.charged_usd == pytest.approx(.01*(3*count+1))
+        assert len(calls) == 3*count+1 and len(remote.effects()) == 2
+>       assert state["publication_receipt"]["candidate_commit"] == git(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            Path(state["worktree_path"]), "rev-parse", "HEAD")
+E       KeyError: 'candidate_commit'
+
+tests/test_scheduling_runtime.py:84: KeyError
+----------------------------- Captured stdout call -----------------------------
+Run f885e322-18bd-4129-a593-7246c905123a: selected committed HEAD 34e65eca4b507f0c66bf42a5e81719b62c2fc83b
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t20-scheduling-runtime-02/test_nondefault_parallel_limit0/.blacksmith/runs/f885e322-18bd-4129-a593-7246c905123a
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+
+status: done
+PR: https://github.com/example/context-demo/pull/1
+total cost: $0.19; run cap $50.00, remaining $49.81
+tokens: unavailable
+execution time: 101.94s / 21600.00s; remaining 21498.06s
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: normalize_candidate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: test_gate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: integration_gate
+blacksmith: advance_joined_level
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+blacksmith: cleanup_worktree
+=========================== short test summary info ============================
+FAILED tests/test_scheduling_runtime.py::test_nondefault_parallel_limit_reaches_actual_workers
+1 failed, 22 passed, 2 deselected in 168.44s (0:02:48)

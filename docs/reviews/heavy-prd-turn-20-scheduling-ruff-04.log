@@ -1,0 +1,34 @@
+E501 Line too long (105 > 100)
+  --> tests/test_scheduling.py:79:101
+   |
+77 |     try:
+78 |         graph = compile_graph(saver, limits=LimitsConfig(max_parallel_units=3, max_fix_attempts=2))
+79 |         config = invocation_config({}, fallback_limits=graph.config["configurable"]["blacksmith_limits"])
+   |                                                                                                     ^^^^^
+80 |         assert graph.config["max_concurrency"] == config["max_concurrency"] == 3
+81 |         assert config["recursion_limit"] == 300
+   |
+
+E501 Line too long (106 > 100)
+  --> tests/test_scheduling_runtime.py:77:101
+   |
+75 |     assert state["prd"].contract.model_dump() == original
+76 |     assert len(state["unit_outcomes"]) == count
+77 |     assert all(o["ok"] and o["gate_receipt"].outcome == "passed" and o["review_receipt"].status == "clean"
+   |                                                                                                     ^^^^^^
+78 |                for o in state["unit_outcomes"].values())
+79 |     context = context_from_state(state)
+   |
+
+E501 Line too long (105 > 100)
+   --> tests/test_scheduling_runtime.py:143:101
+    |
+141 |     graph.update_state({"configurable": {"thread_id": "publication"}},
+142 |                        {"scheduling_version": None} if fault == "missing" else {
+143 |                            "execution_levels": before["execution_levels"] + [[before["selected_unit"]]]})
+    |                                                                                                     ^^^^^
+144 |     saver.conn.close()
+145 |     before = saved_values(project[1], "publication")
+    |
+
+Found 3 errors.

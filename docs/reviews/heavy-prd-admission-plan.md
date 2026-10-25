@@ -1,59 +1,41 @@
 # S15 implementation and acceptance handoff
 
-Goal turn19/30. S01-S14 accepted locally; S15 implemented and awaiting full
-primary verification. S16-S19 remain required. Progress/evidence records retain
-all prior failures, source snapshots and recovery proof.
+Goal20/30. S01-S14 accepted; S15 remains unchecked until final full02 terminal proof.
 
-## Exact source
+Final candidate **b123b50f7c3d70683e95e24730d43a491488143c** is durably saved in
+/private/tmp/blacksmith-heavy-prd-admission-stage, feature/heavy-prd-admission-staging.
+All165 source files and configuration exactly match current primary, including the
+accepted strict S14 query fixture and new SDK/policy receipt assertions. Spec/.venv
+excluded. Complete identity: heavy-prd-turn-20-environment-02.json.
 
-- Primary branch feature/heavy-prd-readiness, accepted base1afc9c2/S14 implementation8652ac2.
-- Source-only staging commit **7a48358eebf855bd48a02ab2d0422b76fd0284ba** at
-  /private/tmp/blacksmith-heavy-prd-admission-stage, branch feature/heavy-prd-admission-staging.
-- Only delta23ad7ff..7a48358 was checked/applied to primary. All165 Python source
-  hashes match staging except the deliberately retained accepted strict
-  tests/test_receipt_wiring.py fixture. Baseline was not replayed. Spec/.venv excluded.
-- Complete source/config/input/runtime/dependency/patch/receipt identity:
-  heavy-prd-turn-19-environment-01.json. Both original inputs unchanged/untracked.
-- Primary ruff/whitespace passed. Live full pytest **26162**, log
-  heavy-prd-turn-19-pytest-01.log, basetemp /private/tmp/blacksmith-heavy-prd-t19-full-01.
-  No primary Python edits after launch. Poll same handle; do not restart on timeout.
+**Live full02 handle3281**, log heavy-prd-turn-20-pytest-02.log. Primary Python source
+frozen after launch. Poll same handle; never restart on observation timeout. Primary
+final scope02 passed96/126.74s; final ruff/source whitespace passed. No passing full
+result yet. Old full26162 is terminal13 failed/910 passed/6 SDK warnings/2181.76s,
+intentionally SIGINT stopped for known fixtures; source identity/log hash retained.
 
-## Implemented
+Atomic all-role grants/SDK forwarding, conservative unknown usage, partial unique
+transcripts, denied/started/overrun recovery, persistent execution clock excluding
+approval waiting, bounded cleanup/cancellation and honest reports are implemented.
+A final probe found the direct default-SDK library path could omit a run context;
+all default public roles now refuse before options/credentials/transport without
+immutable admission identity. Seven regressions plus adjacent roles/transcripts/
+reviewer/local-SDK deadline proof passed65/189.14s. Injected offline query adapters
+remain test seams; they are not live accounting/cancellation evidence.
 
-- Default run50/call5/model1800s/run21600s policies, finite positive validation,
-  frozen explicit --unlimited-cost choice. Resume validates policies before any
-  native observation or executor; migration tests prove unchanged old evidence.
-- Atomic critical journal grants for all six Executor roles, exact SDK option
-  forwarding, conservative unknown/partial spend, historical overrun, incomplete
-  accounting and one keyed partial event/transcript per unique call.
-- Explicit recovery distinguishes denied-before-start, started budget-stop/unknown
-  and completed successful overrun. It reuses valid cached results/options/seats,
-  retains failed receipts/counters and requires a continuation only for new paid work.
-- Persistent monotonic execution clock shared across threads, excludes approval
-  waits, reserves bounded slices before work and charges uncertain crash slices plus
-  cleanup allowance conservatively. Native/model work shares remaining deadline.
-- Owned local SDK POSIX process sessions; TERM/grace5/KILL/reap under timeout,
-  raw task cancellation, SIGINT/SIGTERM and critical graph failures before LangGraph
-  waits or recovery capture. Cleanup is idempotent and critical on uncertainty.
-  Darwin group-probe EPERM is accepted only after complete bounded PID/PGID/state
-  evidence shows no live members; no command/environment contents collected.
-- Ledger-based new-unit guards, measured versus conservative/held/remaining cost,
-  persistent duration and incomplete markers in CLI, metrics and PR snapshots.
-  Metrics accounting migration is additive; unknown exact totals stay null.
-- Runtime/config/migration/recovery runbook: ../heavy-prd-admission.md.
+Old SDK receipt fixtures now use actual saved admitted contexts. Bootstrap assertions
+retain exact native ordering/no-effect behavior and explicitly validate new critical
+budget/clock/reservation records. Changed-prompt proof starts with a valid retained
+fake-provider result, then verifies no second SDK call and no missing-journal replay.
+Every original assertion remains. Intermediate failures are retained in evidence.
 
-## Scoped evidence and remaining acceptance
+Next: full3281 terminal green, exact165-source/config/input/runtime audit, refreshed
+ruff and local implementation commit/check S15. Then transfer isolated S16 feature
+delta fromc4c18cd..4d89e01 (or later) only after scale/remaining65567 passes. Preserve
+four later S15 files absent from that old baseline: executor.py,
+test_executor_admission.py, test_receipts.py, test_receipt_wiring.py. Final integrated
+primary full proof is still required for S16. S17-S19 follow in dependency order.
 
-Final transport17: **11 passed/7 expected retained SDK warnings/108.67s**. Four
-additional actual CLI scope-entry repeats passed after fixing the observed EPERM
-race, including one positively observed no-live reconciliation. Real CLI started
-call recovery covers five roles by denied/budget-stop/unknown/overrun cases;
-clock crash/critical rotation, accounting, migration and new-unit tests are retained
-in turn19 evidence. Earlier failed fixture and production-behavior receipts remain.
-These are scoped proof; they do not replace the full primary suite.
-
-Next: observe full26162 terminal result, verify the exact165-source/config/input/
-dependency set, fix actual failures without weakening assertions and refresh ruff.
-Only then commit/check S15. Then S16-S19 in dependency order. No paid provider,
-real publication or live Docker acceptance is inferred. Full goal stays active;
-at30 save precise handoff and pause without automatic resumption.
+Runtime/migration/recovery policy: ../heavy-prd-admission.md. No paid provider,
+real publication or Docker acceptance inferred. Goal active; at30 save precise
+handoff and pause without automatic resumption.

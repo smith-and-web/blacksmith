@@ -1,0 +1,147 @@
+F...                                                                     [100%]
+=================================== FAILURES ===================================
+____________ test_nondefault_parallel_limit_reaches_actual_workers _____________
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t20-scheduling-runtime-01/test_nondefault_parallel_limit0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e10f3b0>
+
+    def test_nondefault_parallel_limit_reaches_actual_workers(project, monkeypatch):
+>       execute(project, monkeypatch, 6, bound=3)
+
+tests/test_scheduling_runtime.py:106: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_scheduling_runtime.py:77: in execute
+    assert all(o["ok"] and o["gate_receipt"].passed and o["review_receipt"].status == "clean"
+tests/test_scheduling_runtime.py:77: in <genexpr>
+    assert all(o["ok"] and o["gate_receipt"].passed and o["review_receipt"].status == "clean"
+                           ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = GateReceipt(schema_version=1, receipt_id='287b792926914f62b095e7aaa25530418fbecc29ac4d4b94511d543239fc10ad', run_id='c...d', message='', output='$ true\n\n', fix_receipt_id='12fc41ce77ef1b0f13c67b875e1aaef46a2010cadef88b75bd481a5195eba2d8')
+item = 'passed'
+
+    def __getattr__(self, item: str) -> Any:
+        private_attributes = object.__getattribute__(self, '__private_attributes__')
+        if item in private_attributes:
+            attribute = private_attributes[item]
+            if hasattr(attribute, '__get__'):
+                return attribute.__get__(self, type(self))  # type: ignore
+    
+            try:
+                # Note: self.__pydantic_private__ cannot be None if self.__private_attributes__ has items
+                return self.__pydantic_private__[item]  # type: ignore
+            except KeyError as exc:
+                raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}') from exc
+        else:
+            # `__pydantic_extra__` can fail to be set if the model is not yet fully initialized.
+            # See `BaseModel.__repr_args__` for more details
+            try:
+                pydantic_extra = object.__getattribute__(self, '__pydantic_extra__')
+            except AttributeError:
+                pydantic_extra = None
+    
+            if pydantic_extra and item in pydantic_extra:
+                return pydantic_extra[item]
+            else:
+                if hasattr(self.__class__, item):
+                    return super().__getattribute__(item)  # Raises AttributeError if appropriate
+                else:
+                    # this is the current error
+>                   raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+E                   AttributeError: 'GateReceipt' object has no attribute 'passed'
+
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/pydantic/main.py:1042: AttributeError
+----------------------------- Captured stdout call -----------------------------
+Run c5b54736-10fb-4134-a698-90b297be94ac: selected committed HEAD 56e006c7b8398cef1e9d4bb0851ca81f3d28361b
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t20-scheduling-runtime-01/test_nondefault_parallel_limit0/.blacksmith/runs/c5b54736-10fb-4134-a698-90b297be94ac
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+
+status: done
+PR: https://github.com/example/context-demo/pull/1
+total cost: $0.19; run cap $50.00, remaining $49.81
+tokens: unavailable
+execution time: 104.11s / 21600.00s; remaining 21495.89s
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: finalize_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: test_gate
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: review
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: integration_gate
+blacksmith: advance_joined_level
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+blacksmith: cleanup_worktree
+=========================== short test summary info ============================
+FAILED tests/test_scheduling_runtime.py::test_nondefault_parallel_limit_reaches_actual_workers
+1 failed, 3 passed, 2 deselected in 166.83s (0:02:46)
