@@ -1,0 +1,56 @@
+F401 [*] `pathlib.Path` imported but unused
+ --> blacksmith/publication.py:7:21
+  |
+5 | import json
+6 | import re
+7 | from pathlib import Path
+  |                     ^^^^
+8 | from urllib.parse import quote, urlsplit
+  |
+help: Remove unused import: `pathlib.Path`
+
+E501 Line too long (101 > 100)
+   --> blacksmith/publication.py:148:101
+    |
+146 |                 "draft": row["draft"], "marker": marker(target)}
+147 |     except (KeyError, TypeError, ValueError, AttributeError) as exc:
+148 |         raise PublicationError("remote PR does not match exact run/repository/base/head/SHA/draft") \
+    |                                                                                                     ^
+149 |             from exc
+    |
+
+E501 Line too long (102 > 100)
+   --> blacksmith/publication.py:259:101
+    |
+257 |         observed = context.journal().get_by_id(data["observation_id"])
+258 |         if (not observed or observed.status != "completed"
+259 |                 or observed.key.kind != "publication.observe" or observed.intent != {"target": target}
+    |                                                                                                     ^^
+260 |                 or observed.outcome != {"observation": {"remote_commit": target["candidate_commit"],
+261 |                                                        "pr": data["pr"]}}):
+    |
+
+E501 Line too long (102 > 100)
+   --> blacksmith/publication.py:288:101
+    |
+286 |                 raise PublicationError("completed publication is missing remotely; refusing replay")
+287 |             if _unconfirmed(context, target, "publication.create"):
+288 |                 raise PublicationError("native PR create outcome unconfirmed; inspect process/effect")
+    |                                                                                                     ^^
+289 |             if observed["remote_commit"] is None:
+290 |                 if (_unconfirmed(context, target, "publication.push") or any(
+    |
+
+E501 Line too long (101 > 100)
+   --> blacksmith/publication.py:320:101
+    |
+318 |                 observed, observation_id = observe(state, context, target, runner)
+319 |                 if observed["pr"] is None:
+320 |                     raise PublicationError("PR creation not observed; retain branch and retry-stage")
+    |                                                                                                     ^
+321 |         _check(state, target)
+322 |         if previous is None:
+    |
+
+Found 5 errors.
+[*] 1 fixable with the `--fix` option.

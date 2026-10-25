@@ -1,0 +1,53 @@
+E501 Line too long (101 > 100)
+   --> blacksmith/publication.py:323:101
+    |
+321 |                 observed, observation_id = observe(state, context, target, runner)
+322 |                 if observed["pr"] is None:
+323 |                     raise PublicationError("PR not observed; retain branch and resume --retry-stage")
+    |                                                                                                     ^
+324 |         _check(state, target)
+325 |         if previous is None:
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_publication_approval.py:3:1
+   |
+ 1 |   """Exact-SHA approval through actual CLI, graphs, Git, gates and checkpoints."""
+ 2 |
+ 3 | / from copy import deepcopy
+ 4 | | import json
+ 5 | | from pathlib import Path
+ 6 | |
+ 7 | | import pytest
+ 8 | | from test_integration_integrity import configure
+ 9 | | from test_review_integrity import install as install_models
+10 | | from test_run_context import git, saved_values
+11 | | from test_run_context import project as project
+12 | |
+13 | | from blacksmith import cli
+14 | | from blacksmith.executor import Executor, ExecutorResult
+15 | | from blacksmith.nodes import pr as pr_module
+16 | | from blacksmith.nodes.pr import CommandResult
+17 | | from blacksmith.run_context import context_from_state
+18 | | from blacksmith.state import Status
+   | |___________________________________^
+19 |
+20 |   OPEN_HELPER = pr_module.open_pull_request
+   |
+help: Organize imports
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_publication_approval.py:55:9
+   |
+53 |               return CommandResult(0, "", "")
+54 |           assert argv[:3] == ["gh", "pr", "create"], argv
+55 | /         from blacksmith.run_context import origin_identity
+56 | |         from test_run_context import git
+   | |________________________________________^
+57 |           origin = origin_identity(git(Path(cwd), "remote", "get-url", "origin"))
+58 |           repo = origin.split("/", 1)[1]
+   |
+help: Organize imports
+
+Found 3 errors.
+[*] 2 fixable with the `--fix` option.

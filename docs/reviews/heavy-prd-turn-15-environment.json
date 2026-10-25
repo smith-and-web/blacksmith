@@ -1,5 +1,6 @@
 {
   "base_revision": "260d5428ffa4fa69dea4b0a3b3d109de65acd41c",
+  "implementation_revision": "3581d289088a1f3ec4010bd1a62a40bea005aaee",
   "input_sha256": {
     "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
     "docs/reviews/2026-10-24-readiness-probes.py": "70e36e96aba1a449244bddca13150eeeda7fe0874e663f8b75a8f44ad0e2901c"

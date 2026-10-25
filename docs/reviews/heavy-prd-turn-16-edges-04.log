@@ -1,0 +1,84 @@
+....F
+=================================== FAILURES ===================================
+_ test_unknown_native_create_holds_until_exact_remote_positive_without_repeating_effect _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-edges-04/test_unknown_native_create_hol0/target'), Posix...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bb616a0>
+
+    def test_unknown_native_create_holds_until_exact_remote_positive_without_repeating_effect(
+        project, monkeypatch,
+    ):
+        calls, remote, _ = setup(project, monkeypatch, mode="create_failed")
+        assert run(project, "publication") == 1
+        state = saved_values(project[1], "publication")
+        context = context_from_state(state)
+        create = next(o for o in context.journal().operations()
+                      if o.key.kind == "publication.create")
+        pending = context.journal().command_intent("__run__", create.key.attempt_id,
+            "publication.create:gh", {"argv": ["gh", "pr", "create"], "stage": "publication.create"})
+        effects, paid = list(remote.effects()), list(calls)
+        remote.mode = "fresh"
+        args = ["resume", "--config", str(project[1]), "--thread-id", "publication", "--retry-stage"]
+        assert cli.main(args) == 1
+        assert remote.effects() == effects and calls == paid
+>       assert context.journal().get(pending.key) == pending
+E       AssertionError: assert OperationRece...created=False) == OperationRece... created=True)
+E         
+E         Omitting 4 identical items, use -vv to show
+E         Differing attributes:
+E         ['created']
+E         
+E         Drill down into differing attribute created:
+E           created: False != True
+
+tests/test_publication_integrity.py:201: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run c3b183f9-5a12-48bb-81cb-d067ffb99acf: selected committed HEAD ef25223d94800562fa435f7d67e40281826710f7
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-edges-04/test_unknown_native_create_hol0/.blacksmith/runs/c3b183f9-5a12-48bb-81cb-d067ffb99acf
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+
+status: halted
+error [open_pr]: PR not observed; retain branch and resume --retry-stage
+total cost: $0.04
+tokens: unavailable
+Resuming run c3b183f9-5a12-48bb-81cb-d067ffb99acf, base ef25223d94800562fa435f7d67e40281826710f7, saved configuration
+
+status: halted
+error [open_pr]: PR not observed; retain branch and resume --retry-stage
+error [open_pr]: native PR create outcome unconfirmed; inspect process
+total cost: $0.04
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-edges-04/test_unknown_native_create_hol0/.blacksmith/runs/c3b183f9-5a12-48bb-81cb-d067ffb99acf/recovery/917b475e-97af-468b-b45e-68181bbd26c2/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t16-publication-edges-04/test_unknown_native_create_hol0/runtime.toml
+blacksmith: recovery_dispatch
+blacksmith: open_pr
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-edges-04/test_unknown_native_create_hol0/.blacksmith/runs/c3b183f9-5a12-48bb-81cb-d067ffb99acf/recovery/a34903dc-18fe-4dd7-aaf6-3c5236e762c8/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t16-publication-edges-04/test_unknown_native_create_hol0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_publication_integrity.py::test_unknown_native_create_holds_until_exact_remote_positive_without_repeating_effect
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 4 passed, 13 deselected in 71.95s (0:01:11)
