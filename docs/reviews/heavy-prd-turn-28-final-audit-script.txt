@@ -118,6 +118,8 @@ result = {
     'progress_sha256': digest('docs/reviews/heavy-prd-progress.md'),
     'historical_process_boundary_exception': 'Turn13 attempted synthetic-remote push failed128 before authentication; no PR create; guards strengthened; retained receipt disclosed',
     'contract_review': 'NOT RUN; prepared exact patch is not human review',
+    'compatibility_audit_sha256': digest('docs/reviews/heavy-prd-turn-27-compatibility-audit.json'),
+    'contract_review_patch_sha256': digest(compatibility['contract_patch']),
     'paid_canary': 'NOT RUN; prohibited by goal',
     'real_docker_smoke': 'NOT RUN; sandbox remains explicitly disabled',
     'sandbox_and_respond': 'Only specification-permitted disabled alternatives accepted; enabled implementations unaccepted',

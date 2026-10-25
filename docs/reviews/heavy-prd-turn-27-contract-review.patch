@@ -2,33 +2,16 @@ diff --git a/blacksmith/contract.py b/blacksmith/contract.py
 index d5c7504..ac8fc22 100644
 --- a/blacksmith/contract.py
 +++ b/blacksmith/contract.py
-@@ -17,11 +17,11 @@
- 
- import re
- from dataclasses import dataclass
+@@ -20 +20 @@
 -from pathlib import Path
 +from pathlib import Path, PurePosixPath, PureWindowsPath
- from typing import Literal
- 
- import yaml
+@@ -24 +24 @@
 -from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 +from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
- 
- SUPPORTED_CONTRACT_VERSION = 1
- 
-@@ -32,7 +32,7 @@
- 
- # Frontmatter is a leading '---' fenced YAML block. Non-greedy so the first closing
- # fence terminates it (later '---' horizontal rules in the prose are left in the body).
+@@ -35 +35 @@
 -_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 +_FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---(?:\r?\n)?(.*)$", re.DOTALL)
- 
- # A layer is either auto-gateable (pytest/clippy decide) or human-gated (smoke/QA).
- # The fixed concept is auto-vs-human; the vocabulary is per-project (PRD §6).
-@@ -59,6 +59,25 @@ class WorkUnit(_Strict):
-     test_contract: str = Field(min_length=1)
-     depends_on: list[str] = Field(default_factory=list)
- 
+@@ -61,0 +62,19 @@ class WorkUnit(_Strict):
 +    @field_validator("id", "title", "test_contract")
 +    @classmethod
 +    def _nonblank(cls, value: str) -> str:
@@ -48,21 +31,9 @@ index d5c7504..ac8fc22 100644
 +                raise ValueError(f"target_modules: expected nonempty relative target: {value!r}")
 +        return values
 +
- 
- class PRDContract(_Strict):
-     """The machine-readable contract carried in a PRD's YAML frontmatter."""
-@@ -126,6 +145,7 @@ class PRD:
-     path: Path
-     contract: PRDContract
-     body: str
+@@ -128,0 +148 @@ class PRD:
 +    text: str = ""
- 
- 
- def parse_prd(path: str | Path) -> PRD:
-@@ -139,7 +159,16 @@ def parse_prd(path: str | Path) -> PRD:
-     if not path.is_file():
-         raise ContractError(f"PRD not found: {path}")
- 
+@@ -142 +162,10 @@ def parse_prd(path: str | Path) -> PRD:
 -    text = path.read_text(encoding="utf-8")
 +    try:
 +        text = path.read_bytes().decode("utf-8")
@@ -74,13 +45,7 @@ index d5c7504..ac8fc22 100644
 +def parse_prd_text(text: str, *, path: str | Path = "snapshot.md") -> PRD:
 +    """Validate persisted input without reloading a mutable original PRD file."""
 +    path = Path(path)
-     match = _FRONTMATTER_RE.match(text)
-     if not match:
-         raise ContractError(
-@@ -167,7 +196,43 @@ def parse_prd(path: str | Path) -> PRD:
-             f"(Contract v1 requires headings for: {', '.join(REQUIRED_SECTIONS)})"
-         )
- 
+@@ -170 +199,37 @@ def parse_prd(path: str | Path) -> PRD:
 -    return PRD(path=path, contract=contract, body=body)
 +    return PRD(path=path, contract=contract, body=body, text=text)
 +
@@ -119,6 +84,3 @@ index d5c7504..ac8fc22 100644
 +            raise ContractError(
 +                f"human QA unit {human.id} must transitively depend on every auto unit"
 +            )
- 
- 
- def _missing_sections(body: str) -> list[str]:

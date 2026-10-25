@@ -920,3 +920,12 @@ review. Paid canary and Docker smoke remain unrun; enabled sandbox/respond work
 is deferred only under the specification's explicit alternatives. The turn13
 failed external-push exception remains disclosed, with its original receipt and
 subsequent suite-wide guards. No successful external publication is claimed.
+
+The separate staged whitespace check flagged blank context-prefix lines in the
+original saved unified contract diff. The first docs commit76147c2 nevertheless
+passed hooks; the failing check output is retained in the session record. The
+review artifact now uses git diff --unified=0, with exact added/deleted source lines
+verified identical to the original. The original full-context bytes remain in
+76147c2 and their checksum/revision are in the compatibility receipt. No whitespace
+rule or regression assertion was disabled. Final working/staged/range whitespace
+checks and the exact-source audit must pass after this evidence-only correction.

@@ -1,11 +1,13 @@
 {
   "all_before_after_identities_match": true,
   "audit_script": "docs/reviews/heavy-prd-turn-28-final-audit-script.txt",
-  "audit_script_sha256": "dee5304ecd5d6e91cf2c48b8dde3e24d2e33ae5cddbf58f7ff89c3f53c83d1c3",
+  "audit_script_sha256": "23851aae12879762f08d552e1bc7477ec72d3379ac1f2d67405a257470b58efd",
   "brain_proof": "docs/reviews/heavy-prd-turn-28-brain-proof.json",
   "brain_proof_sha256": "34945d1c13eb2e198b89fdd7605d434e4c3af71bcd4fbd1e28a602656c3f4c19",
+  "compatibility_audit_sha256": "5843728045be8e4c895babdd798ebe033cd2f61726ef6b33f2423de68a504350",
   "completed_checklist_entries": 19,
   "contract_review": "NOT RUN; prepared exact patch is not human review",
+  "contract_review_patch_sha256": "57f465d32e9a1fa62613d4cb826766381d3f1753e43f8163ccf224d2e784db2b",
   "current_identity": {
     "config_matches": true,
     "distributions_match": true,
@@ -35,7 +37,7 @@
   "paid_canary": "NOT RUN; prohibited by goal",
   "progress_sha256": "7aee774d08457fc1d3b933c44799fd8f9a079b17e38ed290d9a31175c45cadc8",
   "real_docker_smoke": "NOT RUN; sandbox remains explicitly disabled",
-  "recorded_at": "2026-10-25T14:46:57.257803-03:00",
+  "recorded_at": "2026-10-25T14:48:24.908021-03:00",
   "requirements": 12,
   "ruff_log": "docs/reviews/heavy-prd-turn-26-ruff-primary-final-01.log",
   "ruff_log_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
