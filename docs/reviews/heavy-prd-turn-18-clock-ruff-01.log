@@ -1,0 +1,22 @@
+E501 Line too long (102 > 100)
+  --> blacksmith/run_clock.py:88:101
+   |
+86 |         remaining = context.execution_config().limits.max_run_seconds - elapsed
+87 |         if remaining <= 0:
+88 |             raise RunDeadline('run execution deadline exhausted; inspect retained recovery artifacts')
+   |                                                                                                     ^^
+89 |         self.deadline = time.monotonic() + remaining
+90 |         self.owner, self.sequence = str(uuid4()), 0
+   |
+
+E501 Line too long (102 > 100)
+   --> blacksmith/run_clock.py:106:101
+    |
+104 |             raise self.error
+105 |         if self.cancelled.is_set() or self.remaining <= 0:
+106 |             raise RunDeadline('run execution deadline exhausted; inspect retained recovery artifacts')
+    |                                                                                                     ^^
+107 |         return self.remaining
+    |
+
+Found 2 errors.

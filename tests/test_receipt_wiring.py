@@ -196,9 +196,29 @@ def test_optional_model_handlers_cannot_swallow_critical_receipt_failure(
         pytest.fail("critical receipt failure must prevent push/PR publication")
 
     monkeypatch.setattr("blacksmith.nodes.pr.open_pull_request", forbidden_publication)
+    # S14 observes the remote before the summary. Exercise that real path while
+    # forbidding effects, so this still injects the intended critical SDK write.
+    from blacksmith.nodes.pr import CommandResult
+    remote_calls = []
+
+    def guarded_remote(argv, cwd=None):
+        remote_calls.append(list(argv))
+        if argv[:4] == ["git", "ls-remote", "--refs", "origin"]:
+            return CommandResult(0, "", "")
+        if argv[:2] == ["gh", "api"]:
+            return CommandResult(0, "[[]]", "")
+        pytest.fail("critical summary receipt failure reached push/create")
+
+    compile_graph = cli.compile_graph
+    monkeypatch.setattr(cli, "compile_graph", lambda saver, **kwargs:
+                        compile_graph(saver, **{**kwargs, "pr_runner": guarded_remote}))
     assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
     assert len(calls) == expected_calls
     assert "critical journal read/write failed" in capsys.readouterr().err
+    assert [argv[0] for argv in remote_calls] == (["git", "gh"]
+                                               if stage == "model.summary" else [])
+    assert not any(argv[:2] == ["git", "push"] or argv[:3] == ["gh", "pr", "create"]
+                   for argv in remote_calls)
 
 
 @pytest.mark.parametrize("failure", ["missing", "corrupt"])

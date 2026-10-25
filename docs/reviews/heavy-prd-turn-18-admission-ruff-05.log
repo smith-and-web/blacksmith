@@ -1,0 +1,10 @@
+E501 Line too long (102 > 100)
+   --> tests/test_transcript.py:233:101
+    |
+233 | def test_two_calls_without_provider_sessions_keep_distinct_partial_transcripts(monkeypatch, tmp_path):
+    |                                                                                                     ^^
+234 |     cfg = _config(monkeypatch, transcripts_dir=tmp_path)
+235 |     executor = Executor(cfg, query_fn=RaisingAfterQuery([
+    |
+
+Found 1 error.

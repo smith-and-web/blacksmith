@@ -84,7 +84,10 @@ def proposal(state):
                 or _git(path, "branch", "--show-current").strip() != state.get("branch")
                 or state.get("default_branch") != context.default_branch
                 or origin_identity(_git(path, "remote", "get-url", "origin").strip())
-                != context.origin):
+                != context.origin
+                or [origin_identity(url) for url in _git(
+                    path, "remote", "get-url", "--push", "--all", "origin").splitlines()]
+                != [context.origin]):
             raise ApprovalError("publication workspace/branch/base/origin differs from saved run")
     for level in levels:
         for unit in level:

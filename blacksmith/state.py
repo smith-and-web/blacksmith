@@ -183,6 +183,8 @@ class BlacksmithState(UnitAttemptState, total=False):
     unit_graph_version: int
     review_version: int
     approval_version: int
+    publication_version: int
+    publication_receipt: dict[str, Any] | None
     pr_approval_round: int
     pr_approval_proposal: dict[str, Any] | None
     pr_approval: dict[str, Any] | None

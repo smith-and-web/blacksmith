@@ -1,5 +1,6 @@
 """Exact-SHA approval through actual CLI, graphs, Git, gates and checkpoints."""
 
+import json
 from copy import deepcopy
 from pathlib import Path
 
@@ -38,13 +39,31 @@ def install(monkeypatch, *, on_summary=None, on_push=None):
         return await collect(self, prompt, options, emit_findings=emit_findings)
 
     def github(argv, cwd=None):
+        # Query observations are distinct from the effect ledger asserted below.
+        if argv[:2] == ["git", "ls-remote"]:
+            return CommandResult(0, (github.sha + "\t" + argv[-1] + "\n")
+                                 if github.sha else "", "")
+        if argv[:2] == ["gh", "api"]:
+            return CommandResult(0, json.dumps([github.prs]), "")
         remote.append(list(argv))
         if argv[:2] == ["git", "push"]:
+            github.sha = argv[-1].split(":")[0]
             if on_push:
                 on_push(Path(cwd))
             return CommandResult(0, "", "")
         assert argv[:3] == ["gh", "pr", "create"], argv
+        from blacksmith.run_context import origin_identity
+        origin = origin_identity(git(Path(cwd), "remote", "get-url", "origin"))
+        repo = origin.split("/", 1)[1]
+        data = {"full_name": repo, "html_url": "https://" + origin}
+        github.prs = [{"number": 1, "html_url": "https://" + origin + "/pull/1",
+            "draft": "--draft" in argv, "state": "open",
+            "body": argv[argv.index("--body") + 1],
+            "head": {"ref": argv[argv.index("--head") + 1], "sha": github.sha, "repo": data},
+            "base": {"ref": argv[argv.index("--base") + 1], "repo": data}}]
         return CommandResult(0, "https://github.com/example/context-demo/pull/1\n", "")
+
+    github.sha, github.prs = None, []
 
     def compile_graph(checkpointer, **kwargs):
         return COMPILE(checkpointer, **{**kwargs, "pr_runner": github})
@@ -126,7 +145,7 @@ def test_both_approved_publications_push_only_approved_sha_and_report_qa_exit(
 
 
 @pytest.mark.parametrize("qa", [False, True])
-@pytest.mark.parametrize("change", ["dirty", "commit", "branch", "origin"])
+@pytest.mark.parametrize("change", ["dirty", "commit", "branch", "origin", "push_origin"])
 def test_changed_candidate_or_identity_after_prompt_rejects_before_summary_or_push(
     project, monkeypatch, qa, change,
 ):
@@ -145,6 +164,9 @@ def test_changed_candidate_or_identity_after_prompt_rejects_before_summary_or_pu
                     git(path, "commit", "-m", "unapproved external commit")
             elif change == "branch":
                 git(path, "checkout", "-b", "unapproved-other-branch")
+            elif change == "push_origin":
+                git(path, "remote", "set-url", "--push", "origin",
+                    "https://github.com/example/foreign.git")
             else:
                 git(path, "remote", "set-url", "origin", "https://github.com/example/foreign.git")
         return True

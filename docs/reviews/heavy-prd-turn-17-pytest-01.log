@@ -1,0 +1,61 @@
+........................................................................ [  5%]
+........................................................................ [ 11%]
+........................................................................ [ 17%]
+........................................................................ [ 23%]
+........................................................................ [ 29%]
+........................................................................ [ 35%]
+........................................................................ [ 41%]
+........................................................................ [ 47%]
+........................................................................ [ 53%]
+........................................................................ [ 59%]
+........................................................................ [ 64%]
+F....................................................................... [ 70%]
+......
+=================================== FAILURES ===================================
+_ test_optional_model_handlers_cannot_swallow_critical_receipt_failure[model.summary-3] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t17-full-01/test_optional_model_handlers_c1/target'), PosixPath('/privat...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e975280>
+capsys = <_pytest.capture.CaptureFixture object at 0x10edae720>
+stage = 'model.summary', expected_calls = 3
+
+    @pytest.mark.parametrize("stage,expected_calls", [("model.critic", 1), ("model.summary", 3)])
+    def test_optional_model_handlers_cannot_swallow_critical_receipt_failure(
+        project,
+        monkeypatch,
+        capsys,
+        stage,
+        expected_calls,
+    ):
+        _, config, prd, _ = project
+        if stage == "model.critic":
+            config.write_text(config.read_text() + "[critic]\nenabled = true\n")
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_optional BEFORE INSERT ON operations "
+            f"WHEN NEW.kind='{stage}' BEGIN SELECT RAISE(ABORT,'critical failure'); END",
+        )
+    
+        def forbidden_publication(
+            *, worktree_path, branch, title, body, base=None, remote="origin", draft=False, runner=None
+        ):
+            pytest.fail("critical receipt failure must prevent push/PR publication")
+    
+        monkeypatch.setattr("blacksmith.nodes.pr.open_pull_request", forbidden_publication)
+        assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
+        assert len(calls) == expected_calls
+>       assert "critical journal read/write failed" in capsys.readouterr().err
+E       assert 'critical journal read/write failed' in 'blacksmith: ingest_prd\nblacksmith: plan\nblacksmith: approve_plan\nblacksmith: approve_plan\nblacksmith: prepare_wor... --thread-id run --config /private/tmp/blacksmith-heavy-prd-t17-full-01/test_optional_model_handlers_c1/runtime.toml\n'
+E        +  where 'blacksmith: ingest_prd\nblacksmith: plan\nblacksmith: approve_plan\nblacksmith: approve_plan\nblacksmith: prepare_wor... --thread-id run --config /private/tmp/blacksmith-heavy-prd-t17-full-01/test_optional_model_handlers_c1/runtime.toml\n' = CaptureResult(out="Run 0d30ff26-ede0-44f9-b833-e268cf3344cd: selected committed HEAD be1e82cba240e27caadb8e87d381bfcdb...--thread-id run --config /private/tmp/blacksmith-heavy-prd-t17-full-01/test_optional_model_handlers_c1/runtime.toml\n').err
+E        +    where CaptureResult(out="Run 0d30ff26-ede0-44f9-b833-e268cf3344cd: selected committed HEAD be1e82cba240e27caadb8e87d381bfcdb...--thread-id run --config /private/tmp/blacksmith-heavy-prd-t17-full-01/test_optional_model_handlers_c1/runtime.toml\n') = readouterr()
+E        +      where readouterr = <_pytest.capture.CaptureFixture object at 0x10edae720>.readouterr
+
+tests/test_receipt_wiring.py:201: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_receipt_wiring.py::test_optional_model_handlers_cannot_swallow_critical_receipt_failure[model.summary-3]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/selectors.py:566: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+1 failed, 869 passed in 1915.63s (0:31:55)

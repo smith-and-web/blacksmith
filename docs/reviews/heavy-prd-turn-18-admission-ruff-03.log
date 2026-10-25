@@ -1,0 +1,21 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_admission_recovery.py:3:1
+   |
+ 1 |   """Budget-only recovery keeps unstarted identities and valid paid evidence."""
+ 2 |
+ 3 | / from collections import Counter
+ 4 | |
+ 5 | | import pytest
+ 6 | | from test_publication_integrity import setup as install
+ 7 | | from test_run_context import saved_values
+ 8 | | from test_run_context import project as project
+ 9 | |
+10 | | from blacksmith import cli
+11 | | from blacksmith.budget import BudgetLedger
+12 | | from blacksmith.run_context import context_from_state
+   | |_____________________________________________________^
+   |
+help: Organize imports
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

@@ -1044,6 +1044,8 @@ def _resume(argv: list[str] | None = None) -> int:
             validate_reviews(values)
             from blacksmith.publication_approval import validate_state as validate_approval
             validate_approval(values)
+            from blacksmith.publication import validate_state as validate_publication
+            validate_publication(values)
             stack.enter_context(protect_run(context, checkpointer))
             from blacksmith.recovery_control import prepare as prepare_recovery
 

@@ -1,7 +1,9 @@
 # S14 publication implementation and acceptance map
 
-Status: preparation only at goal turn16/30. S13 full verification is live. No S14
-runtime change or remote publication evidence is claimed by this file.
+Status: S14 accepted locally at goal turn18/30. Final full suite:1219 passed
+in2297.64s; ruff passed; all146-source/input/dependency identities match the
+pre-run environment record. Runtime wiring and recovery matrix below are covered.
+No live publication evidence is claimed; the authorized-release canary remains unrun.
 
 ## Settled requirements
 
@@ -12,7 +14,7 @@ S04 critical intents/outcomes and S11 retained recovery/amendment rules apply.
 Normal and draft paths share S13's exact-SHA approval guard. DONE/AWAITING_QA
 requires a durable validated publication receipt, not merely a parsed command URL.
 
-## Production path to implement after S13 closes
+## Production wiring under verification
 
 - Add a publication service, used by both real normal/draft PR nodes when a
   versioned run context exists. Retain the explicit-approved pre-versioned helper
@@ -76,8 +78,9 @@ commands, rather than succeeding on every argv.
 | Corrupt/missing/foreign receipt or old active metadata | Refuse before executor and leave original checkpoint/budget/evidence unchanged |
 | Terminal repeat resume | Same receipt/URL/exit; zero SDK or effect replay |
 
-Final full pytest/ruff, source/dependency identity and exact crash receipts remain
-required. No mocked result satisfies the live disposable-target canary.
+Final full pytest/ruff and exact source/dependency/crash identities are recorded in
+heavy-prd-evidence.md and turn17 environment-02.json. No mocked result satisfies the
+live disposable-target canary.
 
 Protocol sources checked during preparation: installed `gh api --help` and
 `gh pr list --help`; [GitHub pull-list API](https://docs.github.com/en/rest/pulls/pulls#list-pull-requests)

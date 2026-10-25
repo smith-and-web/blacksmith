@@ -13,8 +13,10 @@ S12 adds [cumulative patch reviews and typed decisions](docs/heavy-prd-reviews.m
 any panel blocker blocks, unavailable review halts, and disabled review is reported
 as disabled. S13 adds [exact-candidate PR approval](docs/heavy-prd-approval.md) for
 normal and terminal-QA draft publication, retained decisions and QA exit code 2.
-Remote publication reconciliation, global admission and scale bounds remain later
-slices; local test results do not satisfy the unrun live release gates.
+S14 adds [publication reconciliation and recovery](docs/heavy-prd-publication.md)
+with exact remote identity/markers and retained effect receipts. Global admission
+and scale bounds remain later slices; local test results do not satisfy the unrun
+live release gates.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

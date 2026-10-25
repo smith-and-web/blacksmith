@@ -1,12 +1,11 @@
 """PR node — open a pull request on the target repo (PRD §4 node 8, §5).
 
-Pushes the unit's branch and runs ``gh pr create`` with a generated summary,
-recording the PR URL in state. PRs are **never auto-merged** (§5) — this node only
-opens them.
+Versioned runs use exact remote observations and critical content/effect/result
+receipts to reconcile the run's combined normal/draft PR. PRs are never auto-merged.
 
 Shelling out is routed through an injectable ``Runner`` so tests can mock ``gh`` (and
-run git for real against a scratch repo). The graph node reads the runner from the
-LangGraph config (``configurable.pr_runner``), defaulting to a real subprocess runner.
+run Git for real against a scratch repo). The graph binds its runner and executor
+at construction; the default runner uses the bounded native command service.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from blacksmith.commands import run_command
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.plan import cost_event
 from blacksmith.path_policy import PolicyViolation, policy_for_state
-from blacksmith.receipts import ReceiptError, call_context_for
+from blacksmith.receipts import ReceiptError, call_context_for, merge_events
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
@@ -178,6 +177,10 @@ def _open_pr(
             )
         except PolicyViolation as exc:
             return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
+    if state.get("run_context"):
+        from blacksmith.publication import publish
+        return publish({**state, "publication_draft": draft}, runner=runner,
+                       prepare_content=lambda: _publication_content(state, executor))
     units = _built_units(state)
     title = _pr_title(units)
     summary: str | None = None
@@ -228,6 +231,18 @@ def _open_pr(
     if cost_events:
         out["cost_events"] = cost_events
     return out
+
+
+def _publication_content(state, executor):
+    units = _built_units(state)
+    title, summary, event = None, None, None
+    if executor is not None:
+        title, summary, event = _synthesize_summary(executor, state, units)
+    body_state = {**state, "cost_events": merge_events(state.get("cost_events") or [],
+                                                     [event] if event else [])}
+    return {"title": title or _pr_title(units),
+            "body": _pr_body(body_state, units, summary=summary),
+            "cost_events": [event] if event is not None else []}
 
 
 def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
@@ -296,7 +311,7 @@ def _synthesize_summary(
     ``cost_event`` reflects the call's real spend whenever one was actually made (even a
     failed/unparseable call still cost money) and is ``None`` only if the executor itself
     raised before returning a result."""
-    unit_id = units[-1].id if units else ""
+    unit_id = "__run__" if state.get("run_context") else units[-1].id if units else ""
     try:
         # _summary_prompt is INSIDE the fail-open try too: any error building the prompt
         # (e.g. a malformed PRD/state field) must fall back exactly like a model/parse

@@ -1,0 +1,73 @@
+E501 Line too long (103 > 100)
+   --> blacksmith/executor.py:323:101
+    |
+321 |             terminal = saved.get("terminal")
+322 |             return ExecutorResult(text="model call timed out", model=options.model,
+323 |                 is_error=True, num_turns=terminal.num_turns if terminal else saved.get("num_turns", 0),
+    |                                                                                                     ^^^
+324 |                 cost_usd=terminal.total_cost_usd if terminal else None,
+325 |                 usage=terminal.usage if terminal else None, session_id=saved.get("session_id"),
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/nodes/review.py:3:1
+   |
+ 1 |   """Read-only, cumulative exact-candidate review with honest fail-closed receipts."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | from pathlib import Path
+ 6 | | from typing import Any
+ 7 | |
+ 8 | | from blacksmith.config import IndexConfig
+ 9 | | from blacksmith.context import render_context, requirements_prd
+10 | | from blacksmith.contract import PRDContract, WorkUnit
+11 | | from blacksmith.budget import AdmissionDenied
+12 | | from blacksmith.executor import Executor, ExecutorResult, ModelCallStopped
+13 | | from blacksmith.index import (
+14 | |     INDEX_MCP_SERVER_NAME,
+15 | |     QUALIFIED_INDEX_TOOL_NAMES,
+16 | |     create_index_mcp_server,
+17 | |     index_tools_prompt_section,
+18 | | )
+19 | | from blacksmith.nodes.plan import cost_event
+20 | | from blacksmith.plan_artifacts import PlanIntegrityError, verify_approved_plan
+21 | | from blacksmith.receipts import ReceiptError, attempt_identity, call_context_for, digest, encoded
+22 | | from blacksmith.review_patch import (
+23 | |     DIFF_SERVER,
+24 | |     DIFF_TOOL,
+25 | |     INLINE_PATCH_BYTES,
+26 | |     capture_patch,
+27 | |     diff_server,
+28 | |     prompt_patch,
+29 | |     verify_patch,
+30 | | )
+31 | | from blacksmith.review_receipts import (
+32 | |     PanelResult,
+33 | |     ReviewReceipt,
+34 | |     aggregate_panel,
+35 | |     artifact,
+36 | |     parse_verdict,
+37 | |     retain,
+38 | | )
+39 | | from blacksmith.run_context import context_from_state
+40 | | from blacksmith.state import BlacksmithState, Status
+41 | | from blacksmith.verification import candidate_identity, required_layers, verify_gate_receipt
+   | |____________________________________________________________________________________________^
+42 |
+43 |   _REVIEW_READ_ONLY = ["Read", "Glob", "Grep"]
+   |
+help: Organize imports
+
+E501 Line too long (102 > 100)
+   --> tests/test_transcript.py:260:101
+    |
+259 |     # The tool-input sentinel is captured to the transcript file on disk...
+260 |     transcript_text = Path(out_state["cost_events"][0]["transcript_path"]).read_text(encoding="utf-8")
+    |                                                                                                     ^^
+261 |     assert sentinel in transcript_text
+262 |     # ...but never leaks into the returned graph state (transcripts are file-based only).
+    |
+
+Found 3 errors.
+[*] 1 fixable with the `--fix` option.

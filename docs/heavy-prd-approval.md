@@ -3,7 +3,7 @@
 S13 adds the same human approval boundary to normal and terminal-QA publication.
 The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance evidence](reviews/heavy-prd-evidence.md) track verification and the
-remaining release gates. Publication reconciliation is separate S14 work.
+remaining release gates. S14 adds [remote reconciliation and recovery](heavy-prd-publication.md).
 
 ## Contract and routing
 
@@ -50,8 +50,9 @@ run ID, candidate, draft and request round; supplied identities must match.
 The graph wrapper and publisher both check approval before PR summary generation.
 The publisher checks again immediately before push and before `gh pr create`.
 Push names the approved object explicitly as `<SHA>:refs/heads/<run-branch>` and
-never force-pushes. These local checks do not replace S14's required remote
-branch/PR identity query and ambiguous-effect reconciliation.
+never force-pushes. S14 additionally checks fetch and push endpoint identity and
+validates actual remote branch/PR identity before publication, including after a
+long summary call. Its reconciliation requires an exact run/candidate body marker.
 
 ## Retained evidence and diff preview
 

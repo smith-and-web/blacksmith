@@ -186,6 +186,8 @@ def prepare_worktree(
         "unit_graph_version": 1,
         "review_version": 1,
         "approval_version": 1,
+        "publication_version": 1,
+        "publication_receipt": None,
         "pr_approval_round": 0,
         "pr_approval_proposal": None,
         "pr_approval": None,

@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
 Heavy-PRD remediation is still in progress. This documents completed runtime
-slices through S13, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+slices through the S14 candidate, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -71,6 +71,8 @@ Each fresh run has a UUID and these paths under the config directory:
   publication/approval-<round>-proposal.json
   publication/approval-<round>-decision.json
   publication/diffs/<identity>.patch
+  publication/<target-digest>-content.json
+  publication/<target-digest>-result.json
   planning/
   workspace/
   units/<sha256-of-raw-unit-id>/workspace/
@@ -157,8 +159,11 @@ commit reuse requires the recorded HEAD, a matching trailer and a clean workspac
 unknown extra changes stop for inspection. Matching implementation, formatter,
 squash and join effects have the reconciliation described below. Native commands
 record individual intent/outcome receipts. An unconfirmed command process/effect
-stops recovery; its original intent remains unchanged. Publication reconciliation
-is S14. A command receipt alone does not make a multi-command stage safe to repeat.
+stops recovery; its original intent remains unchanged. S14's
+[publication service](heavy-prd-publication.md) uses exact positive remote
+observations to reconcile push/create effects. An unconfirmed native create with
+no matching PR still holds for inspection. A command receipt alone does not make
+a multi-command stage safe to repeat.
 
 Cost events use call IDs and keyed reduction so a replayed update cannot add the
 same call twice. Missing costs remain unknown, not measured zero-dollar calls.
@@ -346,7 +351,14 @@ Both normal and terminal-QA publication now require the same
 only on explicit resume; incomplete decision intent never authorizes publication.
 Missing legacy approval metadata refuses without manufacturing hashes.
 The CLI exits 0 for DONE, 2 for AWAITING_QA with the pending manual check and draft
-URL, and 1 for a halt/error. Publication reconciliation remains S14.
+URL, and 1 for a halt/error. The publication service checks fetch and push endpoint
+identity, exact remote ref/PR and run/candidate marker, seals prepared content and
+result, and reuses matching remote effects. Explicit `resume --retry-stage` selects
+the saved publication stage without replaying units, approvals or summaries.
+Active workspaces missing `publication_version=1` refuse with
+`legacy_publication_requires_manual_recovery`; old success hashes are not invented.
+Terminal URL/status/QA must match the approved publication receipt before executor
+construction on resume. See the [publication runbook](heavy-prd-publication.md).
 S12 review receipts cross both execution shapes and are checked at joins,
 final verification and publication entry. These gates are not a general
 readiness or publication-safety release claim. No live release gate ran here.
@@ -416,8 +428,9 @@ Reuse checks current HEAD/tree, source cleanliness, run identity, required layer
 order, trusted config hash, critical journal outcome, receipt JSON and hashes of
 command stdout/stderr/outcome artifacts. A changed candidate, layer set, missing or
 corrupt artifact cannot reuse a passing receipt. `verify_gate_receipt` is the common
-primitive for S10 join/final/publication entry guards. Exact-SHA approval payloads
-and approval/publication reconciliation remain S13-S14.
+primitive for join/final/publication entry guards. S13 exact-SHA approval payloads
+and S14 remote publication reconciliation build on this evidence; a unit receipt
+alone never authorizes publication.
 
 Formatters require this attempt's completed implementation-commit receipt and
 operation trailer. They cannot amend a prior unit when the implementer produced
@@ -540,12 +553,14 @@ proof while its original failed receipt stays unchanged. Source/base/parent/tree
 and both operation/source trailers must match; ambiguous matches refuse. Restore
 intent precedes moving the clean shared tip; a lost restore outcome reconciles the
 same SHA. An owned staged pick can finish once without fetching/picking again.
-Recovery operations themselves perform no remote publication; approval/publication
-behavior is hardened separately in S13-S14.
+Recovery preparation itself performs no remote publication. S13 rejection recovery
+schedules a fresh approval round, while S14 explicit publication-stage recovery
+reenters the guarded publisher and observes the exact remote before any effect.
 
-These are scoped offline guarantees. Exact-SHA QA/PR approval, publication
-reconciliation, global admission/deadlines, bounded scheduling and conditional
-sandbox/respond handling remain S13-S19. Clones are not OS sandboxes;
+These are scoped offline guarantees. S13/S14 cover exact-SHA QA/PR approval and
+publication reconciliation; their current acceptance evidence is linked above.
+Global admission/deadlines, bounded scheduling and conditional sandbox/respond
+handling remain S15-S19. Clones are not OS sandboxes;
 the trusted host toolchain boundary still applies. Release canaries and Docker
 smoke remain separate authorized gates.
 

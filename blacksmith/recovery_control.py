@@ -261,6 +261,11 @@ def _unknown_commands(context, unit, attempt):
     return context.journal().pending_commands(unit, attempt)
 
 
+def _publication_target(context, state):
+    from blacksmith.publication import recovery_target
+    return recovery_target(context, state)
+
+
 def _unstarted_units(context, root, saved_units):
     """Only units with no worker, attempt checkpoint or paid attempt may start fresh."""
     from blacksmith.graph import _fanout_sends
@@ -420,6 +425,11 @@ def _prepare(
             patch.update(recovery_target="prepare_pr_approval",
                          pr_approval_round=root.get("pr_approval_round", 0) + 1,
                          pr_approval_proposal=None, pr_approval=None)
+    elif retry_stage and not continue_attempt and not unit_id and (
+            publication := _publication_target(context, root)):
+        patch["recovery_target"] = publication
+        patch["recovery_fingerprints"] = {"__run__": {
+            "path": str(context.workspace_path), "value": fingerprint(context.workspace_path)}}
     elif not root.get("worktree_path"):
         if not continue_attempt and not add_budget_usd:
             raise RecoveryError("planning recovery requires --continue-attempt")

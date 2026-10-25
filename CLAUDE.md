@@ -46,6 +46,8 @@ add a dependency without adding it to `pyproject.toml`.
   typed fail-closed review decisions and critical restart evidence.
 - `blacksmith/publication_approval.py` — immutable exact-SHA normal/draft proposals,
   critical human decisions and stale-candidate guards; prepared in a separate parent node.
+- `blacksmith/publication.py` — exact remote/PR observations, sealed content/result,
+  effect reconciliation and publication-stage restart for both normal and draft PRs.
 - `blacksmith/plan_artifacts.py` — per-unit immutable plans and exact PRD/plan approval bindings.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).

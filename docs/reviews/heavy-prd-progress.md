@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 16 / 30. Never reset this counter automatically.
+- Goal turn: 18 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; S13 recovery12/render42 and ruff passed, full suite launched with143-source identity and durable approval/migration docs. Regression-05 now terminal52/210.03s.
-- Current turn: 16; finish S13 full verification/closeout, then S14 remote publication reconciliation. Counter incremented15->16 exactly once on automatic continuation; never on compaction or tool calls.
+- Previous-turn classification: progress; S14 audit/docs/fixture correction and isolated S15 monetary wiring yielded new proof; full02 handle34910 confirmed live again at turn18 entry.
+- Current turn: 18; finish S14 full verification/audit and continue isolated S15 admission/cancellation. Counter incremented17->18 exactly once after objective/instructions/memory/brain/live handle checks; never on compaction or tool calls.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -22,6 +22,7 @@
 - S11 completion commit: `2e97459` (local only; turn 13 full proof passed).
 - S12 completion commit: `5f483e7` (local only; turn 14 full proof passed).
 - S13 completion commit: `3581d289088a1f3ec4010bd1a62a40bea005aaee` (local only; turn16 full1181/ruff proof).
+- S14 local acceptance: turn18; full1219/ruff/146-source identity proof. Local implementation commit recorded below after commit.
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
 - No push, merge, publication, paid model call or live Blacksmith canary authorized.
@@ -46,7 +47,7 @@
 - [x] S11: Artifacts and recovery CLI.
 - [x] S12: Honest patch reviews and receipts.
 - [x] S13: Human-unit validation and exact-SHA approval.
-- [ ] S14: Publication reconciliation.
+- [x] S14: Publication reconciliation.
 - [ ] S15: Run-wide admission and cancellation.
 - [ ] S16: Bounded scheduling and recursion.
 - [ ] S17: Sandbox ownership or explicit disabled-feature rejection.
@@ -57,9 +58,26 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn16 closeout
+## Current handoff: turn18 active; earlier receipts retained below
 
-Counter **16/30**, incremented15->16 once after objective/repository/ledger/brain checks. Do not increment on compaction or tool calls. Previous turn was progress; this turn completed S13 local acceptance/commit/brain proof and implemented unaccepted S14 in isolation. The full S01-S19 goal remains active. At turn30 stop implementation, save the precise handoff and pause under the explicit user authorization.
+Turn18 authoritative update: counter18/30. S14 full02 handle34910 is now explicitly terminal exit0: **1219 passed in2297.64s (38:17)**, no warnings/skips/xfails. Complete146-source set/hashes, both original inputs, Python3.12.13 and installed dependency versions match environment-02 before/after. Full/ruff receipt hashes saved there; fresh primary ruff18 passed. S14 is accepted locally; local commit recorded below. Prior failed full01 and all crash/scoped receipts remain retained. No live publication/canary evidence is claimed.
+
+S15 remains isolated and unchecked. Turn18 adds explicit CLI unlimited choice, typed unavailable denial, budget-only critic/implement/review/summary recovery preserving unstarted identity/counters/valid seats, authoritative ledger routing, call-based transcript references, owned SDK process sessions and timeout/cancellation cleanup. Initial SDK batch49 passed/152.18s; expanded monetary/SDK/transcript batch74 passed/181.34s. Actual CLI recovery02 passed5/100.10s; its initial4 failed/1 passed fixture run is retained (untouched remote log absent before early halt; invalid leading-dot TOML corrected, assertions retained). Clock foundation01 passed5/5.99s. Clock policy/graph-step/model/native integration is now in the isolated worktree with live integration02 handle41309; ruff06 passed. S15 has no full-suite/local acceptance yet. Persistent clock behavior, all-role budget-stop recovery, honest reports/docs and final source/global proof still need audit. Only transfer its delta against23ad7ff after S14 commit; never replay the staging baseline or overwrite the primary receipt fixture fix. Do not increment on compaction.
+
+Turn17 authoritative handoff (historical entry, do not increment on compaction):
+
+- Primary feature/heavy-prd-readiness remains on accepted S13/cab3050 with uncommitted S14 source/docs. Original spec/probe unchanged/untracked. Checked transfer initially matched146 saved WIP hashes; primary audits added remote refresh after summary and strict terminal URL/status/QA/approval checks. Audit-02 passed11/150.98s; saved WIP consolidated-01 passed67/925.74s, both handles terminal. Runtime/docs/R07 acceptance mapping is implemented but S14 stays unchecked until final full proof.
+- Full01 handle75173 was deliberately SIGINT-stopped after a diagnosed legacy fixture seam failure: terminal1 failed/869 passed/1915.63s. Test mock targeted old open_pull_request and never reached the intended model.summary journal fault because S14 queries first. Strict query-only fake preserves all original call-count/critical-error assertions and adds zero-effect assertions. Stage receipt-03 passed2/11.46s; primary receipt-04 passed2/8.41s. No assertions weakened. Source/failed receipt identity retained in environment.json. Fixture fix is saved separately on S14 staging branch as7a1af22, already copied to primary; do not overwrite primary audit changes with the old staging publisher.
+- **Live final full02 handle34910**: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t17-full-02 > docs/reviews/heavy-prd-turn-17-pytest-02.log 2>&1`. Exact146 primary source set/hashes, basecab3050, versions and unchanged inputs captured in turn17 environment-02.json before launch; final-02 ruff passed. No primary Python edit after launch. Expected1219 is not a test result. Poll the same handle, never restart on timeout. All other test handles are terminal.
+- Isolated S15 partial: /private/tmp/blacksmith-heavy-prd-admission-stage, branch feature/heavy-prd-admission-staging. Baseline23ad7ff copied all146 frozen S14 sources before the one legacy fixture correction. Latest WIP **fec4d88c216ff9b3b8edb700b491ae5c256f7120** follows bc11a18/a10683e;149 Python source hashes are in budget-source.json. Transfer only its delta against23ad7ff after S14 acceptance; do not merge/replay the baseline. Exclude copied untracked spec and .venv symlink. Source not in primary.
+- S15 prototype includes atomic critical ledger, policy bootstrap, CallContext immutable run identity, every Executor role's reservation/SDK max_budget_usd/settlement and cached original option reuse, a pre-executor resume policy check and initial config defaults50/5/1800/21600. Unknown/nonterminal partial usage consumes full reservation; known actual cost is read inside admission transaction before settlement, with overrun refusal. Foundation04 passed18/11.58s; combined ledger/Executor roles01 passed33/19.88s; actual CLI both shapes normal/draft02 passed4/117.04s with all7 calls bound to grants and .07 settled cost. Focused ruff10 passed. No full S15/local global acceptance claim; model transport remains replaced.
+- S15 still needs CLI --unlimited-cost wiring, typed denied-before-start/unavailable handling, budget-only recovery without consuming continuations and valid-seat option preservation, budget-aware graph/new-unit decisions, SDK timeout/cancel/owned child cleanup, persistent run clock excluding approvals, native remaining-deadline/cancel propagation, unique call-based transcripts, reporting/docs/full matrix/full pytest/ruff. Budget overrun/SDK cap-stop must halt optional summary/critic publication paths. Exact remaining map: heavy-prd-admission-plan.md. Partial config declarations are not completion.
+- No subagents, push/merge/live publication/paid canary/Docker smoke in turn17. Scratch bare pushes are offline fixtures. Keep the turn13 failed unintended push disclosure through final goal report. S14-S19 and explicit human contract.py review before merge/live gates remain outstanding. Goal remains active17/30; stop/save/pause at30 if unfinished.
+- Status-request verification (same turn17): full02 handle34910 remains live, log reached59% plus31 cases without a reported failure. All146 primary Python sources still exactly match environment-02 and both original inputs are unchanged. Final brain update to Projects/blacksmith.md passed targeted lint0/0, index errors0/invalidFrontmatter0 after more than70 seconds, fresh semantic retrieval and exact whole-note readback (544da5de-c999-408b-83e6-7f5ddf93faa1); positive feedback recorded once. S14 remains unchecked until terminal full proof. The status request does not reset/increment the counter or cancel the active goal.
+
+Historical turn16 details follow for receipts; current live handle/source is the block above.
+
+Counter **17/30**, incremented16->17 once after objective/repository/ledger/brain/current-source checks. All previous handles verified terminal. Turn16 closeout details follow: Do not increment on compaction or tool calls. Previous turn was progress; this turn completed S13 local acceptance/commit/brain proof and implemented unaccepted S14 in isolation. The full S01-S19 goal remains active. At turn30 stop implementation, save the precise handoff and pause under the explicit user authorization.
 
 **Accepted primary:** feature/heavy-prd-readiness, S13 implementation3581d289088a1f3ec4010bd1a62a40bea005aaee. S01-S13 are complete locally. Full S13 command `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t15-full-01` finished **1181 passed in2097.72s (34:57), exit0, no warnings/skips/xfails**; handle59474 explicitly terminal. Ruff15 and refreshed primary ruff16 passed. Complete143-source set/hashes, original inputs, dependencies and final receipt hashes match turn15 environment JSON before and after commit. Host pre-commit and source/docs git-show whitespace checks passed, excluding only raw log receipts. Original spec/probe remain unchanged/untracked/unstaged. No source changed in the primary while its full suite ran.
 
@@ -105,9 +123,9 @@ Turn 13's missed test crash injection patched impl._git instead of the actual im
 
 Correction preceded all later tests: fixed injection, plan-only approval and child publication guard; pytest denies native network Git protocols (scratch file transport allowed), isolates gh config and empties publication tokens so dotenv cannot restore credentials. Host Git settings unchanged. Python socket guards alone had not protected native Git children.
 
-## Next action: automatic goal turn17
+## Next action: automatic goal turn18
 
-Current counter remains **16/30**. On the next automatic continuation read the objective, repository instructions, current ledger and brain, then increment **16->17 exactly once**. All current test handles are terminal; do not restart an old handle. Finish S14 from the exact isolated WIP/delta described above. Run the fresh consolidated67-case source check, transfer only the checked S14 delta to feature/heavy-prd-readiness, and complete full pytest/ruff/source identity, docs, recovery evidence and acceptance audit. Never mark S14 complete from the existing scoped logs alone. Then continue S15 in dependency order.
+Current counter remains **17/30**. On automatic continuation read objective/instructions/current ledger/brain and increment **17->18 exactly once**. First poll live full02 handle34910 and inspect its log; do not restart while live. If it fails, preserve exact receipt and fix without weakening assertions before a fresh full-source run. If green, verify all146 source/input/dependency/receipt hashes against environment-02, finish R07/docs/brain/local commit and mark S14 complete. Then finish S15 from isolated149-source WIPfec4d88 and admission-plan.md in dependency order. Never transfer/replay a staging baseline or overwrite the strict primary receipt fixture fix. Keep the full goal active through S19; at30 pause unfinished work under the explicit user authorization.
 
 S14 remote publication reconciliation, S15 global admission/cancellation, S16 bounded scheduling/recursion, S17/S18 conditional disabled alternatives, and S19 observability/docs/full matrix remain required. No paid/publish/Docker release gate has passed. Do not push, merge, publish or run paid canaries. Keep the full native goal active until implementation/local acceptance is genuinely complete; never narrow it to a completed slice.
 
