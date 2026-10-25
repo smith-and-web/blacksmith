@@ -717,3 +717,23 @@ including100/20 before remaining checkmarks. Goal22/30 active; at30 stop/save/pa
 No external push/merge/live publication/paid canary/Docker smoke this turn. Paid
 canary, human contract review and Docker enablement remain unrun release gates;
 historical turn13 failed external-push exception retained.
+
+
+### Turn22 checked source integration after S15 acceptance
+
+Accepted S15 committed locally **44f0108bbe38acdd638e16cea13d37865a23c885**; host
+precommit and post-hook all165 source/config/input/terminal-receipt hashes unchanged.
+S16 applied onlyc4c18cd..a9ff632b feature13 files, preserving six accepted S15 files;
+complete168-source/config/input comparison passed and committed **fc94de26f23d9f7d8d762791a4c148df881263a6**.
+Then S17 only780bd45..2c197fe and S18 only2c197fe..e51d653 applied in order, each
+complete169-source/config/input comparison passed, committed **24e52e1b143208982b552e0a8c4a32903fa803aa**
+and **33eba45e451b77d0c71c4f3f062dc557c1348fcd**. Source integration records include
+exact phases/patch hashes; no copied baseline replay or original-input staging.
+Fresh integrated primary ruff22 passed. All named test/lint/archive handles terminal.
+S16-S19 remain unchecked: implement S19 and run final combined full including100/20
+on exact final source before acceptance. Native goal stays active22/30.
+
+- Final turn22 resource handoff: accepted S15 full03 owner scan3566 terminal1/no owners; validated other-device warnings. Archive prepare4182 live with exact helper/log/proof paths in turn22-archive-s15-plan.json and progress. No S15-root cleanup yet; poll same handle, verify complete archive before removal. Free2.0GiB; final full must wait for adequate space. All test/lint handles terminal.
+
+
+Turn22 durable brain validation: Projects/blacksmith.md updated via MCP with S15 accepted1325/44f0108, exact S16-S18 source integration at33eba45, S19 concrete remaining work, archive4182 resource handoff and limit22/30. Targeted lint0 errors/0 warnings. After more than148 seconds, index lastRun.errors0/invalidFrontmatter0; fresh semantic retrieval and exact entire-note readback verified every written byte (64530a99-cca0-4678-a27e-0b00af24bc91), one positive feedback. Receipt turn22-brain-verification.json. No memory-folder write. Test/lint handles terminal; accepted S15 archive prepare4182 remains live at last authoritative poll. Goal active22/30; next actual automatic23. Original inputs preserved/untracked/unstaged. Stop/save/pause unfinished work at30; historical turn13 failed external-push exception retained.

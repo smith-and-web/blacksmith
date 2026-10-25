@@ -1,4 +1,14 @@
 {
+  "adjacent_regression_result": {
+    "complete_sources_config_inputs_unchanged": true,
+    "duration_s": 1061.65,
+    "exit_code": "launch handle unavailable; not independently recovered yet",
+    "log": "docs/reviews/heavy-prd-turn-21-scheduling-regression-03.log",
+    "passed": 93,
+    "process_terminal_evidence": "supervisor51538 and pytest51552 absent; complete pytest terminal pass summary",
+    "verified_at": "2026-10-25T03:18:50.896737-03:00",
+    "verified_goal_turn": 22
+  },
   "baseline_revision": "c4c18cd104c7871056fe22fd4a8e4a9ec23ec422",
   "candidate_revision": "a9ff632b263358a00d5ebb7f9344492d6876bde8",
   "config_sha256": {
@@ -34,6 +44,7 @@
     "docs/reviews/heavy-prd-turn-21-path-policy-02.log": "7a62c497c0be962cde1e95c6e9322e15d4a6012633b3d33d9a09edaf6159f023",
     "docs/reviews/heavy-prd-turn-21-primary-collection-01.log": "e7d3a1b216b76f3099d7a1e28560f6053bcd018c0814756fb0033b9c27b6d12f",
     "docs/reviews/heavy-prd-turn-21-ruff-primary-final-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-21-scheduling-regression-03.log": "cce5813972a7c4eb42baf36b45243cf90c30db5052724690dfbb6f13a3392079",
     "docs/reviews/heavy-prd-turn-21-scheduling-ruff-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
     "docs/reviews/heavy-prd-turn-21-scheduling-ruff-final-02.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
     "docs/reviews/heavy-prd-turn-21-scheduling-workers-01.log": "ba446555bff55cf9aab972a22899234514e760c902114b7b069acaf385ff8ace",
@@ -213,7 +224,7 @@
   },
   "sqlite": "3.53.1",
   "staging_path": "/private/tmp/blacksmith-heavy-prd-scheduling-stage",
-  "status": "S16 owned node-pool candidate; no integrated full acceptance yet",
+  "status": "final S16 adjacent93 regression passed; integrated full100/20 and S15 dependency acceptance still required",
   "transfer_rule": "Only feature delta from c4c18cd; preserve all six later S15 files. Fresh integrated full proof required after S15 acceptance.",
   "versions": {
     "claude-agent-sdk": "0.2.115",

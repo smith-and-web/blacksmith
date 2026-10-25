@@ -282,6 +282,7 @@
     "xfails": 0
   },
   "goal_turn": 21,
+  "implementation_revision": "44f0108bbe38acdd638e16cea13d37865a23c885",
   "input_sha256": {
     "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
     "docs/reviews/2026-10-24-readiness-probes.py": "70e36e96aba1a449244bddca13150eeeda7fe0874e663f8b75a8f44ad0e2901c"

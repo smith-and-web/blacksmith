@@ -1,8 +1,9 @@
 # S16 acceptance audit
 
-Goal21/30: **unaccepted**. Primary S15 full03/44404 and isolated adjacent93-case
-regression run against frozen source sets. Individual scopes do not establish
-integrated acceptance.
+Goal22/30: **unaccepted pending final integrated full**. S15 is accepted locally
+with full1325/ruff proof. S16 adjacent93 passed and its source is integrated as
+fc94de2; S17/S18 source integration brings primary to169 exact final-stage sources
+at33eba45. Individual scopes do not establish final100/20/full acceptance.
 
 | Requirement | Production wiring | Evidence / remaining proof |
 | --- | --- | --- |
@@ -20,24 +21,24 @@ integrated acceptance.
 | Admission/cancellation | Existing all-role atomic grants; queued-node cancellation plus active cleanup drain | Original four actual local-SDK modes pass (worker error, SIGINT, SIGTERM, scope-entry fault), retaining no-late-write/timing assertions. Primary full still required. |
 |100-chain/20-root scale | Actual CLI/child/Git/gates/review/ledger/checkpointer/scratch remote; paid/GitHub transport replaced |100 passes under4d89e01 with301 calls/exact3.01 fixture cost;20/default2 passes with owned pool. Final integrated full must include both. |
 
-## Source and transfer boundary
+## Source and integration boundary
 
-- Primary S15 f6113bb:165 sources/config in **heavy-prd-turn-21-environment-03.json**;
-  full03/44404 frozen on them.
-- Final isolated S16 **a9ff632b263358a00d5ebb7f9344492d6876bde8**:168 sources in
-  **heavy-prd-turn-21-scheduling-source-03.json**. Tracked tree clean; spec/.venv
-  excluded. Baselinec4c18cd predates six S15 corrections.
-- Live93-case argv/cwd/PYTHONPATH: **heavy-prd-turn-21-scheduling-command-03.json**;
-  log regression-03. Supervisor51538/pytest51552 verified as log owners; launch
-  handle truncated. Observe PIDs/log, never restart. Original first30 plus
-  remaining63 included. Scale scopes have separate receipts/final obligations.
-- After S15 acceptance, apply onlyc4c18cd..final feature delta. Preserve SIX newer
-  files: blacksmith/executor.py; tests/test_executor_admission.py;
-  tests/test_receipts.py; tests/test_receipt_wiring.py; tests/test_path_policy.py;
-  tests/test_requirements_context.py. Never replay/merge the copied baseline.
-- Integrated168-source set must match S16 except those six accepted-S15 hash
-  differences. Capture a fresh manifest and full pytest/ruff including100/20
-  before checking S16 complete.
+- Accepted S15:44f0108/full1325/6 SDK warnings/3373.29s, exit0; complete165-source/
+  config/input/Python/dependency/SQLite identity in turn21-environment-03.json.
+- S16 stagea9ff632b/168-source identity turn21-scheduling-source-03.json;
+  adjacent93/1061.65s passed. Verified supervisor51538/pytest51552 gone; launch
+  handle truncated, so no independent supervisor exit-code claim. Ruff22 passed.
+- S16 feature-only13-file delta c4c18cd..a9ff632b integrated asfc94de2, preserving
+  six exact accepted S15 files. Complete168-source comparison and patch hashes in
+  turn22-scheduling-integration.json. No baseline replay.
+- S17 then S18 feature-only deltas780bd45..2c197fe..e51d653 integrated as
+  24e52e1/33eba45. Complete169 primary sources/config/input match final-stage
+  turn22-deferrals-source-03.json; integration phases/hashes recorded separately.
+  Scoped227/30/31 and ruff passed; disabled feature alternatives do not prove
+  Docker ownership or a live revision workflow.
+- All named handles terminal. Implement S19, capture final source/runtime identity,
+  then full pytest/ruff including100/20 before S16 acceptance. Historical source
+  and failed/passing receipts remain retained.
 
 ## Results and limits
 
@@ -56,6 +57,7 @@ The starvation probe field named actual_node_threads_can_start_before_timeout
 counts total starts, not pre-timeout starts; do not use it for timing evidence.
 The original strict barrier failure and installed-source trace establish the bug.
 
-Accept S15 first, then checked S16 transfer/final integrated full. Paid provider
+S15 acceptance and checked S16-S18 integration are complete; S19/final integrated
+full still required. Paid provider
 billing/publication canary, human contract review and real Docker enablement smoke
 remain unperformed release gates. No live readiness is inferred from offline tests.

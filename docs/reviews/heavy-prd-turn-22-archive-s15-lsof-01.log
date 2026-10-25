@@ -1,0 +1,9 @@
+lsof: WARNING: can't stat() hfs file system /private/var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T/671E32D0-749B-4FE7-A871-EB4E8C6D0DC9
+      Output information may be incomplete.
+      assuming "dev=1000024" from mount table
+lsof: WARNING: can't stat() hfs file system /private/var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T/0DA6C16A-AB78-4AD3-9FF3-1E57FF62FC50
+      Output information may be incomplete.
+      assuming "dev=1000028" from mount table
+lsof: WARNING: can't stat() hfs file system /private/var/folders/zz/zyxvpxvq6csfxvn_n0000000000000/T/57B5FD68-2160-47EE-AFCF-3EA59B0BDF40
+      Output information may be incomplete.
+      assuming "dev=1000026" from mount table

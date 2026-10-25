@@ -1,0 +1,36 @@
+{
+  "accepted_slices": "S01-S15",
+  "archive_prepare_handle": 4182,
+  "current_primary_revision": "33eba45e451b77d0c71c4f3f062dc557c1348fcd",
+  "feedback": "positive once",
+  "goal_turn": 22,
+  "index": {
+    "chunks": 964,
+    "collection": "secondbrain",
+    "dim": 1024,
+    "documents": 141,
+    "embedModel": "bge-m3:567m",
+    "invalidFrontmatter": {
+      "count": 0,
+      "notes": []
+    },
+    "lagSeconds": 5,
+    "lastRun": {
+      "changed": 0,
+      "errorText": null,
+      "errors": 0,
+      "finishedAt": "2026-10-25T07:12:35.000Z",
+      "id": 16341,
+      "removed": 0,
+      "seen": 144,
+      "startedAt": "2026-10-25T07:12:34.932Z"
+    },
+    "schemaVersion": "1"
+  },
+  "lint": "0 errors/0 warnings",
+  "path": "Projects/blacksmith.md",
+  "remaining_slices": "S16-S18 integrated/scoped, pending final full; S19 implementation required",
+  "requestId": "64530a99-cca0-4678-a27e-0b00af24bc91",
+  "wait_seconds": 241.972,
+  "whole_note_readback": "exact byte-for-byte equality with the written content"
+}
