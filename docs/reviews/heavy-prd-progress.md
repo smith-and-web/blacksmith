@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 26 / 30. Never reset this counter automatically.
+- Goal turn: 27 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; accepted exact full1398/S16-S18, reproduced/fixed fresh and cached terminal-policy gaps, scoped134/Ruff passed, committed85fb50e/d3ebcd4, archived and safely removed completed fixtures, launched final full1414 once on frozen175-source/runtime identity.
-- Current turn: 26; automatic25->26 increment once. Full1414 terminal0/4 retained warnings/5466.74s, exact175-source/runtime identity and actual100/20 proof retained. Summary source1d68a64 committed and matches stage66beb2a/176 sources after hooks; scoped72/exact25 and primary Ruff pass,1419 collected. Archive10052/fresh owner42810/cleanup31683 all terminal; old full fixture removed only after935878-entry verification, protected0. Final corrected full1419 now RUNNING exactly once, handle61391/supervisor9007/uv9008, frozen in turn26-environment-01.json with durable turn26-full-command-01.json;16.77GB free at freeze. S02/S19 unchecked pending terminal full/closeout. Counter26 never resets on status/tools/compaction; at30 stop/save precise handoff/pause unfinished.
+- Previous-turn classification: progress; full1414 terminal0/4 warnings/5466.74s and exact175-source identity accepted as baseline; discovered/reproduced/fixed R02 summary context, scope72/final25/Ruff passed, committed1d68a64; verified/archived/removed old closed fixtures, launched final1419 once on frozen176-source/runtime identity; durable audits/docs/brain updated.
+- Current turn: 27; automatic26->27 increment once. Objective/instructions/memory/brain reread; final full61391 positively polled live and PIDs9007/9008 confirmed at13:50 elapsed. Every176-source/config/input/JS/helper/65-distribution/Python/SQLite identity matches frozen turn26-environment-01.json. S02/S19 pending terminal1419 and acceptance closeout; no source changes while full runs. Never increment/reset on compaction/status/tools; stop implementation/save precise handoff/pause unfinished at30.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,31 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn26; final corrected full1419 live on frozen1d68a64
+## Current handoff: turn27; final1419 positively live on frozen1d68a64
+
+Counter **27/30**, incremented26->27 once on this automatic continuation. Previous
+turn was progress. Implementation **1d68a6492e53898c5011a24b9d14d771bad6275d**;
+documentation/evidence HEAD6e7d683de99cc23cf02f94c6ff63872f05aa0eff. Original spec/
+probe unchanged/untracked; all176 Python/JS/helper/config/input/65 distributions/
+Python3.12.13/SQLite3.53.1 match **turn26-environment-01.json** on current recheck.
+Full **61391** positively polled live; PIDs9007/9008 confirmed at13:50 elapsed.
+Command `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t26-full-01`;
+log **turn26-pytest-full-01.log**; durable command/PID/terminal/after-identity receipt
+**turn26-full-command-01.json**. Observe same handle; missing observer means inspect
+PIDs/receipt/log, never restart after timeout. Keep Python/JS/config/tests/helper/
+dependencies frozen. All prior tests/archive/cleanup handles terminal; this full
+is the only live job. No whole-goal acceptance yet; S02/S19 remain unchecked.
+
+Next: observe full to terminal, verify exact1419 pass/no hidden skips/xfails plus
+unchanged exact identities, inspect final acceptance inventory's12 requirements/
+19 slices/21 matrix rows and5 summary cases against the result, then close checklist/
+docs/brain and commit local evidence. Existing Ruff pass is valid for unchanged
+source. R10/R11 use only explicit permitted disabled alternatives. Human contract
+review, paid10-dollar disposable canary and Docker enablement smoke remain unrun.
+At30 stop implementation, save exact completed/outstanding/verification/live-job/
+next-action handoff and pause unfinished; never reset or resume automatically.
+
+## Historical turn26 final launch; final corrected full1419 live on frozen1d68a64
 
 Counter **26/30**, incremented25->26 once only. Both user's status questions and
 compaction/tools do not increment it. Current implementation
