@@ -52,6 +52,9 @@ add a dependency without adding it to `pyproject.toml`.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).
 - `blacksmith/executor.py` — Claude Agent SDK invocation, tool grants, options.
+- `blacksmith/budget.py`, `run_clock.py`, `accounting.py` — critical run-wide
+  admission, active execution bounds and measured/conservative reporting.
+- `blacksmith/sdk_transport.py` — owned SDK POSIX session and cancellation cleanup.
 - `blacksmith/contract.py` — PRD schema and validator. `extra="forbid"`.
 - `blacksmith/config.py` — `blacksmith.config.toml` parsing.
 - `blacksmith/index.py` — repo map and `search_code` tool.

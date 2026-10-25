@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
 Heavy-PRD remediation is still in progress. This documents completed runtime
-slices through the S14 candidate, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+slices, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -167,8 +167,10 @@ a multi-command stage safe to repeat.
 
 Cost events use call IDs and keyed reduction so a replayed update cannot add the
 same call twice. Missing costs remain unknown, not measured zero-dollar calls.
-Run-wide reservation admission and conservative budget charging are S15 work;
-the journal alone is not a spending limit or an exactly-once billing guarantee.
+S15's [admission and deadline policy](heavy-prd-admission.md) adds atomic grants,
+conservative unknown-usage charging and persistent execution time. Its local
+acceptance status is in the checklist. The journal alone is not an exact invoice
+ceiling or an exactly-once billing guarantee.
 `completed` means the recorded effect completed, not that a review approved a
 candidate or all acceptance requirements passed.
 
@@ -527,9 +529,12 @@ models/config or clearing spend. A prepared amendment lost before its checkpoint
 reuses the same sealed patch. Repeated amendment flags while dispatch is pending
 refuse instead of adding budget twice. Ordinary resume never replenishes allowance.
 Known costs missing from parent state reconcile by call ID; recovered child policy
-spend includes each known cost once. S15 separately supplies global reservations,
-unknown-spend accounting and first-call/all-role admission; the prior stale parallel
-worker total is not a global spending ceiling.
+spend includes each known cost once. S15 supplies global reservations, conservative
+unknown accounting and first-call/all-role/new-unit admission. A denied unstarted
+call needs no continuation after a budget amendment; a started unknown/budget-stop
+call does. Completed successful overrun responses can be reused after an explicit
+amendment. See the [admission runbook](heavy-prd-admission.md). Stale worker totals
+never authorize more spend, and this is not an exact invoice ceiling.
 
 Plan and PR rejection require a fresh interrupt on resume. Unit, integration and
 final failures resume at their actual scopes; combined failures do not repair an
@@ -584,6 +589,10 @@ manifest and input hashes, selected source identity, planning clone and any reco
 workspace before constructing an executor. Missing/corrupt files stop with a recovery
 diagnostic and no model call. Saved model, limit, toolchain and target settings are
 authoritative; changing the local config does not silently replace them on resume.
+Missing/corrupt admission or active-clock policies produce a manual-recovery
+diagnostic before executor construction, preserving original inputs, cost/time
+records and checkpoints. No old usage or timestamps are invented. Inspection remains
+read-only; a new budget does not reset elapsed execution time.
 
 Only real pending approval interrupts receive `Command(resume=...)`. An ordinary
 interrupted node is driven with `None`. SDK response reuse and uncertain-call

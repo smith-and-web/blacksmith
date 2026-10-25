@@ -3,7 +3,7 @@
 Heavy-PRD remediation remains in progress. This describes S12's review behavior;
 the [checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) track final verification and the
-remaining S13-S19 and live release gates.
+remaining slices and live release gates.
 
 Enabled review follows a passing, exact-candidate unit gate. Both sequential units
 and parallel workers use the same compiled unit graph and review policy. A reviewer

@@ -1,0 +1,37 @@
+Traceback (most recent call last):
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 56, in _stop
+    while time.monotonic() < until and _signal(pid, 0, group=True):
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 25, in _signal
+    (os.killpg if group else os.kill)(pid, sig)
+PermissionError: [Errno 1] Operation not permitted
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 101, in cleanup
+    await asyncio.to_thread(_stop, process)
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/asyncio/threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 59, in _stop
+    _signal(pid, signal.SIGKILL, group=True)
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 25, in _signal
+    (os.killpg if group else os.kill)(pid, sig)
+PermissionError: [Errno 1] Operation not permitted
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/tests/test_parallel_cancellation.py", line 108, in traced_cleanup
+    await cleanup(self)
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 110, in close
+    await finish_cleanup(self._owned_cleanup_task)
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 69, in finish_cleanup
+    await asyncio.shield(task)
+  File "/private/tmp/blacksmith-heavy-prd-admission-stage/blacksmith/sdk_transport.py", line 106, in cleanup
+    raise ReceiptError(
+blacksmith.receipts.ReceiptError: SDK owned process cleanup failed; inspect retained call

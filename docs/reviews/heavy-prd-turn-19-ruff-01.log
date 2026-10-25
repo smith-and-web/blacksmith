@@ -1,0 +1,12 @@
+E501 Line too long (102 > 100)
+   --> blacksmith/executor.py:325:101
+    |
+323 |                                               text=f"call interrupted: {type(exc).__name__}")
+324 |                     journal.finish(key, "interrupted", {"error_type": type(exc).__name__,
+325 |                         "result": asdict(partial)}, events=_cost_record(key, operation_kind, partial))
+    |                                                                                                     ^^
+326 |                     budget_ledger.settle(reservation)
+327 |                 raise
+    |
+
+Found 1 error.

@@ -5,6 +5,12 @@ is tracked in the [evidence record](reviews/heavy-prd-evidence.md) and
 [implementation checklist](reviews/heavy-prd-progress.md). Heavy-PRD readiness
 still depends on the later slices and unrun live release gates.
 
+S15's [admission recovery](heavy-prd-admission.md) distinguishes a denied unstarted
+summary, reusable completed overrun response and started budget-stop/unknown call.
+Only the latter needs an explicitly acknowledged continuation. These paths retain
+the same approved candidate and never authorize repeating an uncertain native
+push/create. Prepared PR metadata keeps measured and conservative accounting separate.
+
 ## Identity before effects
 
 Normal and terminal-QA drafts share the [exact-candidate approval](heavy-prd-approval.md).

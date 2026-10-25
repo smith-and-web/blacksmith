@@ -1,0 +1,63 @@
+........................................F............................... [ 69%]
+...............................                                          [100%]
+=================================== FAILURES ===================================
+_ test_budget_amendment_revises_a_blocker_and_reports_latest_clean_without_erasing_history _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t19-final-audit-02/test_budget_amendment_revises_0/target'), PosixPath('...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10966c7a0>
+
+    def test_budget_amendment_revises_a_blocker_and_reports_latest_clean_without_erasing_history(
+        project, monkeypatch,
+    ):
+        configure_review(project, revisions=1)
+        project[1].write_text(project[1].read_text().replace(
+            "[limits]\n", "[limits]\nmax_run_cost_usd=0.025\n"))
+    
+        def change(unit, number, workspace, prompt):
+            (workspace / "result.txt").write_text("version " + str(number))
+    
+        calls = install(monkeypatch, implement=change,
+                        responses=lambda unit, number: BLOCKING if number == 1 else CLEAN)
+        assert run(project, "blocked-budget") == 1
+        before = saved_values(project[1], "blocked-budget")
+        original = before["unit_outcomes"]["U1"]
+>       assert original["review_receipt"].status == "blocking" and original["review_revisions"] == 0
+E       AssertionError: assert ('unavailable' == 'blocking'
+E         
+E         - blocking
+E         + unavailable)
+
+tests/test_review_recovery.py:190: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 86b2dc70-8f31-4ad7-903a-7d32bb9b04c9: selected committed HEAD 8b35c90149568e4ed74b035c3981c9e172fe2164
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t19-final-audit-02/test_budget_amendment_revises_0/.blacksmith/runs/86b2dc70-8f31-4ad7-903a-7d32bb9b04c9
+[auto] gate 'plan': approved
+
+status: halted
+error [review]: review unavailable: model_call_stopped:budget: 97c49e5408c65db8b931a6357db648195c248795dbb8739aa3720b58faf1ed7b
+total cost: $0.03; reservation overrun $0.01; run cap $0.03, remaining $-0.01
+tokens: unavailable
+execution time: 1.99s / 21600.00s; remaining 21598.01s
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t19-final-audit-02/test_budget_amendment_revises_0/.blacksmith/runs/86b2dc70-8f31-4ad7-903a-7d32bb9b04c9/recovery/0d9fcc78-b5ec-44f2-a621-aa458b2fcf2f/manifest.json
+Next action: blacksmith recovery inspect --thread-id blocked-budget --config /private/tmp/blacksmith-heavy-prd-t19-final-audit-02/test_budget_amendment_revises_0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_review_recovery.py::test_budget_amendment_revises_a_blocker_and_reports_latest_clean_without_erasing_history
+1 failed, 102 passed in 127.90s (0:02:07)

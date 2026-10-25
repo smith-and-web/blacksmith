@@ -1,0 +1,12 @@
+E501 Line too long (102 > 100)
+  --> tests/test_accounting_reports.py:70:101
+   |
+68 |         assert data['accounting_incomplete'] and data['reported_usd'] == 0
+69 |         assert data['charged_usd'] == 5 and row[1] == data['execution_seconds']
+70 |         assert store.execute("SELECT total_cost FROM run_metrics WHERE thread_id='old'").fetchone()[0]
+   |                                                                                                     ^^
+71 |     finally:
+72 |         store.close()
+   |
+
+Found 1 error.

@@ -1,0 +1,27 @@
+F....                                                                    [100%]
+=================================== FAILURES ===================================
+_____ test_unknown_measured_usage_is_not_reported_as_a_free_or_exact_total _____
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t19-accounting-01/test_unknown_measured_usage_is0/target'), PosixPath('/...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_unknown_measured_usage_is_not_reported_as_a_free_or_exact_total(project):
+        context, budget = ledger(project)
+        call = key(context, 'unknown')
+        grant = budget.reserve(call)
+        result(context, call, None, status='unknown')
+        budget.settle(grant)
+        data = snapshot(context)
+        assert data['reported_usd'] == 0 and data['charged_usd'] == 5
+        assert data['accounting_incomplete'] and data['remaining_usd'] == 5
+        text = cost_line(data)
+        assert 'reported $0.00' in text and 'charged $5.00' in text
+        assert 'accounting incomplete' in text and 'total cost: $0.00' not in text
+        out = io.StringIO()
+>       _report(SimpleNamespace(values=context.initial_state()), Renderer(out=out, plain=True))
+                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: Renderer.__init__() got an unexpected keyword argument 'out'
+
+tests/test_accounting_reports.py:30: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_accounting_reports.py::test_unknown_measured_usage_is_not_reported_as_a_free_or_exact_total
+1 failed, 4 passed in 18.06s

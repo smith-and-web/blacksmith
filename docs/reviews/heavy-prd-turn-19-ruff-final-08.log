@@ -1,0 +1,12 @@
+E501 Line too long (102 > 100)
+   --> blacksmith/sdk_transport.py:106:101
+    |
+104 |                 await super(OwnedCLITransport, self).close()
+105 |             except OSError as exc:
+106 |                 raise ReceiptError("SDK owned process cleanup failed; inspect retained call") from exc
+    |                                                                                                     ^^
+107 |         if self._owned_cleanup_task is None:
+108 |             self._owned_cleanup_task = asyncio.create_task(cleanup())
+    |
+
+Found 1 error.
