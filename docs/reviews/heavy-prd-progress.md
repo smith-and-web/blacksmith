@@ -4,7 +4,7 @@
 - Goal turn: 26 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
 - Previous-turn classification: progress; accepted exact full1398/S16-S18, reproduced/fixed fresh and cached terminal-policy gaps, scoped134/Ruff passed, committed85fb50e/d3ebcd4, archived and safely removed completed fixtures, launched final full1414 once on frozen175-source/runtime identity.
-- Current turn: 26; automatic25->26 increment once. Full20455 terminal0:1414 passed/4 retained SDK warnings/5466.74s, all175-source/config/input/JS/helper/65-distribution/runtime identities unchanged and100/20 passed. Summary correction committed1d68a64, all176 sources match stage66beb2a after hooks; broad72/exact25/Ruff pass, primary1419 collection0.66s and Ruff pass. Final corrected full1419 not launched; S02/S19 unchecked. Archive10052 verified935878 entries/protected0; fresh owner42810 exit1/no records; safe cleanup31683 now running before new frozen full. Counter26 persists; at30 stop/save precise handoff/pause unfinished, never reset on compaction/status/tools.
+- Current turn: 26; automatic25->26 increment once. Full1414 terminal0/4 retained warnings/5466.74s, exact175-source/runtime identity and actual100/20 proof retained. Summary source1d68a64 committed and matches stage66beb2a/176 sources after hooks; scoped72/exact25 and primary Ruff pass,1419 collected. Archive10052/fresh owner42810/cleanup31683 all terminal; old full fixture removed only after935878-entry verification, protected0. Final corrected full1419 now RUNNING exactly once, handle61391/supervisor9007/uv9008, frozen in turn26-environment-01.json with durable turn26-full-command-01.json;16.77GB free at freeze. S02/S19 unchecked pending terminal full/closeout. Counter26 never resets on status/tools/compaction; at30 stop/save precise handoff/pause unfinished.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,67 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn26; final source1d68a64 committed, full1419 awaiting archive headroom
+## Current handoff: turn26; final corrected full1419 live on frozen1d68a64
+
+Counter **26/30**, incremented25->26 once only. Both user's status questions and
+compaction/tools do not increment it. Current implementation
+**1d68a6492e53898c5011a24b9d14d771bad6275d**, documentation/evidence HEAD2911530;
+source176/config/original inputs/runtime exactly match stage
+**66beb2ab347ca4ad265d273db90135f108f0b855** after hooks. Original spec/probe remain
+unchanged and untracked/unstaged; original .claude worktree intact. S01 and S03-S18
+accepted locally; S02 source corrected and S19 closeout pending final full.
+
+**Final corrected full1419 RUNNING, handle61391**, supervisorPID9007/uvPID9008,
+launched exactly once via /private/tmp/blacksmith-heavy-prd-turn-26-full-supervisor.py.
+Command `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t26-full-01`.
+Log **turn26-pytest-full-01.log**, durable command/PID/terminal/after-identity receipt
+**turn26-full-command-01.json**. Complete176 Python sources/JS/helper/config/original
+inputs/65 distributions/Python3.12.13/SQLite3.53.1 frozen in
+**turn26-environment-01.json**, including supervisor source for recovery. Every
+before identity matches. Observe same handle; missing observer -> authoritative
+receipt/PIDs/log, never restart after timeout. Do not edit Python/JS/config/tests/
+helper/dependencies while full runs. Documentation-only commits do not change
+frozen implementation. No pass claimed; terminal1419/unchanged identities required.
+
+Old full20455 terminal0 on85fb50e: **1414 passed,4 retained SDK advisories/5466.74s
+(1:31:06)**, no skips/xfails/filtering; actual100-chain and20-root/default2 pass,
+all175-source/config/input/JS/helper/runtime identities unchanged. Terminal proof
+turn26-full1414-terminal-proof.json; logSHA
+3eb0a4c7b8223f4cfdc6315341f8df79cba36f1661e2f9715045209ccd599b47.
+This does not prove subsequent summary code. Baseline negative summary1 failed/
+18.93s; checked2-file correction has broad72/854.27s then exact-final25/113.42s,
+Ruff passes,176 post-hook matching sources and primary1419 collection/0.66s.
+Source/patch/integration records turn26-summary-source-01.json,
+turn26-summary-feature.patch and turn26-summary-integration.json. Every production
+paid role now has full immutable prose/contract; summary stays tool-free, cached
+prompt identity stable, manual QA explicitly pending. No added call class/cap;
+input tokens may increase. S02/S19 remain unchecked until final full and closeout.
+
+Completed old1414 fixture archive/cleanup all terminal: prep10052 exit0; fresh
+owner42810 exit1/no process records (only validated unrelated-device HFS warnings);
+cleanup31683 exit0. Every935878 entry/regular byte/mode/symlink rechecked, protected0.
+Archive346740898 bytes/SHAc708f844e323fecc53f7eed3a185d7db35bacba61514287bfb17c6eb460ea900,
+compressed manifestSHA3b30c1f526145eca4391c05f2a2af46cf89f0dda1d471ba7660f7274a3eae2be.
+Proof turn26-archive-full1414-proof.json has restore prerequisites; source removed,
+only10441 owned directory modes changed, never regular/shared-hardlink
+modes. Failed roots untouched by this agent. Free16766197760 bytes at new freeze.
+No archive/cleanup job live; final full61391 is the only live job.
+
+Current final-source inventory **turn26-final-acceptance-inventory.json** maps
+all12 requirements/19 slices/21 acceptance rows, including5 summary cases, to
+current source176/1419 collected cases. Still pending terminal full; R10/R11 use
+only permitted disabled alternatives. Next: observe same full61391 to terminal,
+verify exact1419 pass with no hidden skips/xfails and unchanged source/runtime,
+then complete requirement-by-requirement audit, update S02/S19/checklist/docs/brain,
+commit local evidence and mark goal complete only when no required local work
+remains. Existing Ruff remains valid if source is unchanged. Human contract review,
+authorized10-dollar disposable paid canary and real Docker enablement smoke remain
+unrun; never claim mocked tests passed them. At30 stop implementation, save exact
+completed/outstanding/verification/live-job/next-action handoff and pause unfinished;
+never reset/resume automatically. No push/merge/publication/paid canary authorized.
+Historical turn13 failed synthetic-remote push attempt remains disclosed above.
+
+## Historical turn26 integration/archive handoff; final source1d68a64 committed, full1419 awaiting archive headroom
 
 Counter **26/30**, incremented25->26 once only. Current implementation
 **1d68a6492e53898c5011a24b9d14d771bad6275d** committed on feature/heavy-prd-readiness.

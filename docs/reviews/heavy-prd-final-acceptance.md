@@ -20,8 +20,10 @@ pending. Scope72/854.27s then exact-final25/113.42s pass; all176 source/config/i
 runtime identities match isolated66beb2a after both hooks. Primary Ruff passes and
 **1419 tests collect/0.66s**. Current completed full1414 does not prove newer code.
 
-Final corrected full1419 **has not launched**; verified archive preparation10052
-on the completed baseline is recovering disk headroom. No test job is live.
+Final corrected full1419 **is running exactly once**, handle61391/supervisor9007/
+uv9008. Frozen176-source/runtime record turn26-environment-01.json and terminal
+receipt turn26-full-command-01.json retain exact identity. Archive/cleanup completed;
+16.77GB free at freeze. No terminal pass claimed.
 The [evidence ledger](heavy-prd-evidence.md), [original audit inventory](heavy-prd-turn-26-acceptance-inventory.json)
 and final-source inventory record commands, exact sources and the remaining proof.
 Every requirement/acceptance row must bind to the final terminal1419 result and

@@ -432,7 +432,10 @@
   ],
   "baseline_terminal_proof": "heavy-prd-turn-26-full1414-terminal-proof.json",
   "collected_count_not_a_pass": 1419,
-  "completion_status": "source correction and targeted evidence verified; final corrected full1419 not launched, required before completion",
+  "completion_status": "final full1419 positively running; completion unproven until terminal0/unchanged identities and all requirements closed",
+  "final_command_receipt": "heavy-prd-turn-26-full-command-01.json",
+  "final_full_handle": 61391,
+  "frozen_environment": "heavy-prd-turn-26-environment-01.json",
   "goal_turn": 26,
   "implementation_revision": "1d68a6492e53898c5011a24b9d14d771bad6275d",
   "new_gap": {
@@ -452,8 +455,6 @@
     "verification": "broad72/854.27s then exact-final25/113.42s terminal0; Ruff-final02 pass; post-hook176-source/config/input/65-distribution identity verified; source record turn26-summary-source-01.json"
   },
   "original_spec_sha256": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
-  "planned_full_environment": "heavy-prd-turn-26-environment-01.json",
-  "planned_full_receipt": "heavy-prd-turn-26-full-command-01.json",
   "recorded_at": "2026-10-25T09:57:30.431799-03:00",
   "requirements": [
     {
