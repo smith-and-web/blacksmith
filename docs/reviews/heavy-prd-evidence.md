@@ -800,3 +800,25 @@ Counter22->23 persisted once; prior turn progress. Objective/instructions/memory
   in turn22-archive-s15-proof.json; protected entries0, failed roots untouched.
   Fresh free3.8GiB before final scope. No paid/live gate/Docker/human review claim;
   historical turn13 failed external-push exception retained.
+
+Turn23 frozen full launch: S19 candidate committed locally as
+fbbd16c9a3617fd2cbb061b377ad3cc833d94899 (pending acceptance). Host pre-commit
+passed; all174 Python sources, JavaScript probe, config, original spec/probe,
+65 installed distributions, Python3.12.13 and SQLite3.53.1 match before/after hooks.
+Frozen record turn23-environment-02.json. No dependency/config/input change.
+Full01 handle77877, supervisor18729/child18730, command `uv run pytest -q
+--basetemp /private/tmp/blacksmith-heavy-prd-t23-full-01`, launched once through
+the recorded supervisor. Log turn23-pytest-full-01.log; durable command/PID/exit/
+after-identity receipt turn23-full-command-01.json. Full is running; source frozen,
+no passing result claimed. All prior test/lint handles terminal. Do not restart
+because an observer timed out. S16-S19/checklist/live gates remain unchecked.
+
+Turn23 durable brain validation: updated Projects/blacksmith.md via MCP, targeted
+lint0/0 and index errors0/invalidFrontmatter0 after more than87 seconds. Fresh
+semantic retrieval plus exact entire-note equality verified every written byte,
+one positive feedback (56e04a91-1739-4c9e-b5e4-b0f3c20f479b). Receipt
+turn23-brain-verification.json. No memory-folder write. Full77877 remains the only
+running verification job; all174 Python sources/config/inputs/runtime frozen at
+candidatefbbd16c. Goal active23/30; next automatic24, stop/save/pause at30 if
+unfinished. No live release gate is satisfied or successful external publication
+claimed. Historical turn13 failed-push exception retained.

@@ -2,7 +2,11 @@
 
 Goal turn23/30. **Implementation remains unaccepted as a whole.** S01–S15 have
 local full-suite proof; S16–S18 are integrated with scoped proof; S19 has scoped
-proof and is awaiting final combined verification. This audit maps the settled
+proof and is awaiting final combined verification. Frozen local implementation
+candidate is fbbd16c9a3617fd2cbb061b377ad3cc833d94899; full01 is running against
+turn23-environment-02.json (174 Python files, unchanged config/input/runtime).
+Command/PID/terminal-identity receipt: turn23-full-command-01.json. No terminal
+full-suite result is claimed. This audit maps the settled
 specification to production paths and regression evidence. A test's existence is
 not its passing receipt. Exact command/results and frozen source/runtime manifests
 belong in [the evidence ledger](heavy-prd-evidence.md).

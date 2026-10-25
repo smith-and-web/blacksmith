@@ -1,0 +1,28 @@
+{
+  "goal_turn": 23,
+  "path": "Projects/blacksmith.md",
+  "targeted_lint": {
+    "errors": 0,
+    "warnings": 0,
+    "exit_code": 0
+  },
+  "seconds_after_write": 100.582,
+  "index_last_run": {
+    "id": 16412,
+    "startedAt": "2026-10-25T08:26:43.189Z",
+    "finishedAt": "2026-10-25T08:26:43.372Z",
+    "seen": 144,
+    "changed": 0,
+    "removed": 0,
+    "errors": 0,
+    "errorText": null
+  },
+  "index_invalid_frontmatter_count": 0,
+  "semantic_request_id": "56e04a91-1739-4c9e-b5e4-b0f3c20f479b",
+  "whole_note_match": true,
+  "feedback_recorded_once": true,
+  "full_status": "running",
+  "full_handle": 77877,
+  "implementation_revision": "fbbd16c9a3617fd2cbb061b377ad3cc833d94899",
+  "remaining": "terminal final combined full1397 including100/20 + acceptance; no live release gates claimed"
+}

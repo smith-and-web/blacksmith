@@ -65,7 +65,20 @@ Counter **23/30**, unchanged by the user's status request. S01–S15 accepted lo
 S16–S18 integrated with scoped proof; S19 remains unchecked. Primary branch
 feature/heavy-prd-readiness has documentation base401a9a2 and final S19 source.
 Original spec/probe unchanged and untracked. Do not stage them or replay old stage
-baselines. No full combined S16–S19 suite has run yet.
+baselines. Final combined full01 is running; no terminal acceptance result yet.
+
+**Frozen S19 candidate fbbd16c9a3617fd2cbb061b377ad3cc833d94899.** Post-commit
+hook174-source/config/input/JS/all-distribution/Python/SQLite identity matches
+turn23-environment-02.json. Ruff08 passed and collection1397 succeeded. Full01
+handle **77877**, supervisorPID18729/childPID18730, launched exactly once via
+/private/tmp/blacksmith-heavy-prd-turn-23-full-supervisor.py. Command:
+`uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t23-full-01`.
+Log turn23-pytest-full-01.log; durable running/terminal PID/command/exit/source
+receipt turn23-full-command-01.json. The supervisor rechecks all source/config/
+input/runtime identities after terminal. **Do not edit Python/JS/config/tests
+while it runs. Poll the same handle; missing handle → receipt/PIDs/log, never
+restart after an observation timeout.** Expected1397 is not a pass. Actual100/20
+remain part of this full invocation. All earlier test/lint handles are terminal.
 
 S19 scoped results: counter recovery sequential/parallel **2 passed/29.90s**;
 optional store/lookup/live/metrics/progress faults **9 passed/55.26s**; strict
@@ -100,13 +113,21 @@ an absent safe destination. Exact proof: turn22-archive-s15-proof.json, cleanup2
 Latest free3.8GiB. Stable archive directory and restore instructions are in that
 proof. Do not repeat the original expensive fixture or cleanup.
 
-Next: finish full source/config/matrix audit and documentation, scoped adjacent
-regression, then freeze exact sources/runtime and run full pytest/ruff including
-actual100-chain and20-root/max2. Keep all source frozen during the full run and
-observe the same job. Accept S16–S19 only after terminal proof and complete matrix.
+Next: observe the one running full invocation, audit terminal status/exact identities
+and complete the acceptance matrix, fix any real failures without weakening
+assertions, then accept/commit S16–S19 only with final full/Ruff proof. Keep all
+source frozen during the full run. If the goal reaches30, stop implementation,
+save exact results/live handle/outstanding work/next action and pause unfinished.
 No paid canary/live release gate/Docker smoke/human contract review is claimed.
 Historical turn13 failed external-push attempt remains disclosed. Goal active23/30;
 next actual automatic24; at30 stop/save precise handoff/pause unfinished work.
+
+Turn23 brain handoff verified: Projects/blacksmith.md updated via MCP; targeted
+lint0 errors/0 warnings. After more than87 seconds, index errors0 and invalid
+frontmatter0; fresh semantic retrieval and exact whole-note readback matched,
+positive feedback once (56e04a91-1739-4c9e-b5e4-b0f3c20f479b). Receipt
+turn23-brain-verification.json. No memory-folder writes. Code/config/tests remain
+frozen at fbbd16c while full77877 runs. Counter remains23/30; next automatic24.
 
 ## Historical handoff: turn22; S15 accepted, S16-S18 scoped candidates ready
 
