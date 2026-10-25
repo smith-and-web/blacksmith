@@ -786,6 +786,37 @@ HFS warnings. Archive prepare25075 live; helper turn24-archive-s12.py, log
 turn24-archive-s12-prepare-01.log. Full byte/mode/symlink/protected-alias verification
 must complete before owned-directory-only cleanup; failed roots remain untouched.
 
+Turn24 resource closeout: accepted S12 preparation25075 and cleanup18206 both
+terminal0. Archive115092916 bytes/SHA499a74d54b7749e825465fc5fae7b011bce42fae90e0ae8ac6d34c3238a52658,
+manifestSHA66bbae4fb97a24b5c84f8b9a5a3deedf5ab2aee3385a95003f6b56e2cb7f1509,
+374157 entries/499152982 logical bytes fully verified. Protected entries0.
+Fresh owner31413 terminal1/no process records/only checked other-device warnings.
+Cleanup rechecked archive/manifest and every source entry/regular byte; changed5700
+owned directory modes only, no regular-file/shared-hardlink mode changes, then
+symlink-resistant removal of the completed t14-full01 root. Proof and safe restore
+preconditions: turn24-archive-s12-proof.json. Failed roots/logs/receipts untouched.
+
+Corrected source committed **539508be01b498749f6cb49c33c80b9d35047a04**. Host
+pre-commit passed; post-hook all174 sources/JS/config/original inputs and complete
+installed distribution/Python/SQLite identity unchanged. Final ruff24-02 passed.
+Frozen record **turn24-environment-02.json**, including supervisor helper hash and
+free4124516352 bytes. New full02 launched once, **handle80505**, supervisor42902/
+child42905, command `uv run pytest -q --basetemp
+/private/tmp/blacksmith-heavy-prd-t24-full-02`. Log turn24-pytest-full-02.log;
+durable running/terminal command/PID/exit/identity receipt turn24-full-command-02.json.
+Source/config/tests/JS/helper frozen until terminal.1398 collected is not a pass;
+actual100/20 still need final integrated proof. No live release gate claimed.
+
+Turn24 durable brain validation: Projects/blacksmith.md updated via MCP with the
+exact failed-full/correction/archive/full02 source and job handoff. Targeted lint
+0 errors/0 warnings; after more than91 seconds index lastRun.errors0 and invalid
+frontmatter0. Fresh semantic retrieval and exact entire-note equality confirmed
+every byte, one positive feedback (5462042a-ec36-40f8-919e-932d6afe8ff7). Receipt
+turn24-brain-verification.json. No memory-folder write. Full80505 remains live;
+source/config/tests/JS/helper frozen at539508b. Goal active24/30, next automatic25;
+at30 stop/save precise handoff/pause unfinished work. Historical turn13 failed
+external-push exception retained. No live release gates claimed.
+
 ### S19 implementation and scoped proof (turn23)
 
 - Counter remains23/30, including the user's status question. No automatic reset.

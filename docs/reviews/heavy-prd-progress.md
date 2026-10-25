@@ -4,7 +4,7 @@
 - Goal turn: 24 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
 - Previous-turn classification: progress; implemented S19 and corrected actual counter/optional-store/child-stream defects; scoped proof and final Ruff pass, complete matrix/docs, candidatefbbd16c, verified brain handoffc693e73. Final full01 launched once at174 frozen sources.
-- Current turn: 24; full01 intentionally stopped after known config-drift failure, terminal2/1 failed329 passed480.25s with all174-source/config/input/runtime identities unchanged. Saved disabled-feature inspection correction passes60/ruff; drift assertion unchanged. Archive accepted S12 fixture for headroom, then freeze corrected source and run final full02 including100/20. Counter incremented23->24 once, never on compaction/status/tools.
+- Current turn: 24; full01 terminal2/1 failed329 passed480.25s retained; saved disabled-feature inspection correction60/ruff passes with drift assertion unchanged. Accepted S12 archive/cleanup verified0; corrected174 sources frozen at539508b. Final combined full02 handle80505 is live with exact1398 collection/source/runtime proof. Counter incremented23->24 once, never on compaction/status/tools.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,48 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn24; inspection correction passed, archive before full02
+## Current handoff: turn24; corrected full02 live on frozen candidate539508b
+
+Counter **24/30**; S01–S15 accepted locally, S16–S19 unchecked. Current immutable
+implementation **539508be01b498749f6cb49c33c80b9d35047a04**, all174 Python sources,
+JS probe, supervisor helper, config/original inputs/65 installed distributions/
+Python3.12.13/SQLite3.53.1 frozen in **turn24-environment-02.json** after hooks.
+Ruff24 final02 passed;1398 tests collected. Saved inspection correction passed60
+without changing the original config-drift assertion or parsed config values.
+
+**Live full02 handle80505**, supervisorPID42902/childPID42905, started exactly once
+via /private/tmp/blacksmith-heavy-prd-turn-24-full-supervisor.py. Command
+`uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t24-full-02`.
+Log **turn24-pytest-full-02.log**; durable command/PID/terminal/identity receipt
+**turn24-full-command-02.json**. Observe same handle; if missing use receipt/PIDs/
+log. Never restart after observation timeout. No Python/JS/config/test/helper edits
+while full runs. Actual100-chain and20-root/max2 included; no terminal pass claimed.
+All earlier test/lint/archive/cleanup handles terminal. New full is the only live job.
+
+Accepted S12 archive preparation25075 and cleanup18206 both terminal0. Every
+374157 entry/regular byte/mode/symlink checked; protected entries0. Archive
+/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/turn14-full01.tar.gz
+115092916 bytes/SHA499a74d54b7749e825465fc5fae7b011bce42fae90e0ae8ac6d34c3238a52658;
+manifestSHA66bbae4fb97a24b5c84f8b9a5a3deedf5ab2aee3385a95003f6b56e2cb7f1509.
+Cleanup revalidated source/archives and no owners, changed5700 owned directory
+modes only, removed completed t14-full01 root; regular/shared-hardlink file modes
+unchanged. Proof **turn24-archive-s12-proof.json** contains restore preconditions.
+Failed roots untouched. Free4124516352 bytes at full02 freeze. Do not repeat cleanup.
+
+Full01 failure/proof and precise correction follow below as historical details.
+Next: wait for full02 terminal, verify all exact identities/receipts, fix any real
+failure without weakened assertions, refresh Ruff and acceptance records. At30
+stop/save precise completed/outstanding/results/live-job/next-action handoff and
+pause unfinished goal. No live gate/paid canary/Docker/human review claimed.
+
+Turn24 brain handoff verified: Projects/blacksmith.md updated via MCP; targeted
+lint0/0. After more than91 seconds index errors0/invalidFrontmatter0, fresh semantic
+retrieval plus exact entire-note readback matched; feedback once
+(5462042a-ec36-40f8-919e-932d6afe8ff7). Receipt turn24-brain-verification.json.
+No memory-folder write. Full80505 remains live on exact frozen candidate539508b.
+Counter stays24/30 through status/tools/compaction; next actual automatic25.
+
+## Historical turn24 correction and resource preparation
 
 Counter **24/30**; incremented23->24 once after objective/instructions/memory/brain
 and exact source/runtime checks. Previous turn was progress. S01–S15 accepted;
@@ -79,9 +120,17 @@ CWD comments only, parsed values unchanged. Exact identity turn24-environment-01
 Before new full: accepted S12 completed fixture t14-full01 uses1.17GiB. Its
 1138-pass/1136.16s accepted receipt matches turn14-environment.json. Owner scan8434
 terminal1/no owners, known other-device HFS warnings retained. Archive prepare
-**25075** is live via /private/tmp/blacksmith-heavy-prd-turn-24-archive-s12.py;
-log turn24-archive-s12-prepare-01.log. Wait for terminal archive/byte/mode/symlink
-proof before any removal. Protected inputs excluded unread; failed roots untouched.
+**25075** is terminal0,374157 entries/499152982 logical bytes,115092916-byte
+archive fully byte/mode/symlink verified; protected entries0.
+ArchiveSHA499a74d54b7749e825465fc5fae7b011bce42fae90e0ae8ac6d34c3238a52658;
+manifestSHA66bbae4fb97a24b5c84f8b9a5a3deedf5ab2aee3385a95003f6b56e2cb7f1509.
+Fresh owner31413 terminal1/no owners/only verified other-device warnings.
+Cleanup **18206**, PID41382, is live via
+/private/tmp/blacksmith-heavy-prd-turn-24-archive-s12-cleanup.py; log
+turn24-archive-s12-cleanup-01.log. It rechecked archive/manifest and every unchanged
+source entry/regular byte, changed only owned directory modes and is removing the
+verified completed root. Poll same cleanup; do not restart. Protected inputs
+excluded unread; failed roots untouched. Wait for terminal0/proof before full02.
 Then post-hook freeze corrected174 sources/config/input/runtime and final full02
 including100-chain/20-root/max2. No new full has launched yet. At30 stop/save/pause
 unfinished work; never reset or resume automatically. No live release gate claimed.

@@ -8,6 +8,9 @@ turn23-full-command-01.json proves unchanged174-source/config/input/runtime.
 The config drift failure is corrected by read-only saved disabled-feature metadata,
 with its original assertion intact; scoped60/53.32s and Ruff pass. Corrected source
 identity is in turn24-environment-01.json; new full1398 including100/20 still required.
+Corrected candidate539508be01b498749f6cb49c33c80b9d35047a04 is now frozen in
+turn24-environment-02.json; full02 is running, handle80505, with command/terminal
+receipt turn24-full-command-02.json. No passing terminal result yet.
 This audit maps the settled
 specification to production paths and regression evidence. A test's existence is
 not its passing receipt. Exact command/results and frozen source/runtime manifests
