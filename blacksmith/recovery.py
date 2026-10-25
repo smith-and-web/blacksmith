@@ -270,7 +270,7 @@ def capture(context, checkpointer, *, reason, stage="cli"):
         for label, path in existing:
             record["workspaces"].append(_workspace(context, path, directory / label,
                                                      readonly=label == "planning"))
-        for folder in ("plans", "gates", "fixes", "joins", "commands", "reviews"):
+        for folder in ("plans", "gates", "fixes", "joins", "commands", "reviews", "publication"):
             source = context.directory / folder
             if source.exists() or source.is_symlink():
                 if source.is_symlink() or source.resolve() != source:

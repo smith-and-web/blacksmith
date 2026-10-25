@@ -46,8 +46,8 @@ Implementation is incomplete. No live release gate has passed.
 
 ## Final required local verification
 
-- Latest full suite (S01-S12): `uv run pytest -q`, **1138 passed in 1136.16 s**, exit 0, no failures/warnings/skips/xfails. Final S19 full suite remains required after later slices.
-- Latest `uv run ruff check`: **passed** after S01-S12. Final S19 lint remains required after later slices.
+- Latest full suite (S01-S13): `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t15-full-01`, **1181 passed in2097.72s**, exit0, no failures/warnings/skips/xfails. Final S19 full suite remains required after later slices.
+- Latest `uv run ruff check`: **passed** after S01-S13, refreshed at turn16. Final S19 lint remains required after later slices.
 - Per-slice acceptance/crash/migration evidence and source/dependency identity are retained below. Final S19 all-requirement audit remains pending.
 
 ## Acceptance matrix tracking
@@ -62,7 +62,7 @@ Implementation is incomplete. No live release gate has passed.
 | Sequential escalated → parallel → sequential state reset | S07/S08 real graph/CLI/checkpointer sequence in `test_unit_state.py` and `test_unit_subgraph.py` |
 | Add/amend/reset/squash failure, fixer/gate source edits | S05/S06/S08 command/integrity/subgraph matrix; S11 exact staged/committed reconciliation in `test_effect_recovery.py`; unknown edits hold |
 | Agent toolchain replacement or sandbox protected edit | Trusted S03 snapshot consumed by S06 gates; real path audits before/after effects; sandbox ownership or enabled-config rejection remains S17 |
-| Terminal human plus plan-only approval | Pending S13 exact-SHA guard; no paid/live publication allowed |
+| Terminal human plus plan-only approval | S13 actual CLI both shapes: no summary/push/create, exact proposal retained; approved draft has exit2 and pending QA/check/URL. Normal publication uses the same guard |
 | Invalid human topology before spend | S03 offline semantic validation proves all prohibited layouts stop before calls; final publication routing remains S13 |
 | Malformed/error/missing-result review and minority blocking | S12 strict typed receipts, actual stream/terminal failures and any-panel blocker halt both shapes with no publication; see R09 audit below |
 | Deletion-only and cumulative revision patch review | S12 actual cumulative deletion/rename/binary patches; >1 MiB full artifact and bounded actual read_diff RPC under a 4096-byte command cap |
@@ -457,3 +457,37 @@ S13 exact-SHA QA/approval (including the discovered combined PR display bug), S1
 
 - S12 implementation committed locally as `5f483e71af1f02106875d5385b24715a4f90fea4` (`feat: enforce cumulative fail-closed reviews with durable recovery`); host pre-commit checks passed. Post-commit Python source-file set/hashes and final full/ruff hashes match. Source/docs `git show --check` passed excluding only raw `.log` receipts. Original spec/probe remained the only untracked inputs; no push of this commit ran.
 - Brain closeout: existing `Projects/blacksmith.md` updated through MCP; targeted lint 0 errors/0 warnings. After 83 seconds, index lastRun.errors=0 and invalidFrontmatter.count=0. Semantic retrieval and exact full-note readback verified turn 14/30, S12 completion, 1138-test proof, S13 approval/display follow-up, remaining S13-S19/live gates and retained historical failed-push disclosure (`b3344637-d931-4b46-8865-c452caae5251`). Positive feedback recorded once. No memory-folder write.
+
+
+## Turn 15: S13 exact-candidate publication approval (in progress)
+
+- Counter14->15 incremented once after objective/instructions/ledger/branch/brain verification. Prior turn classified progress. No new model call class; denial/staleness halts before summary and publication, and valid final gate receipts reuse existing compute. No paid canary/publication authorized.
+- Wiring-01:35 passed/3 failed in9.21s, obsolete direct-human draft/human-only publication and old route expectations. Wiring-02:50 passed/5 failed/13.46s, pre-versioned direct-node happy fixtures lacked explicit approval. Updated expectations strengthen no-summary/no-push/no-create/retained-work assertions for rejected paths; happy library fixtures now explicitly approve. Wiring-03:58 passed/11.31s. Original failed receipts retained.
+- Integrity-01:23 passed/1 failed/236.94s. Real CLI/Git/gates/graph/checkpoints cover both shapes, plan-only normal/draft denial, exact-SHA refspec+QA exit/report+terminal resume, prompt mutations, forged approval and wrong-route rejection. The one failing summary-mutation test hook incorrectly expected tool-free SDK summary cwd; it now captures the actual approval workspace. Edges-02:3 passed/21 deselected/17.95s proves both effect-boundary guards and a >1 MiB complete PR artifact with 256-byte preview under 4096-byte native cap.
+- Recovery-01:12 passed/141.05s. Explicit negative decision -> fresh immutable round for normal/QA; missing/malformed proposal/decision/patch/state or missing legacy marker refuses before executor and preserves checkpoints. Original source/PRD/models drift does not replace frozen run inputs. Real subprocess exits94/95 distinguish unfinished decision intent from completed evidence-before-checkpoint: incomplete holds then explicitly re-prompts, complete reuses without asking or replaying original roles. Original decisions/cost IDs/budgets remain.
+- Render-01:42 passed/0.35s, including exact SHA, draft intent, auto/final layer receipt references and pending QA in both plain and rendered gates. Regression-04: no tests collected due to a nonexistent filename; corrected regression-05 is live handle76782. Full suite live handle59474 and143-source environment identity recorded before launch; final ruff passed. Neither live handle is yet a completion receipt.
+
+### S13/R07 approval wiring audit (final full suite passed at turn16)
+
+| Requirement | Production wiring and scoped evidence |
+|---|---|
+| Valid terminal QA only; both shapes converge on approval | S03 semantic preflight rejects human-only/mid-DAG/sibling/mixed before executor. Final gate -> deterministic prepare_pr_approval -> approve_pr -> normal/draft. QA has no plan/implementation model call. Existing graph/human tests updated; real CLI both-shape plan-only/approved cases added |
+| Exact identity/evidence and stale-candidate refusal | Immutable proposal binds run/round/clean commit/tree/branch/base/origin/draft/pending QA and full auto/final receipt references. Known completed tip validation rejects unknown extra commit. Prompt mutation cases cover dirty edits, clean extra commit, branch and origin changes; no summary/push/create follows |
+| All publication entry paths share guard | Both graph wrapper and direct nodes verify before summary. Same verifier runs before push/create. Explicit SHA refspec, no force. Negative direct-library bool/type and forged/missing/wrong-draft versioned approvals refuse before effects. Mutation during summary prevents push; mutation after mocked push prevents create |
+| Durable approval and restart policy | Separate prepared-proposal checkpoint, critical per-round intent/artifact/outcome and immutable files. Completed decision reuse is identity-validated; incomplete intent is a hold. Explicit rejection recovery seals new round and preserves old evidence. Capture includes publication folder. Migration/corruption checks precede executor |
+| Complete diff independent of native logs | Git --output writes full binary/rename patch to private publication scope. Hash/size/path are critical evidence. Preview reads only configured bytes and explicitly marks truncation. Above-native-cap regression passes without disabling the normal PR display |
+| DONE/QA/error distinction and honest handoff | Actual CLI returns0 DONE /2 AWAITING_QA /1 halt, report includes draft URL/pending unit/check. Plain/rendered gate shows exact approval identity. Manual QA is never presented as automatically passed |
+
+Remote query/body-marker/ambiguous push-create reconciliation remains S14. S15-S19 and all live release gates remain pending. No mocked GitHub effect proves successful remote publication. Historical turn13 unintended failed push remains disclosed and retained.
+
+## Turn16: finish S13 verification, then S14
+
+- Counter15->16 incremented once after rereading the objective, repository instructions, live branch/ledger, memory audit context and brain hub. Previous turn was progress. S13 full handle59474 remains live; regression handle76782 explicitly polled terminal,52 passed/210.03s. No duplicate full run or source edit after the143-source record.
+- Current S13 pending-full state and counter16/30 captured in existing `Projects/blacksmith.md` through MCP. Target lint0 errors/0 warnings; after81 seconds index lastRun.errors=0 and invalidFrontmatter.count=0. Semantic retrieval and exact full-note readback matched the entire written content, including pending full proof and historical failed-push disclosure (`10e15b31-df2f-46c5-a645-4944a15cb899`); positive feedback once. This interim note does not mark S13 complete.
+- S14 preparation in `heavy-prd-publication-plan.md` maps settled R07 remote identity, effect/observation receipts, marker, failure/retry and crash acceptance requirements to production paths. Installed gh help and official GitHub/Git protocol docs checked. Runtime S14 remains unimplemented until S13 closes.
+
+### S13 final verification at turn16
+
+- Full command: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t15-full-01 > docs/reviews/heavy-prd-turn-15-pytest-01.log 2>&1`, **1181 passed in2097.72s (34:57), exit0**. Handle59474 explicitly polled terminal. No warnings/skips/xfails. All43 new S13 cases and old regressions included.
+- Final ruff15 passed; fresh `uv run ruff check > docs/reviews/heavy-prd-turn-16-ruff-primary.log 2>&1` passed. Complete set/hashes of143 Python sources, original spec/probe inputs and installed dependency versions match the pre-run turn15 environment record. Full and both ruff receipt hashes are recorded there. No dependency/lockfile change or weakened assertion.
+- S13/R07 approval portion is complete locally: validated QA topology before paid work; normal/draft routes share exact candidate approval; clean known tip/branch/base/origin and auto/final receipt bindings; stale/forged/denied guards; full retained diff with bounded preview; durable decision/new-round restart and migration; correct0/2/1 exits and honest QA reporting. Remote reconciliation remains S14, separately in an isolated staging worktree. No successful live publication/canary/Docker/merge claim. Historical turn13 failed unintended push remains disclosed.

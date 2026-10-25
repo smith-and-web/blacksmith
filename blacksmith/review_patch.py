@@ -39,30 +39,34 @@ def verify_patch(patch, *, root=None):
     return path
 
 
-def capture_patch(state, *, context=None):
+def capture_patch(state, *, context=None, base_commit=None, scope="review"):
+    if scope not in {"review", "publication"}:
+        raise ValueError("unknown patch evidence scope")
     workspace = state["worktree_path"]
     candidate, tree, dirty = candidate_identity(workspace)
-    base = state.get("unit_base_commit") or state.get("pre_implement_ref")
+    base = base_commit or state.get("unit_base_commit") or state.get("pre_implement_ref")
     if not base or dirty:
         raise ValueError("review requires a saved unit base and a clean committed candidate")
     base = _git(workspace, "rev-parse", "--verify", base + "^{commit}").strip()
     _git(workspace, "merge-base", "--is-ancestor", base, candidate)
-    unit = state["selected_unit"]
-    identity = digest(encoded([unit.id, base, candidate]))
-    folder = context.directory / "reviews" / "patches" if context else Path(
+    unit_id = state["selected_unit"].id if scope == "review" else "__run__"
+    identity = digest(encoded([unit_id, base, candidate]))
+    relative = ("reviews", "patches") if scope == "review" else ("publication", "diffs")
+    folder = context.directory.joinpath(*relative) if context else Path(
         tempfile.mkdtemp(prefix="blacksmith-review-")).resolve()
     if folder.resolve() != folder or folder.is_symlink():
         raise ReceiptError("foreign cumulative review patch directory")
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = folder / (identity + ".patch")
     journal = context.journal() if context else None
-    key = OperationKey(context.run_id, unit.id, identity, "review.patch") if context else None
+    kind = "review.patch" if scope == "review" else "approval.diff"
+    key = OperationKey(context.run_id, unit_id, identity, kind) if context else None
     if journal:
         prior = journal.intent(key, {"base_commit": base, "candidate_commit": candidate,
                                      "patch_path": str(path)})
         if prior.status == "completed":
             patch = ReviewPatch.model_validate(prior.outcome["patch"])
-            verify_patch(patch, root=context.directory / "reviews" / "patches")
+            verify_patch(patch, root=context.directory.joinpath(*relative))
             if patch.base_commit != base or patch.candidate_commit != candidate:
                 raise ReceiptError("cumulative patch differs from critical intent")
             return patch

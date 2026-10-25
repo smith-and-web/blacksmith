@@ -143,7 +143,8 @@ def test_node_passes_default_branch_as_base():
     # prepare_worktree from [target].default_branch) and opens the PR against it.
     runner = _recording_runner(gh_url="https://github.com/o/r/pull/12")
     open_pr(
-        {"selected_unit": _unit(), "worktree_path": "/tmp/wt", "default_branch": "master"},
+        {"selected_unit": _unit(), "worktree_path": "/tmp/wt", "default_branch": "master",
+         "approvals": {"pr": True}},
         runner=runner,
     )
     create = runner.calls[1]
@@ -154,7 +155,8 @@ def test_node_without_default_branch_omits_base():
     # A graph compiled without default_branch (e.g. tests) leaves it unset — no --base, so
     # gh falls back to the repo default exactly as before.
     runner = _recording_runner(gh_url="https://github.com/o/r/pull/13")
-    open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+    open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt", "approvals": {"pr": True}},
+                  runner=runner)
     assert "--base" not in runner.calls[1]
 
 
@@ -181,7 +183,8 @@ def test_unparseable_url_raises(tmp_path):
 
 def test_node_success_sets_pr_url_and_done():
     runner = _recording_runner(gh_url="https://github.com/o/r/pull/9")
-    out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+    out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt", "approvals": {"pr": True}},
+                  runner=runner)
     assert out["pr_url"] == "https://github.com/o/r/pull/9"
     assert out["status"] == Status.DONE
 
@@ -194,7 +197,8 @@ def test_node_missing_inputs_halts():
 
 def test_node_pr_error_halts():
     runner = _recording_runner(gh_rc=1)
-    out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+    out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt", "approvals": {"pr": True}},
+                  runner=runner)
     assert out["status"] == Status.HALTED
     assert "gh pr create" in out["errors"][0]["message"]
 
@@ -206,7 +210,7 @@ def test_node_with_executor_synthesizes_title_and_summary():
     runner = _recording_runner(gh_url="https://github.com/o/r/pull/20")
     executor = _FakeSummaryExecutor(title="Add scaffold", summary="Adds the initial scaffold.")
     out = open_pr(
-        {"selected_unit": _unit(), "worktree_path": "/tmp/wt"},
+        {"selected_unit": _unit(), "worktree_path": "/tmp/wt", "approvals": {"pr": True}},
         runner=runner,
         executor=executor,
     )
@@ -234,7 +238,7 @@ def test_node_with_executor_synthesizes_title_and_summary():
 def test_node_without_executor_falls_back_byte_for_byte():
     runner = _recording_runner(gh_url="https://github.com/o/r/pull/21")
     unit = _unit()
-    state = {"selected_unit": unit, "worktree_path": "/tmp/wt"}
+    state = {"selected_unit": unit, "worktree_path": "/tmp/wt", "approvals": {"pr": True}}
     out = open_pr(state, runner=runner)
     create = runner.calls[1]
     title = create[create.index("--title") + 1]
@@ -250,7 +254,7 @@ def test_node_executor_error_falls_back_without_summary():
     # the pre-existing title/body, but the cost of the attempted call is still ledgered.
     runner = _recording_runner(gh_url="https://github.com/o/r/pull/22")
     unit = _unit()
-    state = {"selected_unit": unit, "worktree_path": "/tmp/wt"}
+    state = {"selected_unit": unit, "worktree_path": "/tmp/wt", "approvals": {"pr": True}}
     executor = _FakeSummaryExecutor(is_error=True)
     out = open_pr(state, runner=runner, executor=executor)
     assert out["status"] == Status.DONE
@@ -308,3 +312,13 @@ def test_integration_real_push_mocked_gh(tmp_path):
     assert pr.url.endswith("/pull/3")
     # the branch was really pushed to the bare remote
     assert wt.branch in _git(remote, "branch", "--list", wt.branch)
+
+
+@pytest.mark.parametrize("approval", [None, False, "no"])
+def test_node_requires_explicit_true_pr_approval_before_summary_or_runner(approval):
+    executor = _FakeSummaryExecutor()
+    runner = _recording_runner(gh_url="https://github.com/o/r/pull/90")
+    result = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt",
+                      "approvals": {"pr": approval}}, runner=runner, executor=executor)
+    assert result["status"] == Status.HALTED
+    assert executor.calls == [] and runner.calls == []

@@ -1,7 +1,7 @@
 # Version-2 run inputs and migration
 
 Heavy-PRD remediation is still in progress. This documents completed runtime
-slices through S12, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
+slices through S13, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
 [acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
 unrun live gates.
 
@@ -68,6 +68,9 @@ Each fresh run has a UUID and these paths under the config directory:
   plans/<sha256-of-raw-unit-id>.json
   plans/approval-proposal.json
   plans/approved.json
+  publication/approval-<round>-proposal.json
+  publication/approval-<round>-decision.json
+  publication/diffs/<identity>.patch
   planning/
   workspace/
   units/<sha256-of-raw-unit-id>/workspace/
@@ -293,7 +296,8 @@ flowchart LR
     A --> P
     U --> F[Final auto-layer union gate]
     A --> F
-    F --> R[PR approval or terminal QA publication seam]
+    F --> R[Checkpoint exact-SHA approval proposal]
+    R --> A1[PR approval for normal or draft publication]
 ```
 
 Fetch uses the recorded source SHA, rather than the current branch tip. A critical
@@ -337,8 +341,13 @@ New workspaces record `join_graph_version=1`. An active v2 workspace without tha
 marker refuses resume before executor construction with
 `legacy_join_graph_requires_manual_recovery`; checkpoints/artifacts/budgets are
 retained. Pre-workspace checkpoints with valid S09 plans may enter the new topology.
-The QA seam still needs S13's exact-SHA PR approval and publication reconciliation
-is S14. S12 review receipts now cross both execution shapes and are checked at joins,
+Both normal and terminal-QA publication now require the same
+[exact-SHA PR approval](heavy-prd-approval.md). Rejection creates a new request round
+only on explicit resume; incomplete decision intent never authorizes publication.
+Missing legacy approval metadata refuses without manufacturing hashes.
+The CLI exits 0 for DONE, 2 for AWAITING_QA with the pending manual check and draft
+URL, and 1 for a halt/error. Publication reconciliation remains S14.
+S12 review receipts cross both execution shapes and are checked at joins,
 final verification and publication entry. These gates are not a general
 readiness or publication-safety release claim. No live release gate ran here.
 

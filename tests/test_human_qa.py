@@ -274,7 +274,7 @@ def _write_prd(tmp_path, spec):
     return path
 
 
-def test_human_gated_unit_opens_draft_pr_and_awaits_qa(tmp_path):
+def test_human_only_declaration_cannot_publish_a_draft(tmp_path):
     # gate_cmd="false" would FAIL if the automated gate ever ran — it must not.
     repo = _target_repo(tmp_path, gate_cmd="false")
     gh = _recording_gh("https://github.com/owner/demo/pull/5")
@@ -284,19 +284,12 @@ def test_human_gated_unit_opens_draft_pr_and_awaits_qa(tmp_path):
 
     final = drive(graph, _write_prd(tmp_path, _HUMAN), approver=approver, thread_id="qa")
 
-    # (1) a DRAFT PR was opened for the shared branch.
-    creates = _pr_creates(gh)
-    assert len(creates) == 1
-    assert "--draft" in creates[0]
-    # (2) the run ends AWAITING_QA, not HALTED.
-    assert final.values["status"] == Status.AWAITING_QA
-    assert final.values["pr_url"].endswith("/pull/5")
-    # (3) the branch is preserved — the draft PR needs it.
-    branch = final.values["branch"]
-    assert branch and branch in _branches(repo, branch)
-    # (4) the automated test_gate never ran for the human-gated unit.
+    assert _pr_creates(gh) == []
+    assert not any(argv[:2] == ["git", "push"] for argv in gh.calls)
+    assert final.values["status"] == Status.HALTED and not final.values.get("pr_url")
     assert gate.calls == 0
-    # Only the plan gate is consulted — the QA happens on the draft PR itself.
+    assert Path(final.values["worktree_path"]).is_dir()
+    assert any("human-only" in row["message"] for row in final.values["errors"])
     assert approver.gates == ["plan"]
     saver.conn.close()
 
@@ -373,7 +366,7 @@ def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
     # The branch is preserved for the draft PR.
     branch = final.values["branch"]
     assert branch and branch in _branches(repo, branch)
-    assert approver.gates == ["plan"]  # QA happens on the draft PR, not via an approval gate
+    assert approver.gates == ["plan", "pr"]  # Draft publication requires the same PR approval.
     saver.conn.close()
 
 

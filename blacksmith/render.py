@@ -91,7 +91,8 @@ class Renderer:
 
     # -- final report ---------------------------------------------------------
 
-    def report(self, *, status, pr_url, errors, cost_line: str, token_line: str) -> None:
+    def report(self, *, status, pr_url, errors, cost_line: str, token_line: str,
+               pending_qa=None) -> None:
         """Render the run-end status summary.
 
         Plain mode prints the same ``status:`` / ``PR:`` / ``error […]`` / cost / token
@@ -110,14 +111,17 @@ class Renderer:
         shown = [] if succeeded else errors
         recovered = len(errors) if succeeded else 0
         if not self.rendered:
-            self._plain_report(status, pr_url, shown, recovered, cost_line, token_line)
+            self._plain_report(status, pr_url, shown, recovered, cost_line, token_line, pending_qa)
             return
-        self._rendered_report(status, pr_url, shown, recovered, cost_line, token_line)
+        self._rendered_report(status, pr_url, shown, recovered, cost_line, token_line, pending_qa)
 
-    def _plain_report(self, status, pr_url, errors, recovered, cost_line, token_line) -> None:
+    def _plain_report(self, status, pr_url, errors, recovered, cost_line, token_line,
+                      pending_qa) -> None:
         print(f"\nstatus: {status}", file=self._out)
         if pr_url:
             print(f"PR: {pr_url}", file=self._out)
+        if pending_qa:
+            print(f"QA pending: {pending_qa['id']}: {pending_qa['test_contract']}", file=self._out)
         for err in errors:
             print(f"error [{err.get('node')}]: {err.get('message')}", file=self._out)
         if recovered:
@@ -125,7 +129,8 @@ class Renderer:
         print(cost_line, file=self._out)
         print(token_line, file=self._out)
 
-    def _rendered_report(self, status, pr_url, errors, recovered, cost_line, token_line) -> None:
+    def _rendered_report(self, status, pr_url, errors, recovered, cost_line, token_line,
+                         pending_qa) -> None:
         style = _STATUS_STYLES.get(status, "bold")
         body = Text()
         body.append("status: ", style="dim")
@@ -133,6 +138,9 @@ class Renderer:
         if pr_url:
             body.append("\nPR: ", style="dim")
             body.append(str(pr_url), style="cyan underline")
+        if pending_qa:
+            body.append(f"\nQA pending: {pending_qa['id']}: {pending_qa['test_contract']}",
+                        style="yellow")
         for err in errors:
             body.append(f"\nerror [{err.get('node')}]: ", style="red")
             body.append(str(err.get("message")), style="red")
@@ -224,6 +232,30 @@ class Renderer:
         resolved = payload.get("review_revisions_total") or payload.get("review_revisions") or 0
         return unresolved, resolved
 
+    @staticmethod
+    def _publication_lines(payload: dict) -> list[str]:
+        """Show the identity and evidence that the PR decision actually authorizes."""
+        if not payload.get("candidate_commit"):
+            return []
+        lines = [f"run: {payload.get('run_id')}",
+                 f"candidate: {payload['candidate_commit']}",
+                 f"draft: {'yes' if payload.get('draft') else 'no'}",
+                 f"branch: {payload.get('branch')} -> {payload.get('base_branch')}"]
+        qa = payload.get("pending_qa_unit")
+        if qa:
+            lines.append(f"QA pending: {qa['id']}: {qa['test_contract']}")
+        final = payload.get("final_gate_receipt") or {}
+        lines.append(f"final gate: {final.get('receipt_id', 'unavailable')} "
+                     f"[{', '.join(final.get('layers') or [])}] {final.get('status', '')}")
+        for row in payload.get("auto_unit_receipts") or []:
+            gate, review = row.get("gate_receipt") or {}, row.get("review_receipt") or {}
+            lines.extend([f"unit {row['unit_id']}: {row.get('candidate_commit')}",
+                          f"  gate: {gate.get('receipt_id', 'unavailable')} "
+                          f"[{', '.join(gate.get('layers') or [])}] {gate.get('status', '')}",
+                          f"  review: {review.get('receipt_id', 'unavailable')} "
+                          f"{review.get('status', '')}"])
+        return lines
+
     def _plain_gate(self, payload: dict) -> None:
         out = self._out
         print(f"\n{self._gate_summary(payload)}", file=out)
@@ -245,6 +277,8 @@ class Renderer:
             if len(entries) > 1:
                 print(f"\n{self._plans_total_line(entries)}", file=out)
         elif gate == "pr":
+            for line in self._publication_lines(payload):
+                print(line, file=out)
             impl = payload.get("implementation") or {}
             results = payload.get("test_results") or {}
             print("\nDiff summary:", file=out)
@@ -303,6 +337,10 @@ class Renderer:
             if len(entries) > 1:
                 console.print(Text(self._plans_total_line(entries), style="dim"))
         elif gate == "pr":
+            identity = self._publication_lines(payload)
+            if identity:
+                console.print(Panel(Text("\n".join(identity)), title="publication approval",
+                                    expand=False))
             impl = payload.get("implementation") or {}
             results = payload.get("test_results") or {}
             diff = Text(impl.get("diff_summary") or "(none)")

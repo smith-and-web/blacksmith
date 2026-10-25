@@ -44,6 +44,8 @@ add a dependency without adding it to `pyproject.toml`.
 - `blacksmith/formatter_recovery.py`, `join_recovery.py` — exact staged/committed effect recovery.
 - `blacksmith/review_patch.py`, `review_receipts.py` — full cumulative patches, bounded read_diff,
   typed fail-closed review decisions and critical restart evidence.
+- `blacksmith/publication_approval.py` — immutable exact-SHA normal/draft proposals,
+  critical human decisions and stale-candidate guards; prepared in a separate parent node.
 - `blacksmith/plan_artifacts.py` — per-unit immutable plans and exact PRD/plan approval bindings.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).

@@ -56,6 +56,32 @@ def _unit() -> WorkUnit:
     )
 
 
+@pytest.mark.parametrize("rendered", [False, True])
+@pytest.mark.parametrize("draft", [False, True])
+def test_pr_gate_shows_exact_identity_layer_evidence_and_pending_qa(rendered, draft):
+    out = _TTYStringIO() if rendered else io.StringIO()
+    renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+    renderer.gate({**PR_PAYLOAD, "run_id": "run-123", "candidate_commit": "a" * 40,
+        "draft": draft, "branch": "feature/run-123", "base_branch": "main",
+        "pending_qa_unit": {"id": "QA", "test_contract": "Inspect the settings screen"}
+        if draft else None,
+        "final_gate_receipt": {"receipt_id": "final-123", "layers": ["logic", "ui"],
+                               "status": "passing"},
+        "auto_unit_receipts": [{"unit_id": "A", "candidate_commit": "b" * 40,
+            "gate_receipt": {"receipt_id": "gate-456", "layers": ["logic"],
+                             "status": "passing"},
+            "review_receipt": {"receipt_id": "review-789", "status": "disabled"}}]})
+    from test_cli_render import _strip_ansi
+    text = _strip_ansi(out.getvalue())
+    for expected in ("run-123", "a" * 40, "b" * 40, "draft: yes" if draft else "draft: no",
+                     "feature/run-123 -> main", "final-123", "logic, ui", "gate-456",
+                     "review-789", "disabled"):
+        assert expected in text
+    assert ("QA pending: QA: Inspect the settings screen" in text) is draft
+    if not rendered:
+        assert "\x1b" not in text
+
+
 def _units(n: int) -> list[WorkUnit]:
     return [
         WorkUnit(

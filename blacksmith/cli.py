@@ -323,10 +323,24 @@ def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None,
         if not payload:
             result = _step(graph, None, config, on_node=on_node, on_event=on_event)
             continue
-        wait_start = time.monotonic()
-        approved = approver(payload, snapshot.values)
-        if on_wait is not None:
-            on_wait(time.monotonic() - wait_start)
+        recorded = None
+        if payload.get("gate") == "pr" and snapshot.values.get("run_context"):
+            from blacksmith.publication_approval import ApprovalError, cached_decision
+            prepared = snapshot.values.get("pr_approval_proposal")
+            if prepared:
+                try:
+                    recorded = cached_decision(snapshot.values, prepared)
+                except ApprovalError:
+                    # An incomplete decision is a policy hold, not evidence of a
+                    # human approval. The node retains it and requests a new round.
+                    recorded = {"approved": False}
+        if recorded is None:
+            wait_start = time.monotonic()
+            approved = approver(payload, snapshot.values)
+            if on_wait is not None:
+                on_wait(time.monotonic() - wait_start)
+        else:
+            approved = recorded["approved"]  # Node revalidates the exact original candidate.
         result = _step(
             graph, Command(resume=approved), config, on_node=on_node, on_event=on_event
         )
@@ -636,13 +650,19 @@ def _report(snapshot, renderer: Renderer | None = None) -> None:
     """
     renderer = renderer if renderer is not None else Renderer()
     values = snapshot.values
+    extra = {"pending_qa": values["pending_qa_unit"]} if values.get("pending_qa_unit") else {}
     renderer.report(
         status=values.get("status"),
         pr_url=values.get("pr_url"),
         errors=values.get("errors", []),
         cost_line=_total_cost_line(values),
         token_line=_token_line(values),
+        **extra,
     )
+
+
+def _run_exit_code(status):
+    return 0 if status == Status.DONE else 2 if status == Status.AWAITING_QA else 1
 
 
 def _record_metrics(
@@ -1000,6 +1020,11 @@ def _resume(argv: list[str] | None = None) -> int:
                     "legacy_review_requires_manual_recovery: cumulative patch/review receipts "
                     "absent; checkpoints/artifacts/budgets retained"
                 )
+            if values.get("worktree_path") and values.get("approval_version") != 1:
+                raise ResumeError(
+                    "legacy_approval_requires_manual_recovery: exact-candidate approval "
+                    "metadata absent; checkpoints/artifacts/budgets retained"
+                )
             from blacksmith.plan_artifacts import validate_plans, verify_approved_plan
             if values.get("planning_version") == 1:
                 validate_plans(values, complete=bool(values.get("approvals", {}).get("plan")))
@@ -1017,6 +1042,8 @@ def _resume(argv: list[str] | None = None) -> int:
             validate_recovery(context)
             from blacksmith.review_receipts import validate_state as validate_reviews
             validate_reviews(values)
+            from blacksmith.publication_approval import validate_state as validate_approval
+            validate_approval(values)
             stack.enter_context(protect_run(context, checkpointer))
             from blacksmith.recovery_control import prepare as prepare_recovery
 
@@ -1059,7 +1086,7 @@ def _resume(argv: list[str] | None = None) -> int:
                 prd_path=final.values.get("prd_path") or "", started_at=started_at,
                 ended_at=ended_at, approval_wait_s=approval_wait,
             )
-            return 0 if final.values.get("status") == Status.DONE else 1
+            return _run_exit_code(final.values.get("status"))
     except (ResumeError, RunContextError, ConfigError, ContractError, CommandError,
             GateError, ReceiptError, OSError) as exc:
         print(f"resume: {exc}", file=sys.stderr)
@@ -1496,7 +1523,7 @@ def main(argv: list[str] | None = None) -> int:
                 config, final, thread_id=args.thread_id, prd_path=args.prd_path,
                 started_at=started_at, ended_at=ended_at, approval_wait_s=approval_wait,
             )
-            return 0 if final.values.get("status") == Status.DONE else 1
+            return _run_exit_code(final.values.get("status"))
     except (FreshRunError, RunContextError, ConfigError, ContractError, CommandError,
             GateError, ReceiptError, OSError) as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)

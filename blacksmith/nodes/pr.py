@@ -71,6 +71,8 @@ def open_pull_request(
     remote: str = "origin",
     draft: bool = False,
     runner: Runner = subprocess_runner,
+    candidate_commit: str | None = None,
+    before_effect: Callable[[], Any] | None = None,
 ) -> PullRequest:
     """Push ``branch`` to ``remote`` and open a PR via ``gh``; return its URL.
 
@@ -79,7 +81,13 @@ def open_pull_request(
     """
     worktree = Path(worktree_path)
 
-    push = runner(["git", "push", "-u", remote, branch], worktree)
+    if candidate_commit is not None and not re.fullmatch(
+            r"[0-9a-f]{40}|[0-9a-f]{64}", candidate_commit):
+        raise PRError("invalid exact publication candidate")
+    if before_effect:
+        before_effect()
+    refspec = candidate_commit + ":refs/heads/" + branch if candidate_commit else branch
+    push = runner(["git", "push", "-u", remote, refspec], worktree)
     if push.returncode != 0:
         raise PRError(f"git push failed: {push.stderr.strip() or push.stdout.strip()}")
 
@@ -88,6 +96,8 @@ def open_pull_request(
         argv += ["--base", base]
     if draft:
         argv += ["--draft"]
+    if before_effect:
+        before_effect()
     created = runner(argv, worktree)
     if created.returncode != 0:
         raise PRError(f"gh pr create failed: {created.stderr.strip() or created.stdout.strip()}")
@@ -144,6 +154,15 @@ def _open_pr(
             "status": Status.HALTED,
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
+    from blacksmith.contract import ContractError
+    from blacksmith.gate import GateError
+    from blacksmith.publication_approval import ApprovalError, hold
+    from blacksmith.publication_approval import verify as verify_approval
+    from blacksmith.run_context import RunContextError
+    try:
+        approved = verify_approval(state, draft=draft)
+    except (ApprovalError, GateError, ContractError, RunContextError) as exc:
+        return hold(state, exc, node=node)
     if state.get("run_context") or state.get("state_version") is not None:
         from blacksmith.integration import verify_final_gate
         verify_final_gate(state)
@@ -191,13 +210,21 @@ def _open_pr(
             base=state.get("default_branch"),
             draft=draft,
             runner=runner,
+            candidate_commit=approved["candidate_commit"] if approved else None,
+            before_effect=lambda: verify_approval(state, draft=draft),
         )
+    except (ApprovalError, GateError, ContractError, RunContextError) as exc:
+        out = hold(state, exc, node=node)
+        if cost_events:
+            out["cost_events"] = cost_events
+        return out
     except PRError as exc:
         out: dict = {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
         if cost_events:
             out["cost_events"] = cost_events
         return out
-    out = {"pr_url": pr.url, "status": done}
+    out = {"pr_url": pr.url, "status": done,
+           "pending_qa_unit": approved["pending_qa_unit"] if approved else None}
     if cost_events:
         out["cost_events"] = cost_events
     return out

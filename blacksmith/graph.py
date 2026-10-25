@@ -35,7 +35,7 @@ from blacksmith.executor import Executor
 from blacksmith.gate import FixResult, GateError, GateResult
 from blacksmith.gate_receipts import FixReceipt, GateCommandReceipt, GateLayerReceipt, GateReceipt
 from blacksmith.memory import current_store, record_lesson
-from blacksmith.nodes.hitl import approve_plan, approve_pr
+from blacksmith.nodes.hitl import approve_plan, approve_pr, prepare_pr_approval
 from blacksmith.nodes.implement import implement as implement
 from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
@@ -185,6 +185,10 @@ def prepare_worktree(
     update: dict = {
         "unit_graph_version": 1,
         "review_version": 1,
+        "approval_version": 1,
+        "pr_approval_round": 0,
+        "pr_approval_proposal": None,
+        "pr_approval": None,
         "join_graph_version": 1,
         "prepared_level": None,
         "level_bases": {},
@@ -878,8 +882,9 @@ def route_after_approve_plan(state: BlacksmithState) -> str:
 
 def route_after_approve_pr(state: BlacksmithState) -> str:
     """Proceed only on PR approval; a rejection halts (PRD §5: never auto-merge)."""
-    return ("open_pr" if state.get("status") != Status.HALTED
-            and state.get("approvals", {}).get("pr") else "human_halt")
+    if state.get("status") == Status.HALTED or state.get("approvals", {}).get("pr") is not True:
+        return "human_halt"
+    return "open_draft_pr" if state.get("publication_draft") else "open_pr"
 
 
 def _route_or_halt(next_node: str) -> Callable[[BlacksmithState], str]:
@@ -909,7 +914,7 @@ def route_after_implement(state: BlacksmithState) -> str:
     prd = state.get("prd")
     unit = state.get("selected_unit")
     if prd is not None and unit is not None and prd.contract.gate_for(unit) == "human":
-        return "open_draft_pr"
+        return "final_gate"
     return "auto_fix"
 
 
@@ -1076,10 +1081,7 @@ def route_after_join(state: BlacksmithState) -> str:
 def route_after_final_gate(state: BlacksmithState) -> str:
     if state.get("status") == Status.HALTED:
         return "human_halt"
-    unit = state.get("selected_unit")
-    if unit and state.get("prd") and state["prd"].contract.gate_for(unit) == "human":
-        return "open_draft_pr"  # Exact-SHA approval for this route is S13.
-    return "approve_pr"
+    return "prepare_pr_approval"
 
 
 def route_after_unit(state: BlacksmithState) -> str:
@@ -1103,7 +1105,7 @@ def route_after_unit(state: BlacksmithState) -> str:
 # --- assembly ----------------------------------------------------------------
 
 
-def _open_pr_node(fn, pr_runner: Runner | None, executor: Executor | None = None):
+def _open_pr_node(fn, pr_runner: Runner | None, executor: Executor | None = None, *, draft=False):
     """Bind a PR node's command runner (default subprocess; fake in tests) AND the run's
     executor at build time. ``executor`` (WU-PR-SUMMARY-WIRE) is the SAME instance already
     constructed by ``build_graph_for`` — no separate wiring — and drives the additive,
@@ -1117,6 +1119,12 @@ def _open_pr_node(fn, pr_runner: Runner | None, executor: Executor | None = None
         if executor is not None:
             kwargs["executor"] = executor
         with command_scope_for_state(state, fn.__name__):
+            from blacksmith.publication_approval import ApprovalError, hold
+            from blacksmith.publication_approval import verify as verify_approval
+            try:
+                verify_approval(state, draft=draft)
+            except (ApprovalError, GateError, ContractError, RunContextError) as exc:
+                return hold(state, exc, node=fn.__name__)
             if state.get("run_context") or state.get("state_version") is not None:
                 from blacksmith.integration import final_gate, verify_final_gate
                 try:
@@ -1266,10 +1274,11 @@ def build_graph(
     graph.add_node("integration_gate", _node_with(integration_gate, gate=gate))
     graph.add_node("advance_joined_level", _node_with(advance_joined_level))
     graph.add_node("final_gate", _node_with(final_gate, gate=gate))
+    graph.add_node("prepare_pr_approval", _node_with(prepare_pr_approval, hitl=hitl))
     graph.add_node("next_unit", _node_with(next_unit))
     graph.add_node("approve_pr", _node_with(approve_pr, hitl=hitl))
     graph.add_node("open_pr", _open_pr_node(open_pr, pr_runner, executor))
-    graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner, executor))
+    graph.add_node("open_draft_pr", _open_pr_node(open_draft_pr, pr_runner, executor, draft=True))
     graph.add_node("human_halt", human_halt)
     graph.add_node(
         "cleanup_worktree",
@@ -1297,12 +1306,14 @@ def build_graph(
     graph.add_conditional_edges("advance_joined_level", route_after_next_unit)
     graph.add_conditional_edges(
         "final_gate", route_after_final_gate,
-        {"approve_pr": "approve_pr", "open_draft_pr": "open_draft_pr", "human_halt": "human_halt"},
+        {"prepare_pr_approval": "prepare_pr_approval", "human_halt": "human_halt"},
     )
+    graph.add_conditional_edges("prepare_pr_approval", _route_or_halt("approve_pr"),
+                                {"approve_pr": "approve_pr", "human_halt": "human_halt"})
     graph.add_conditional_edges(
         "approve_pr",
         route_after_approve_pr,
-        {"open_pr": "open_pr", "human_halt": "human_halt"},
+        {"open_pr": "open_pr", "open_draft_pr": "open_draft_pr", "human_halt": "human_halt"},
     )
     graph.add_edge("open_pr", "cleanup_worktree")
     # A human-gated unit's draft PR is terminal too: cleanup keeps the branch (pr_url set).

@@ -41,6 +41,7 @@ EXPECTED_NODES = {
     "prepare_worktree",
     "execute_unit",
     "approve_pr",
+    "prepare_pr_approval",
     "open_pr",
     "human_halt",
 }
@@ -149,7 +150,7 @@ def test_route_after_implement_uses_layer_gate():
     assert route_after_implement({"prd": prd, "selected_unit": auto_unit}) == "auto_fix"
     # A human-gated unit that implemented successfully opens a DRAFT PR for QA (WU-QA-WIRING),
     # rather than discarding its work via human_halt.
-    assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "open_draft_pr"
+    assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "final_gate"
     # ...but a FAILED implement (status HALTED) still discards the work via human_halt.
     assert (
         route_after_implement({"prd": prd, "selected_unit": human_unit, "status": Status.HALTED})

@@ -101,7 +101,8 @@ def dispatch(state):
             or sealed["recovery_fingerprints"] != state["recovery_fingerprints"]):
         raise RecoveryError("recovery transition differs from critical amendment")
     for field in ("join_recovery", "join_generations", "join_destinations",
-                  "join_cursor", "join_complete"):
+                  "join_cursor", "join_complete", "pr_approval_round",
+                  "pr_approval_proposal", "pr_approval"):
         if field in sealed and state.get(field) != sealed[field]:
             raise RecoveryError("join recovery differs from critical amendment")
     key = queue[0] if queue else "__run__"
@@ -415,6 +416,10 @@ def _prepare(
     if rejection and not (retry_stage or continue_attempt):
         gate = "plan" if approvals.get("plan") is False else "pr"
         patch.update(recovery_target="approve_" + gate, approvals={**approvals, gate: False})
+        if gate == "pr":
+            patch.update(recovery_target="prepare_pr_approval",
+                         pr_approval_round=root.get("pr_approval_round", 0) + 1,
+                         pr_approval_proposal=None, pr_approval=None)
     elif not root.get("worktree_path"):
         if not continue_attempt and not add_budget_usd:
             raise RecoveryError("planning recovery requires --continue-attempt")

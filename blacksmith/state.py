@@ -182,6 +182,12 @@ class BlacksmithState(UnitAttemptState, total=False):
     run_context: dict[str, Any]
     unit_graph_version: int
     review_version: int
+    approval_version: int
+    pr_approval_round: int
+    pr_approval_proposal: dict[str, Any] | None
+    pr_approval: dict[str, Any] | None
+    publication_draft: bool
+    pending_qa_unit: dict[str, Any] | None
     unit_mode: str
     unit_initialized: bool
     unit_human: bool

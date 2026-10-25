@@ -11,8 +11,10 @@ capture/inspection, explicit stage amendments, sealed-effect reconciliation and
 repair diagnostics are implemented; final S11 verification is in the evidence record.
 S12 adds [cumulative patch reviews and typed decisions](docs/heavy-prd-reviews.md):
 any panel blocker blocks, unavailable review halts, and disabled review is reported
-as disabled. Exact-SHA approval/publication, global admission and scale bounds remain
-later slices; local test results do not satisfy the unrun live release gates.
+as disabled. S13 adds [exact-candidate PR approval](docs/heavy-prd-approval.md) for
+normal and terminal-QA draft publication, retained decisions and QA exit code 2.
+Remote publication reconciliation, global admission and scale bounds remain later
+slices; local test results do not satisfy the unrun live release gates.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

@@ -1,0 +1,88 @@
+...................F......F..F........                                   [100%]
+=================================== FAILURES ===================================
+__________________ test_route_after_implement_uses_layer_gate __________________
+
+    def test_route_after_implement_uses_layer_gate():
+        prd = parse_prd(VENDORED_PRD)
+        auto_unit = prd.contract.work_unit_by_id("WU-01")  # py-logic -> auto
+        human_unit = prd.contract.work_unit_by_id("WU-06")  # py-logic + integration -> human
+        # An auto-gated unit routes through the deterministic auto_fix step on its way to the gate.
+        assert route_after_implement({"prd": prd, "selected_unit": auto_unit}) == "auto_fix"
+        # A human-gated unit that implemented successfully opens a DRAFT PR for QA (WU-QA-WIRING),
+        # rather than discarding its work via human_halt.
+>       assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "open_draft_pr"
+E       AssertionError: assert 'final_gate' == 'open_draft_pr'
+E         
+E         - open_draft_pr
+E         + final_gate
+
+tests/test_graph.py:152: AssertionError
+______________ test_human_gated_unit_opens_draft_pr_and_awaits_qa ______________
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t15-approval-wiring-01/test_human_gated_unit_opens_dr0')
+
+    def test_human_gated_unit_opens_draft_pr_and_awaits_qa(tmp_path):
+        # gate_cmd="false" would FAIL if the automated gate ever ran — it must not.
+        repo = _target_repo(tmp_path, gate_cmd="false")
+        gh = _recording_gh("https://github.com/owner/demo/pull/5")
+        gate = RecordingGate()
+        graph, saver = _wire(tmp_path, repo, gh=gh, gate=gate)
+        approver = _approver()
+    
+        final = drive(graph, _write_prd(tmp_path, _HUMAN), approver=approver, thread_id="qa")
+    
+        # (1) a DRAFT PR was opened for the shared branch.
+        creates = _pr_creates(gh)
+>       assert len(creates) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/test_human_qa.py:289: AssertionError
+_____________ test_qa_only_unit_with_no_diff_still_opens_draft_pr ______________
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t15-approval-wiring-01/test_qa_only_unit_with_no_diff0')
+
+    def test_qa_only_unit_with_no_diff_still_opens_draft_pr(tmp_path):
+        """The real-world failure that tore runs down: an auto unit builds the code, then a
+        dependent manual-QA unit produces NO diff (there is nothing to implement). The run must
+        still open a draft PR for the auto unit's work and end AWAITING_QA — not halt on
+        "implement produced no file changes". The QA unit's implement is skipped entirely
+        (no executor call, no wasted spend, no risk of re-editing the committed code)."""
+        # gate_cmd="false" would FAIL if the auto gate ever ran for the QA unit — it must not.
+        # WU-CODE's own gate runs on the real run_gate, so use a passing command for it.
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        gh = _recording_gh("https://github.com/owner/demo/pull/9")
+        executor = CodeThenQAExecutor()
+        graph, saver = _wire(tmp_path, repo, gh=gh, executor=executor)
+        approver = _approver()
+    
+        final = drive(graph, _write_prd(tmp_path, _TERMINAL_QA), approver=approver, thread_id="qaonly")
+    
+        # The run parked the human-gated WU-B behind a draft PR with WU-A's committed code.
+        assert final.values["status"] == Status.AWAITING_QA, final.values.get("errors")
+        creates = _pr_creates(gh)
+        assert len(creates) == 1 and "--draft" in creates[0]
+        body = _create_arg(creates[0], "--body")
+        assert "WU-A" in body and "WU-B" in body  # auto code + the QA unit being verified
+        # WU-A passed its gate; the human-gated WU-B is reported awaiting QA, not as a gate
+        # failure — the verification line must not under-count (the fix for the review on #86).
+        assert "awaiting QA" in body
+        # The human-gated unit never reached the executor: no implement prompt for a qa layer.
+        assert executor.implement_prompts  # the auto unit WAS implemented
+        assert not any("Layers: qa" in p for p in executor.implement_prompts)
+        # The branch is preserved for the draft PR.
+        branch = final.values["branch"]
+        assert branch and branch in _branches(repo, branch)
+>       assert approver.gates == ["plan"]  # QA happens on the draft PR, not via an approval gate
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert ['plan', 'pr'] == ['plan']
+E         
+E         Left contains one more item: 'pr'
+E         Use -v to get more diff
+
+tests/test_human_qa.py:376: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_graph.py::test_route_after_implement_uses_layer_gate - Asse...
+FAILED tests/test_human_qa.py::test_human_gated_unit_opens_draft_pr_and_awaits_qa
+FAILED tests/test_human_qa.py::test_qa_only_unit_with_no_diff_still_opens_draft_pr
+3 failed, 35 passed in 9.21s

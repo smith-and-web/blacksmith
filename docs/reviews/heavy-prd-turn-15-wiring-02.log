@@ -1,0 +1,73 @@
+...........................................FF...F.FF...                  [100%]
+=================================== FAILURES ===================================
+___________________ test_node_passes_default_branch_as_base ____________________
+
+    def test_node_passes_default_branch_as_base():
+        # The open_pr node reads the target repo's default branch from state (seeded by
+        # prepare_worktree from [target].default_branch) and opens the PR against it.
+        runner = _recording_runner(gh_url="https://github.com/o/r/pull/12")
+        open_pr(
+            {"selected_unit": _unit(), "worktree_path": "/tmp/wt", "default_branch": "master"},
+            runner=runner,
+        )
+>       create = runner.calls[1]
+                 ^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests/test_pr.py:149: IndexError
+_________________ test_node_without_default_branch_omits_base __________________
+
+    def test_node_without_default_branch_omits_base():
+        # A graph compiled without default_branch (e.g. tests) leaves it unset — no --base, so
+        # gh falls back to the repo default exactly as before.
+        runner = _recording_runner(gh_url="https://github.com/o/r/pull/13")
+        open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+>       assert "--base" not in runner.calls[1]
+                               ^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests/test_pr.py:158: IndexError
+____________________ test_node_success_sets_pr_url_and_done ____________________
+
+    def test_node_success_sets_pr_url_and_done():
+        runner = _recording_runner(gh_url="https://github.com/o/r/pull/9")
+        out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+>       assert out["pr_url"] == "https://github.com/o/r/pull/9"
+               ^^^^^^^^^^^^^
+E       KeyError: 'pr_url'
+
+tests/test_pr.py:185: KeyError
+___________________________ test_node_pr_error_halts ___________________________
+
+    def test_node_pr_error_halts():
+        runner = _recording_runner(gh_rc=1)
+        out = open_pr({"selected_unit": _unit(), "worktree_path": "/tmp/wt"}, runner=runner)
+        assert out["status"] == Status.HALTED
+>       assert "gh pr create" in out["errors"][0]["message"]
+E       AssertionError: assert 'gh pr create' in 'publication requires explicit PR approval'
+
+tests/test_pr.py:199: AssertionError
+____________ test_node_with_executor_synthesizes_title_and_summary _____________
+
+    def test_node_with_executor_synthesizes_title_and_summary():
+        runner = _recording_runner(gh_url="https://github.com/o/r/pull/20")
+        executor = _FakeSummaryExecutor(title="Add scaffold", summary="Adds the initial scaffold.")
+        out = open_pr(
+            {"selected_unit": _unit(), "worktree_path": "/tmp/wt"},
+            runner=runner,
+            executor=executor,
+        )
+>       assert out["status"] == Status.DONE
+E       AssertionError: assert <Status.HALTED: 'halted'> == <Status.DONE: 'done'>
+E         
+E         - done
+E         + halted
+
+tests/test_pr.py:213: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_pr.py::test_node_passes_default_branch_as_base - IndexError...
+FAILED tests/test_pr.py::test_node_without_default_branch_omits_base - IndexE...
+FAILED tests/test_pr.py::test_node_success_sets_pr_url_and_done - KeyError: '...
+FAILED tests/test_pr.py::test_node_pr_error_halts - AssertionError: assert 'g...
+FAILED tests/test_pr.py::test_node_with_executor_synthesizes_title_and_summary
+5 failed, 50 passed in 13.46s

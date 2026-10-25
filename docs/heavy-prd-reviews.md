@@ -101,8 +101,10 @@ covers artifact repair and uncertain native effects.
 The S12 crash drills use real Git, SQLite, unit graphs and native gates, replacing
 paid transport. They cover exits before decision sealing, after a critical seal
 but before the artifact, and after the receipt but before the node checkpoint.
-These are offline proofs. Exact-SHA human approval/publication reconciliation,
-global budgets/deadlines, scale scheduling and the authorized live canary remain
-later release gates. A separate large-PR combined-diff display bug found during
-S12 verification is recorded for S13; the full reviewer artifact/tool path already
-handles patches larger than the native command-log cap.
+These are offline proofs. S13 adds [exact-SHA human approval](heavy-prd-approval.md)
+for normal and terminal-QA draft publication. Its independent PR diff preview now
+uses a complete private artifact plus bounded display, fixing the large-PR command
+stdout truncation bug found during S12 verification. Remote publication
+reconciliation, global budgets/deadlines, scale scheduling and the authorized live
+canary remain later release gates. Both patch paths handle data larger than the
+native command-log cap without claiming a truncated preview is a complete patch.
