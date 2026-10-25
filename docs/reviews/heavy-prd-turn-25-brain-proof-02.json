@@ -1,0 +1,17 @@
+{
+  "checkpoint": "S01-S18 accepted; corrected85fb50e full1414 LIVE20455/25554/25555; both fixture archives/cleanup completed; scope134 and Ruff passed",
+  "feedback": "positive once with top-snippet qualification",
+  "goal_turn": 25,
+  "index_wait_seconds_at_least": 70,
+  "invalid_frontmatter_count": 0,
+  "last_run_errors": 0,
+  "lint_log_sha256": "933cb517d6843f652c47c4d305c52e7bc30e39b3ebf8d92f49c9fe53c0e67621",
+  "new_live_status_verified_in_note": true,
+  "path": "Projects/blacksmith.md",
+  "recorded_at": "2026-10-25T08:19:14.634333-03:00",
+  "semantic_note_rank": 1,
+  "semantic_request_id": "0f9739a7-0360-4b7f-b025-227d6c0be121",
+  "targeted_lint": "0 errors/0 warnings; terminal0",
+  "top_snippet_is_historical": true,
+  "whole_note_equality": true
+}

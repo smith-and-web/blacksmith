@@ -134,14 +134,18 @@ or cleanup job live; final full20455 is the only live job.
 
 Brain Projects/blacksmith.md updated via MCP, lint0/0, indexing errors0/invalid0
 after70s, rank1 semantic retrieval/whole-note equality/one feedback; proof
-turn25-brain-proof-01.json. Refresh latest brain checkpoint to this final launch.
+turn25-brain-proof-01.json. Latest launch checkpoint now verified by targeted lint,
+index errors0/invalid0 after70s and exact whole-note read/retrieval;
+turn25-brain-proof-02.json. Top snippet is historical; fresh note matches live20455.
 Next: observe full20455 to terminal; verify all exact identities/receipts and1414
 pass with no hidden failures/skips/xfails. If it fails, preserve failed root/log and
 fix the cause without weakening assertions; rerun only after terminal evidence and
 new frozen identity. Then final Ruff if source changes, update acceptance matrix/
 checklist, commit local evidence and complete goal only when required local work
 is done. Live human contract review/paid canary/Docker enablement gates remain unrun.
-At30 stop/save exact completed/outstanding/results/live-job/next-action handoff and
+Implementation85fb50e and documentation/evidence14374e1 committed locally; original
+inputs remain untracked. Full20455 is the only live job. At30 stop/save exact
+completed/outstanding/results/live-job/next-action handoff and
 pause unfinished goal; never reset/resume automatically.
 
 ## Historical turn25 verified wait and terminal-status discovery
