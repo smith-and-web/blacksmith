@@ -426,12 +426,27 @@
     }
   ],
   "collected_count_not_a_pass": 1414,
-  "completion_status": "unproven until full1414 exit0 and unchanged exact identities; Ruff already passed on exact source",
+  "completion_status": "incomplete: R02 paid summary omits full contract; isolated correction/scoped verification pending; full1414 on85fb50e cannot accept newer source",
   "final_command_receipt": "heavy-prd-turn-25-full-command-01.json",
   "final_full_handle": 20455,
   "frozen_environment": "heavy-prd-turn-25-environment-01.json",
   "goal_turn": 26,
   "implementation_revision": "85fb50e5f6da462ee5c51962c51af994fa100e8c",
+  "new_gap": {
+    "baseline": "heavy-prd-turn-26-summary-baseline-01.log",
+    "baseline_sha256": "d5589c8db947965028a4d07a30b3308d42fd27d6723f4ae6f06739e69ef9d270",
+    "candidate_revision": "66beb2ab347ca4ad265d273db90135f108f0b855",
+    "candidate_scope": "only nodes/pr.py and new test_summary_requirements.py;5 new cases",
+    "collection": "1419 tests collected/2.47s in summary-stage;176 sources; not a pass",
+    "isolated_stage": "/private/tmp/blacksmith-heavy-prd-summary-stage",
+    "path": "blacksmith/nodes/pr.py::_summary_prompt",
+    "production_callsite_audit": "all direct paid-role invocations inspected; summary was the only missing shared full-context renderer",
+    "requirement": "R02",
+    "result": "1 failed in18.93s; terminal exit1; actual full-contract assertion missing after real local pipeline",
+    "slice": "S02 reopened",
+    "transfer_status": "not transferred; primary20455 full live/frozen",
+    "verification": "broad72/854.27s then exact-final25/113.42s terminal0; Ruff-final02 pass; post-hook176-source/config/input/65-distribution identity verified; source record turn26-summary-source-01.json"
+  },
   "original_spec_sha256": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
   "recorded_at": "2026-10-25T08:26:08.975569-03:00",
   "requirements": [
@@ -517,7 +532,7 @@
           "sha256": "70a777be27c6b06bed9a0dc18ec9e65efc60ce1ac5af4c5b75e29656245c149f"
         }
       ],
-      "status": "inspected production wiring and collected regressions; exact terminal full pending"
+      "status": "reopened: summary context baseline counterexample; isolated correction not accepted"
     },
     {
       "id": "R03",

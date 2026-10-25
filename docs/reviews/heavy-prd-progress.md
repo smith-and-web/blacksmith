@@ -4,7 +4,7 @@
 - Goal turn: 26 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
 - Previous-turn classification: progress; accepted exact full1398/S16-S18, reproduced/fixed fresh and cached terminal-policy gaps, scoped134/Ruff passed, committed85fb50e/d3ebcd4, archived and safely removed completed fixtures, launched final full1414 once on frozen175-source/runtime identity.
-- Current turn: 26; automatic continuation increments25->26 once. Objective/instructions/memory/brain reread; final full20455 positively live via tool and PIDs25554/25555 at4:29 elapsed; log5% plus24 markers, no reported failure. Keep all175 Python sources/JS/helper/config/original inputs/runtime frozen. S01-S18 accepted, S19 pending final full1414/acceptance closeout. Never increment/reset on compaction/status/tools; stop implementation/save precise handoff/pause unfinished at30.
+- Current turn: 26; automatic25->26 increment once. Full20455 positively live on frozen85fb50e/175-source/runtime identity, past66% at38:24 with no failure markers. S02 reopened for paid summary full context; isolated2-file fix committed66beb2a, broad72/854.27s then exact-final25/113.42s/Ruff pass;176 sources unchanged after hooks,1419 collected. Source/patch proof turn26-summary-source-01.json. No primary source transfer until full terminal; later corrected full1419 still required. Preserve counter through compaction/tools/status; at30 save exact handoff and pause unfinished.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -36,7 +36,7 @@
 ## Implementation checklist (dependency order)
 
 - [x] S01: Path policy and implement guard.
-- [x] S02: Shared requirements and plan context.
+- [ ] S02: Shared requirements and plan context; reopened for full immutable PR-summary context.
 - [x] S03: Immutable run context, paths, preflight and locks.
 - [x] S04: Transactional operation journal.
 - [x] S05: Checked bounded command and Git execution.
@@ -59,13 +59,35 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn26; final full1414 positively live, source85fb50e frozen
+## Current handoff: turn26; full1414 live, S02 summary-context gap reopened in isolation
 
 Counter **26/30**, incremented25->26 once on this automatic continuation.
 Previous turn was progress. Primary implementation85fb50e5f6da462ee5c51962c51af994fa100e8c;
 documentation/evidence HEADd3ebcd4f6229491dbcfd65315d6f38c7290d3384, original spec/
-probe unchanged/untracked. S01-S18 accepted; S19 unchecked pending final exact full
-and requirement-by-requirement closeout. Full **20455** positively polled live and
+probe unchanged/untracked. S01 and S03-S18 accepted locally; S02 reopened and S19
+unchecked. Requirement audit found paid PR-summary still reads mutable state prose
+and omits full contract. Actual CLI/Git/gate/SQLite baseline78646 terminal1,
+1 failed/18.93s at exact full-contract assertion; raw receipt turn26-summary-
+baseline-01.log retained. Isolated /private/tmp/blacksmith-heavy-prd-summary-stage,
+branch feature/heavy-prd-summary-context-staging, baseline85fb50e; only nodes/pr.py
+plus new test_summary_requirements.py change. Summary now uses shared immutable
+renderer; same call class/caps, possibly more input tokens, no duplicated prose.
+Five new cases cover both shapes/normal+QA publication and mutated in-memory PRD.
+Scope43628 terminal0:72 passed/854.27s, no warnings/skips/xfails. Final prompt
+wording clarifies pending human QA and strengthened cached-prompt identity check;
+final25 scope72617 terminal0:25 passed/113.42s, Ruff-final02 passed.
+Stage collection confirms1419 tests,176 Python sources; final post-hook identity
+record turn26-summary-source-01.json proves all sources/config/original inputs/
+65 distributions/Python3.12.13/SQLite3.53.1. Candidate66beb2ab347ca4ad265d273db90135f108f0b855
+is committed in isolation,2-file delta baseline85fb50e exported to
+turn26-summary-feature.patch. Primary source remains frozen/unmodified. Every production
+paid-role call site was inspected: planner/critic reuse the full-context system
+prompt; both implement tiers/retries and review append the shared renderer.
+PR summary was the missing role. Do not transfer/edit primary source until
+full20455 terminal. Even a passing1414 cannot
+complete goal: correction needs checked transfer, fresh identity and full1419
+(collection still to verify). Remaining required work stays in original scope.
+ Full **20455** positively polled live and
 PIDs25554/25555 confirmed at4:29 elapsed this turn. Source/config/runtime remain
 frozen in **turn25-environment-01.json**; command/PIDs/terminal/after-identity receipt
 **turn25-full-command-01.json**, log **turn25-pytest-full-01.log**. Same command/root:
@@ -77,6 +99,11 @@ maps all12 requirements/19 slices/21 matrix rows to frozen sources and collected
 regressions; each row still requires the terminal full result. Existing test bodies
 were sampled for actual sentinels, refusal before effects, cumulative patches,
 immutable recovery, owned process cleanup and exact candidate publication.
+Prepared but NOT executed: /private/tmp/blacksmith-heavy-prd-turn-26-archive-
+full1414.py and corresponding cleanup helper (require terminal0/unchanged old full,
+fresh no-owner proof, protected0/complete archive verification before cleanup);
+/private/tmp/blacksmith-heavy-prd-turn-26-full-supervisor.py expects later1419.
+No current fixture archive/cleanup starts while full20455 remains live.
 All archive/cleanup jobs terminal;
 full is the only live job. At30 stop implementation, retain live-job details and
 precise completed/outstanding/verification/next action, pause unfinished and do not

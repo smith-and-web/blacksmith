@@ -1,7 +1,7 @@
 # Heavy-PRD final acceptance audit
 
-Goal turn26/30. **Implementation remains unaccepted as a whole.** S01–S18 have
-local full-suite proof: full02 on539508be01b498749f6cb49c33c80b9d35047a04
+Goal turn26/30. **Implementation remains unaccepted as a whole.** S01 and S03–S18 have
+local full-suite proof; S02 is reopened for paid PR-summary context. Prior baseline: full02 on539508be01b498749f6cb49c33c80b9d35047a04
 ended exit0, **1398 passed/5 retained SDK advisories/5047.97s**, including actual
 100-chain and20-root/default2 cases. All174 source/config/input/runtime identities
 were unchanged before/after; turn24-environment-02.json and
@@ -24,7 +24,10 @@ belong in [the evidence ledger](heavy-prd-evidence.md).
 The [turn26 inventory](heavy-prd-turn-26-acceptance-inventory.json) maps all12
 requirements,19 slices and21 specification acceptance rows to existing production
 files and collected regression cases on the exact frozen175-source candidate.
-Its1414 collected cases are not passing results. Every row remains pending the
+The audit reproduced another R02 gap: summary narration omits the full contract
+and reads mutable state prose. Baseline1 failed/18.93s; isolated five-case correction
+is under verification. S02 is reopened; even a green current1414 cannot accept that
+newer source. Its1414 collected cases are not passing results. Every row remains pending the
 terminal full run, unchanged identities and this acceptance closeout. Sandbox and
 respond rows explicitly use the specification's permitted disabled alternatives.
 

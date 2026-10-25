@@ -20,9 +20,10 @@ accepted. [Bounded scheduling](docs/heavy-prd-scheduling.md) passed the integrat
 1,398-test suite, including the 100-unit chain and 20-root/default-two-worker cases.
 [Sandbox and respond are explicitly disabled](docs/heavy-prd-disabled-features.md)
 under the specification's permitted deferrals. [Observation and recovery reporting](docs/heavy-prd-observability.md)
-describe current preview limits and diagnostic behavior. S01–S18 are accepted locally;
-S19 remains open for terminal-status integrity, legacy cached-evidence migration
-and final combined verification. Local tests do not satisfy the live release gates.
+describe current preview limits and diagnostic behavior. S01 and S03–S18 are accepted
+locally. S02's paid-summary context is under correction after a full-contract audit
+regression; S19 remains open for complete acceptance and final combined verification.
+Local tests do not satisfy the live release gates.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
