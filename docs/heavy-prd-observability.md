@@ -1,8 +1,9 @@
 # Observations and retained evidence
 
-S19 is implemented under local verification. The [checklist](reviews/heavy-prd-progress.md)
-and [evidence ledger](reviews/heavy-prd-evidence.md) distinguish scoped results from
-the required final combined suite and unrun live release gates.
+S19 is locally accepted with the final1419-test/Ruff result. The
+[checklist](reviews/heavy-prd-progress.md) and
+[evidence ledger](reviews/heavy-prd-evidence.md) retain exact-source evidence and
+unrun live release gates.
 
 The operation journal, immutable requirements/plans, exact-candidate gate/review
 receipts, approvals and recovery manifests control execution. Live events, metrics,

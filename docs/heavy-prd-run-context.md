@@ -1,9 +1,10 @@
 # Version-2 run inputs and migration
 
-Heavy-PRD remediation is still in progress. This documents completed runtime
-slices, not a readiness release. The [implementation checklist](reviews/heavy-prd-progress.md) and
-[acceptance record](reviews/heavy-prd-evidence.md) identify the remaining work and
-unrun live gates.
+Heavy-PRD remediation S01-S19 is locally accepted on the feature branch. The
+[implementation checklist](reviews/heavy-prd-progress.md) and
+[acceptance record](reviews/heavy-prd-evidence.md) retain the exact1419-test/Ruff
+proof, migration/recovery evidence and unrun live release gates. Sandbox and
+respond use the permitted disabled alternatives; general release remains held.
 
 ## Preflight and selected source
 
@@ -465,8 +466,8 @@ command/tree intents. Unsealed unknown changes stop for inspection.
 This proves unit verifier integrity for the recorded commands. It does not prove
 the full natural-language test contract or publication approval. S10 adds merged/final
 coverage, and S12 records actual cumulative-patch reviews with honest fail-closed
-outcomes. S13-S19 and live release gates remain separate; full per-slice verification
-is recorded in the implementation evidence.
+outcomes. S13-S19 are locally accepted with final1419/Ruff proof in the
+implementation evidence. Live release gates remain unrun.
 
 ## Recovery artifacts and explicit restart
 

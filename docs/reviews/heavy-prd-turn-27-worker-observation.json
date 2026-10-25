@@ -1,0 +1,9 @@
+{
+  "at": "2026-10-25T11:27:49.205074-03:00",
+  "goal_turn": 27,
+  "full_status": "running",
+  "pytest_pid": 9012,
+  "worker_observation": "  PID  PPID  ELAPSED      TIME STAT\n 9007 82824 01:08:14   0:00.09 Ss  \n 9008  9007 01:08:14   0:00.04 S   \n 9012  9008 01:08:14  38:49.79 R   \n",
+  "monitor_only_terminated": true,
+  "full_not_restarted": true
+}

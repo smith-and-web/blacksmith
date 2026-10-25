@@ -1,6 +1,6 @@
 # Heavy-PRD acceptance evidence
 
-Implementation is incomplete. No live release gate has passed. The
+S01-S19 are locally accepted on1d68a64 at turn28/30. No live release gate has passed. The
 [final acceptance audit](heavy-prd-final-acceptance.md) traces production wiring,
 new configuration, migration, every specification matrix row and remaining gates.
 
@@ -47,24 +47,17 @@ new configuration, migration, every specification matrix row and remaining gates
 - Real Docker ownership/sentinel/timeout/restart smoke before sandbox enablement. NOT RUN. S17 implements the permitted enabled-config rejection and leaves execution disabled.
 - S18 implements the permitted explicit unsupported-until-hardened refusal; no actual revision workflow is claimed.
 
-## Final required local verification
+## Final local verification: accepted on turn28
 
-R02's paid PR-summary gap is corrected in **1d68a6492e53898c5011a24b9d14d771bad6275d**.
-The shared renderer now supplies exact frozen prose/full contract, and narration
-explicitly treats human QA as pending. No added call class/cap; input tokens can
-increase. Five new cases cover both scheduling shapes/normal+QA publication,
-changed source PRD, mutated in-memory PRD and stable cached-prompt identity.
-The real CLI/Git/gate/SQLite negative baseline failed1/18.93s; retained unchanged.
-Broad scope72/854.27s then exact-final25/113.42s and Ruff pass. Checked two-file
-transfer preserves174 other baseline Python files. All176 source/config/input/
-runtime identities match isolated66beb2a after both hooks; source/integration proof
-in turn26-summary-source-01.json and turn26-summary-integration.json.
-
-- Latest terminal full baseline: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t25-full-01`, **1414 passed,4 retained SDK advisory warnings in5466.74s (1:31:06)**, exit0. No failures/skips/xfails or warning filtering. Both actual100-chain and20-root/default2 pass. All175 source/JS/helper/config/input/65 distributions/Python3.12.13/SQLite3.53.1 match before/after. Source85fb50e; turn25-environment-01.json, turn25-full-command-01.json and turn26-full1414-terminal-proof.json. LogSHA3eb0a4c7b8223f4cfdc6315341f8df79cba36f1661e2f9715045209ccd599b47. This proves terminal-status/legacy-cache-policy changes, not the subsequent summary correction.
-- Current primary `uv run ruff check`: **passed**, turn26-ruff-primary-final-01.log. Collection **1419 tests/0.66s** passes; collection is not a full-suite pass. Current source1d68a64/176 files matches staged66beb2a exactly after hooks.
-- **Final corrected full1419 is running exactly once**, handle61391/supervisor9007/uv9008, frozen176-source/runtime record turn26-environment-01.json and terminal receipt turn26-full-command-01.json. Archive/cleanup completed;16.77GB free at freeze. S02/S19 remain unchecked pending terminal full/unchanged identities and closeout.
-- Prior accepted baseline1398/5 warnings/5047.97s on539508b remains valid historical S16/S17/S18 evidence, with complete174-source/runtime proof in turn24-environment-02.json and turn24-full-command-02.json. It is not proof of later corrections.
-- Fresh SDK terminal subtype and legacy model-policy counterexamples, scoped134/347.66s and exact source175 provenance remain in turn25 records. The full1414 above now covers those same regressions; retained unsupported old receipts are inspectable, never retagged as proven.
+- Command `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t26-full-01`: **1419 passed, 7 warnings in 5207.92s (1:26:47)**, terminal0. Both actual100-unit chain and20-root/default2-worker cases pass. No skips/xfails/warning filtering. Receipt [turn26-full-command-01](heavy-prd-turn-26-full-command-01.json), [log](heavy-prd-turn-26-pytest-full-01.log), [environment](heavy-prd-turn-26-environment-01.json), [exact-source audit](heavy-prd-turn-28-final-audit.json).
+- Full log SHA-256: `acfd2d478ee88cf1cd2e2b7cbf8a2958c2330cd05503aff7dd46b8475778517f`. All176 Python sources, JS probe, supervisor, config/original inputs,65 installed distributions, Python3.12.13 and SQLite3.53.1 match before/after/current state. Original spec/probe remain unchanged/untracked/unstaged.
+- `uv run ruff check`: **All checks passed!** [Exact-source log](heavy-prd-turn-26-ruff-primary-final-01.log). No Python/JS/config/dependency change followed this check or the full freeze; documentation-only closeout does not invalidate it.
+- Seven retained SDK CanUseToolShadowedWarning advisories concern Read/Glob/Grep auto-approval during four parallel-cancellation modes. Write/Edit/NotebookEdit are not auto-approved and use default mode plus the callback. No warning suppression or live permission acceptance.
+- R02's real CLI/Git/gate/SQLite negative baseline remains **1 failed/18.93s**. Its checked two-file correction1d68a64 has broad72/854.27s, exact-final25/113.42s and all5 summary cases in the final1419 pass. No assertions were weakened; exact frozen requirements/cache identity/pending manual QA are verified.
+- The final inventory maps all12 requirements,19 slices and21 exact matrix rows;89 unique production/regression file references match frozen hashes. S02/S19 are now accepted. R10/R11 use only the explicit S17/S18 disabled alternatives; enabled implementations remain unaccepted.
+- Standalone inline-JS behavior probe passed in turn23; dashboard/probe sources have no diff between testedfbbd16c and final1d68a64. [Probe log](heavy-prd-turn-23-dashboard-final-04.log). No browser layout claim.
+- Prior full1414/4 warnings/5466.74s on85fb50e and full1398/5 warnings/5047.97s on539508b remain historical baselines, not substitutes for the final result. The former's verified archive/restore proof is retained in turn26-archive-full1414-proof.json; failed roots and original failed receipts are preserved.
+- Remaining release gates are explicit human contract review, authorized fixed10-dollar disposable paid canary, and real Docker smoke before future sandbox enablement. No gate is claimed passed. The turn13 unintended failed external push is disclosed below and in the final audit.
 
 ## Acceptance matrix tracking
 
@@ -85,12 +78,12 @@ in turn26-summary-source-01.json and turn26-summary-integration.json.
 | Restart after plan/commit/gate/join/push/create | S09–S11 real process exits cover plan/critic/SDK/commit/formatter/gate/squash/join/barrier; accepted S14 includes real-process scratch-remote push/create reconciliation with immutable GitHub fixtures |
 | Corrupt/missing/wrong manifest and concurrent resume | S03 locks/input checks plus S11 artifact/controller/repair/boundary tests refuse before executor; exact original checkpoints/receipts retained |
 | Distinct run/worker/branch identities | S03 real clone/path/branch tests pass |
-| 100-unit chain and 20 roots, max active 2 | S16 scoped passes with actual workers; final integrated full100/20 still required |
-| Exhaustion across all paid call classes, concurrent reservations | S15 accepted: atomic all-role grants, exact SDK option, unknown full charge, denied/started/overrun recovery and persistent totals; full1325/ruff and named S15 audit. Legacy respond awaits S18 explicit rejection/integration |
+| 100-unit chain and 20 roots, max active 2 | S16 scoped passes with actual workers; actual100/20 pass again in final1419 on1d68a64 |
+| Exhaustion across all paid call classes, concurrent reservations | S15 accepted: atomic all-role grants, exact SDK option, unknown full charge, denied/started/overrun recovery and persistent totals; full1325/ruff and named S15 audit. S18 explicitly refuses respond before effects |
 | Hanging command/children/large output and model timeout | S05 native bounded-group proof plus S15 actual installed-SDK local process groups, remaining deadlines, four parallel cancellation modes and partial receipts; full1325 passes |
 | Per-workspace sandbox sentinel, timeout, resume | S17 implements permitted enabled-config rejection, accepted in full1398; no enabled sandbox lifecycle claim; real Docker gate unrun |
 | Respond preserved feedback, synthetic unit, remote race/push failure | S18 implements permitted explicit unsupported-until-hardened error before effects, accepted in full1398; actual revision workflow deferred |
-| Optional observability/memory failure, critical journal failure | S19 optional-outage CLI/Git/gate/ledger scope9 passes, strict task/terminal scope11 and counter recovery2 pass; S04 critical transaction faults still halt before effects. Final combined suite pending. Historical turn13 unintended push failure is retained below |
+| Optional observability/memory failure, critical journal failure | S19 optional-outage CLI/Git/gate/ledger scope9 passes, strict task/terminal scope11 and counter recovery2 pass; S04 critical transaction faults still halt before effects. Final1419/Ruff passes. Historical turn13 unintended push failure is retained below |
 
 Contract schema edits require explicit human review before merge (spec §3.2). No merge is authorized or attempted. Legacy state-v1 execution must be refused without rewriting checkpoints; S03 legacy refusal/readability/no-rewrite proof passes; explicit terminal-stage recovery remains S11.
 
@@ -907,3 +900,23 @@ running verification job; all174 Python sources/config/inputs/runtime frozen at
 candidatefbbd16c. Goal active23/30; next automatic24, stop/save/pause at30 if
 unfinished. No live release gate is satisfied or successful external publication
 claimed. Historical turn13 failed-push exception retained.
+
+## Turn28 final closeout
+
+All19 slices and all21 exact specification matrix rows are accepted locally on
+1d68a64. The final audit checks89 unique source/regression references, frozen
+verification receipts, unchanged source/runtime/original inputs and the completed
+checklist. The brain hub Projects/blacksmith.md records completion and release
+holds; targeted lint0 errors/0 warnings, clean index after more than70 seconds,
+rank1 retrieval and exact full-note equality passed. See
+[brain proof](heavy-prd-turn-28-brain-proof.json) and
+[dashboard identity proof](heavy-prd-turn-28-dashboard-identity.json).
+
+No full test, archive or cleanup job remains live. The final closed fixture root
+/private/tmp/blacksmith-heavy-prd-t26-full-01 is retained; no extra cleanup is needed
+for this implementation. Original spec/probe remain unchanged and unstaged.
+The prepared [contract diff](heavy-prd-turn-27-contract-review.patch) awaits human
+review. Paid canary and Docker smoke remain unrun; enabled sandbox/respond work
+is deferred only under the specification's explicit alternatives. The turn13
+failed external-push exception remains disclosed, with its original receipt and
+subsequent suite-wide guards. No successful external publication is claimed.

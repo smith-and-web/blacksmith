@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
-- Goal status: active; implementation incomplete.
-- Goal turn: 27 / 30. Never reset this counter automatically.
+- Goal status: complete (local implementation); S01-S19 accepted; live release gates remain unrun.
+- Goal turn: 28 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; full1414 terminal0/4 warnings/5466.74s and exact175-source identity accepted as baseline; discovered/reproduced/fixed R02 summary context, scope72/final25/Ruff passed, committed1d68a64; verified/archived/removed old closed fixtures, launched final1419 once on frozen176-source/runtime identity; durable audits/docs/brain updated.
-- Current turn: 27; automatic26->27 increment once. Objective/instructions/memory/brain reread; final full61391 positively polled live and PIDs9007/9008 confirmed at13:50 elapsed. Every176-source/config/input/JS/helper/65-distribution/Python/SQLite identity matches frozen turn26-environment-01.json. S02/S19 pending terminal1419 and acceptance closeout; no source changes while full runs. Never increment/reset on compaction/status/tools; stop implementation/save precise handoff/pause unfinished at30.
+- Previous-turn classification: progress; compatibility and exact21-row acceptance audits retained, full1419 observed on frozen1d68a64 through both100-chain/20-root passes; same full terminal0 now independently confirmed with all before/after identities unchanged.
+- Current turn: 28; automatic27->28 increment exactly once. Full1419 terminal0/7 retained SDK warnings/5207.92s and Ruff pass; exact176-source/runtime/input identity unchanged. All19 slices/21 matrix rows accepted locally, docs refreshed and brain lint/index/retrieval/exact readback verified. Final local evidence commit/post-hook audit then goal completion; no live release gate claimed. Never reset/increment on tools, status questions or compaction.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -36,7 +36,7 @@
 ## Implementation checklist (dependency order)
 
 - [x] S01: Path policy and implement guard.
-- [ ] S02: Shared requirements and plan context; reopened for full immutable PR-summary context.
+- [x] S02: Shared requirements and plan context, including full immutable PR-summary context.
 - [x] S03: Immutable run context, paths, preflight and locks.
 - [x] S04: Transactional operation journal.
 - [x] S05: Checked bounded command and Git execution.
@@ -53,13 +53,47 @@
 - [x] S16: Bounded scheduling and recursion.
 - [x] S17: Sandbox ownership or explicit disabled-feature rejection.
 - [x] S18: Hardened respond or explicit unsupported-command error.
-- [ ] S19: Observability, docs and complete acceptance matrix.
+- [x] S19: Observability, docs and complete acceptance matrix.
 
 ## Acceptance and verification
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn27; final1419 positively live on frozen1d68a64
+## Final handoff: turn28; S01-S19 locally accepted
+
+Counter **28/30**, incremented27->28 once on this actual automatic continuation.
+Final implementation **1d68a6492e53898c5011a24b9d14d771bad6275d** on feature/heavy-prd-readiness.
+Full61391 is terminal0: **1419 passed, 7 warnings in 5207.92s (1:26:47)**. No skipped/xfail/filtering;
+actual100-chain and20-root/default2 cases pass. All176-source/JS/helper/config/
+original input/65-distribution/Python3.12.13/SQLite3.53.1 identities match before,
+after and current audit. All full test/archive/cleanup processes are terminal.
+Ruff passed on unchanged source. Exact command/terminal/environment/log evidence
+is in turn26-full-command-01.json, turn26-environment-01.json and
+turn26-pytest-full-01.log; final audit turn28-final-audit.json matches12 requirements,
+19 slices,21 exact spec rows and89 hashed production/regression references.
+
+All19 checklist entries are accepted locally. S17/S18 use only the explicitly
+permitted disabled alternatives; enabled sandbox/revision workflows remain
+unimplemented/unaccepted. General release is held for explicit human contract.py
+review (exact diff turn27-contract-review.patch prepared), authorized fixed10-dollar
+paid disposable canary, and real Docker smoke before future sandbox enablement.
+Original spec/probe remain unchanged/untracked/unstaged; original worktree untouched.
+Historical turn13 failed external-push exception remains disclosed with receipt and
+subsequent guards; no successful external publication or paid canary is claimed.
+
+Brain closeout is verified in turn28-brain-proof.json: lint0 errors/0 warnings,
+clean index after more than70 seconds, latest checkpoint retrieved at rank1, exact
+whole-note readback and positive feedback once. Dashboard/probe bytes match the
+actual tested baseline in turn28-dashboard-identity.json. This record is included in the local evidence closeout commit; the post-hook
+identity audit must match it before the goal status transition. No further
+implementation remains.
+
+Next release action (outside this goal): obtain explicit human review of the
+prepared contract diff, then separately authorize the fixed10-dollar canary.
+Sandbox stays disabled until separately authorized real Docker proof.
+At30 stop/save/pause any unfinished goal; never reset/resume automatically.
+
+## Historical turn27 handoff; final1419 was live on frozen1d68a64
 
 Counter **27/30**, incremented26->27 once on this automatic continuation. Previous
 turn was progress. Implementation **1d68a6492e53898c5011a24b9d14d771bad6275d**;
@@ -72,7 +106,10 @@ log **turn26-pytest-full-01.log**; durable command/PID/terminal/after-identity r
 **turn26-full-command-01.json**. Observe same handle; missing observer means inspect
 PIDs/receipt/log, never restart after timeout. Keep Python/JS/config/tests/helper/
 dependencies frozen. All prior tests/archive/cleanup handles terminal; this full
-is the only live job. No whole-goal acceptance yet; S02/S19 remain unchecked.
+is the only live job. Source-only compatibility audit confirms Contract v1 field
+names and uv.lock/pyproject.toml unchanged from dcc3bb5. Receipt
+turn27-compatibility-audit.json and exact turn27-contract-review.patch retained;
+human contract review remains NOT RUN. No whole-goal acceptance yet; S02/S19 remain unchecked.
 
 Next: observe full to terminal, verify exact1419 pass/no hidden skips/xfails plus
 unchanged exact identities, inspect final acceptance inventory's12 requirements/

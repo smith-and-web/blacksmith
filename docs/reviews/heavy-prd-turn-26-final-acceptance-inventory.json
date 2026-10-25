@@ -26,7 +26,7 @@
         }
       ],
       "required_result": "Planner, critic, implementer and reviewer receive correct context; all reads use snapshot cwd; no source checkout writes",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Prose-only requirement + approved-plan sentinel; index on/off; explicit other target"
     },
     {
@@ -40,7 +40,7 @@
         }
       ],
       "required_result": "All denied; source sentinel unchanged; policy error prevents gate/publication",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "`../`, relative symlink, absolute escape, notebook target, missing path, `.git/config`, PRD path rule, unknown tool"
     },
     {
@@ -54,7 +54,7 @@
         }
       ],
       "required_result": "Integration gate fails and no push/PR runner call occurs; both worker artifacts retained",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Parallel siblings individually green, combined red"
     },
     {
@@ -68,7 +68,7 @@
         }
       ],
       "required_result": "Unit fails; second layer executed; no publication",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Two auto layers: first green, second red"
     },
     {
@@ -87,7 +87,7 @@
         }
       ],
       "required_result": "New receipt is nonpassing; no stale success route",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "GateError after previous passing unit"
     },
     {
@@ -101,7 +101,7 @@
         }
       ],
       "required_result": "Final unit starts cheap, zero counters, no prior feedback, and receives its own review",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Sequential escalated/review-clean unit \u2192 parallel level \u2192 sequential unit"
     },
     {
@@ -125,7 +125,7 @@
         }
       ],
       "required_result": "Infrastructure/dirty failure, artifacts retained; no successful receipt for dirty/uncommitted tree",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Failing Git add/amend/reset/squash; fixer leaves edits; gate edits source"
     },
     {
@@ -144,7 +144,7 @@
         }
       ],
       "required_result": "Trusted toolchain unchanged; audit rejects candidate",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Agent edits toolchain to `true` or sandbox changes protected path"
     },
     {
@@ -163,7 +163,7 @@
         }
       ],
       "required_result": "No push; PR gate denied; recovery path retained",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Human terminal unit with `--approve plan`"
     },
     {
@@ -187,7 +187,7 @@
         }
       ],
       "required_result": "Offline validation error before any model call",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Human sibling/mid-DAG/mixed layer/human-only"
     },
     {
@@ -206,7 +206,7 @@
         }
       ],
       "required_result": "Unavailable/blocking respectively; no clean label or ordinary PR; same in parallel",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Review malformed/error/missing terminal result; one of three panelists blocking"
     },
     {
@@ -220,7 +220,7 @@
         }
       ],
       "required_result": "Full cumulative patch and base available; blocking survives until actually resolved",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Reviewer sees deletion-only bug and revision retaining earlier defect"
     },
     {
@@ -254,7 +254,7 @@
         }
       ],
       "required_result": "New process reconciles state; completed work not repeated; no duplicated commits/PRs; ambiguous model call is explicit",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Kill after plan 2, commit, worker gate, first cherry-pick, push, PR create"
     },
     {
@@ -278,7 +278,7 @@
         }
       ],
       "required_result": "Stop before spend or mutation; retain original evidence",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Corrupt manifest, missing workspace, wrong repo/config, concurrent same-run resume"
     },
     {
@@ -292,7 +292,7 @@
         }
       ],
       "required_result": "Distinct run/worker paths and remote branches",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Retry same unit IDs in different runs, IDs with same slug"
     },
     {
@@ -306,7 +306,7 @@
         }
       ],
       "required_result": "Completes without recursion failure; measured active workers never exceed 2",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "100-unit chain; 20 roots with bound 2"
     },
     {
@@ -335,7 +335,7 @@
         }
       ],
       "required_result": "No later paid call admitted; reservations correct; unknown usage consumes reservation; resume cannot reset totals",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Cost exhausted during plan/critic/implement/review/summary/respond, two concurrent admissions"
     },
     {
@@ -359,7 +359,7 @@
         }
       ],
       "required_result": "Deadline enforced, children terminated, bounded checkpoint/log size, artifacts recoverable",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Hanging gate with child process and large output; model timeout"
     },
     {
@@ -383,7 +383,7 @@
         }
       ],
       "required_result": "Each command sees only its own workspace; no shared clone mutation; timed-out command cannot write later",
-      "status": "exact final full1419 pending; disabled alternative only",
+      "status": "Locally accepted permitted disabled alternative; enabled feature unimplemented and unaccepted",
       "test": "Sandbox sentinel per sibling; timeout and resume"
     },
     {
@@ -402,7 +402,7 @@
         }
       ],
       "required_result": "Correct synthetic unit; original request preserved; no force-push; candidate retained",
-      "status": "exact final full1419 pending; disabled alternative only",
+      "status": "Locally accepted permitted disabled alternative; enabled feature unimplemented and unaccepted",
       "test": "Respond retry, first PRD unit human, remote advances, failed push"
     },
     {
@@ -426,17 +426,32 @@
         }
       ],
       "required_result": "Optional feature degrades visibly; critical failure halts before new effect",
-      "status": "exact final full1419 pending",
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity",
       "test": "Optional store/live/metrics failure; critical journal failure"
     }
   ],
   "baseline_terminal_proof": "heavy-prd-turn-26-full1414-terminal-proof.json",
   "collected_count_not_a_pass": 1419,
-  "completion_status": "final full1419 positively running; completion unproven until terminal0/unchanged identities and all requirements closed",
+  "completion_status": "S01-S19 locally accepted on terminal full1419/unchanged exact identities; R10/R11 only permitted disabled alternatives; live release gates unrun",
   "final_command_receipt": "heavy-prd-turn-26-full-command-01.json",
   "final_full_handle": 61391,
+  "final_verification": {
+    "acceptance_audit": "heavy-prd-turn-28-final-audit.json",
+    "distributions": 65,
+    "environment": "heavy-prd-turn-26-environment-01.json",
+    "full_log_sha256": "acfd2d478ee88cf1cd2e2b7cbf8a2958c2330cd05503aff7dd46b8475778517f",
+    "no_skips_xfails_or_warning_filtering": true,
+    "python": "3.12.13",
+    "ruff": "heavy-prd-turn-26-ruff-primary-final-01.log",
+    "scope": "Offline local acceptance; no live provider/permission/billing/GitHub/Docker release acceptance",
+    "source_count": 176,
+    "sqlite": "3.53.1",
+    "summary": "1419 passed, 7 warnings in 5207.92s (1:26:47)",
+    "terminal_exit": 0,
+    "terminal_receipt": "heavy-prd-turn-26-full-command-01.json"
+  },
   "frozen_environment": "heavy-prd-turn-26-environment-01.json",
-  "goal_turn": 26,
+  "goal_turn": 28,
   "implementation_revision": "1d68a6492e53898c5011a24b9d14d771bad6275d",
   "new_gap": {
     "baseline": "heavy-prd-turn-26-summary-baseline-01.log",
@@ -450,12 +465,12 @@
     "requirement": "R02",
     "result": "1 failed in18.93s; terminal exit1; actual full-contract assertion missing after real local pipeline",
     "slice": "S02 reopened",
-    "status": "corrected in1d68a64, scoped25/Ruff verified; full1419 still required",
-    "transfer_status": "checked2-file delta applied after full1414 terminal0; primary1d68a64 committed, all176 sources match stage66 after hooks; final corrected1419 pending",
+    "status": "Corrected in1d68a64; exact final full1419 now passes, including all5 summary-context regressions; original negative baseline retained",
+    "transfer_status": "Checked2-file delta applied after full1414 terminal0; primary1d68a64 committed, all176 sources match stage66 after hooks and final full before/after/current audits",
     "verification": "broad72/854.27s then exact-final25/113.42s terminal0; Ruff-final02 pass; post-hook176-source/config/input/65-distribution identity verified; source record turn26-summary-source-01.json"
   },
   "original_spec_sha256": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
-  "recorded_at": "2026-10-25T09:57:30.431799-03:00",
+  "recorded_at": "2026-10-25T14:40:16.443481-03:00",
   "requirements": [
     {
       "id": "R01",
@@ -495,7 +510,7 @@
           "sha256": "f5cf22c457f0d002ea205fead9a57d4bb10a0c78e116930cffd23fa8116bb5c8"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R02",
@@ -548,7 +563,7 @@
           "sha256": "bfd2ea0afe0c7e923bf114834038d376ab5b50f37870a27b7ae1cbf01327c041"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R03",
@@ -588,7 +603,7 @@
           "sha256": "edf62df32190198959f645e6f975b3f5c0babc129c2150a4b27c291338d80104"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R04",
@@ -628,7 +643,7 @@
           "sha256": "d5dc9762e8c58de80e678dea9240922ed796f5b5dea38c66aee055c5d20ce047"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R05",
@@ -664,7 +679,7 @@
           "sha256": "77d33f6d35e0e6aac9189bae7743b4783fffd2fde0c819872321728dc75f2ec5"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R06",
@@ -738,7 +753,7 @@
           "sha256": "c86e029c24dcc0149d3508aa206599b6eaefe8ad66d7dde6569549d14ade9d0c"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R07",
@@ -779,7 +794,7 @@
           "sha256": "b178fa7e034383c61a9595be60a12b3d6902a343d1e8782688992b7d8fb725c1"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R08",
@@ -867,7 +882,7 @@
           "sha256": "850972308dd75cfd6931dc1c2679f50c27c1bb6121526bfb70e94002a0f1e459"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R09",
@@ -912,7 +927,7 @@
           "sha256": "763c610ba17e5d856a42684b2413615328e1572f9b33088637c5c4c3b633526a"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     },
     {
       "id": "R10",
@@ -956,7 +971,7 @@
           "sha256": "2a522fff2bd42ab5850784a0143009c5ba9aefb630732d7c59111ec547de0969"
         }
       ],
-      "status": "permitted disabled alternative implemented; final full pending; enabled feature remains unimplemented and unaccepted"
+      "status": "Locally accepted permitted disabled alternative; enabled feature unimplemented and unaccepted"
     },
     {
       "id": "R11",
@@ -983,7 +998,7 @@
           "sha256": "ce16c020257805c791363f8c0385e0356e7e8c0ec110967a4115ebaee1f3ef24"
         }
       ],
-      "status": "permitted disabled alternative implemented; final full pending; enabled feature remains unimplemented and unaccepted"
+      "status": "Locally accepted permitted disabled alternative; enabled feature unimplemented and unaccepted"
     },
     {
       "id": "R12",
@@ -1050,9 +1065,30 @@
           "sha256": "da6a3a4e0410d7c60ff18638d788cd9c4d27ca2608dffa3cc08dd3a648e9c2c6"
         }
       ],
-      "status": "corrected production source; exact final full1419 pending"
+      "status": "Locally accepted on exact terminal1419 pass and unchanged source/runtime identity"
     }
   ],
+  "slice_acceptance": {
+    "S01": "Locally accepted",
+    "S02": "Locally accepted",
+    "S03": "Locally accepted",
+    "S04": "Locally accepted",
+    "S05": "Locally accepted",
+    "S06": "Locally accepted",
+    "S07": "Locally accepted",
+    "S08": "Locally accepted",
+    "S09": "Locally accepted",
+    "S10": "Locally accepted",
+    "S11": "Locally accepted",
+    "S12": "Locally accepted",
+    "S13": "Locally accepted",
+    "S14": "Locally accepted",
+    "S15": "Locally accepted",
+    "S16": "Locally accepted",
+    "S17": "Locally accepted permitted disabled alternative",
+    "S18": "Locally accepted permitted disabled alternative",
+    "S19": "Locally accepted"
+  },
   "slices": {
     "S01": [
       "R03"

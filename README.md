@@ -1,30 +1,25 @@
 # blacksmith
 
-Heavy-PRD readiness remediation is in progress. Use the
-[implementation checklist](docs/reviews/heavy-prd-progress.md) for verified slices
-and remaining gates. [Version-2 run context and migration](docs/heavy-prd-run-context.md)
-documents config-relative paths, frozen inputs, execution locks, the shared unit
-graph, approved plan hashes, exact-source joins, integration/final layer gates
-and checkpoint migration refusals. The
-historical feature list below is not a heavy-PRD readiness claim. S11 artifact
-capture/inspection, explicit stage amendments, sealed-effect reconciliation and
-repair diagnostics are implemented and locally verified.
-S12 adds [cumulative patch reviews and typed decisions](docs/heavy-prd-reviews.md):
-any panel blocker blocks, unavailable review halts, and disabled review is reported
-as disabled. S13 adds [exact-candidate PR approval](docs/heavy-prd-approval.md) for
-normal and terminal-QA draft publication, retained decisions and QA exit code 2.
-S14 adds [publication reconciliation and recovery](docs/heavy-prd-publication.md)
-with exact remote identity/markers and retained effect receipts. S15's
-[spending admission, deadlines and recovery](docs/heavy-prd-admission.md) are locally
-accepted. [Bounded scheduling](docs/heavy-prd-scheduling.md) passed the integrated
-1,398-test suite, including the 100-unit chain and 20-root/default-two-worker cases.
-[Sandbox and respond are explicitly disabled](docs/heavy-prd-disabled-features.md)
-under the specification's permitted deferrals. [Observation and recovery reporting](docs/heavy-prd-observability.md)
-describe current preview limits and diagnostic behavior. S01 and S03–S18 are accepted
-locally. S02's paid-summary context is corrected and awaiting final full verification;
-S19 remains open for acceptance closeout. The latest completed baseline passed
-1,414 tests; the summary-corrected1,419-test suite is still required.
-Local tests do not satisfy the live release gates.
+Heavy-PRD remediation S01-S19 is implemented and locally verified on the feature
+branch. The [implementation checklist](docs/reviews/heavy-prd-progress.md) and
+[final acceptance audit](docs/reviews/heavy-prd-final-acceptance.md) record the exact
+source, 1,419 passing tests, Ruff pass, migration/recovery evidence and remaining
+live release gates. Human contract review and an authorized paid disposable-target
+canary remain unrun; general heavy-PRD release is held.
+
+[Version-2 run context](docs/heavy-prd-run-context.md) freezes requirements,
+approved plans, execution settings and toolchains; both scheduling shapes use the
+same checkpointed unit graph. [Reviews](docs/heavy-prd-reviews.md),
+[exact-SHA approval](docs/heavy-prd-approval.md),
+[publication recovery](docs/heavy-prd-publication.md),
+[spending and deadlines](docs/heavy-prd-admission.md),
+[bounded scheduling](docs/heavy-prd-scheduling.md) and
+[observability](docs/heavy-prd-observability.md) describe the runtime guarantees and
+limits. The actual 100-unit chain and 20-root/default-two-worker cases pass.
+[Sandbox and respond remain explicitly disabled](docs/heavy-prd-disabled-features.md)
+under the specification's permitted alternatives. Real Docker proof is required
+before sandbox enablement. Offline tests establish local behavior; live provider,
+permission, billing and publication gates remain separate.
 
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

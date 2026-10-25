@@ -1,34 +1,37 @@
 # Heavy-PRD final acceptance audit
 
-Goal turn26/30. **Implementation remains unaccepted as a whole.** S01 and S03-S18
-have local baseline acceptance. S02's summary-context correction is implemented;
-S02/S19 remain unchecked pending final corrected-source full verification.
+Goal turn **28/30**. **S01-S19 are locally accepted** on implementation
+`1d68a6492e53898c5011a24b9d14d771bad6275d` on `feature/heavy-prd-readiness`.
+S17/S18 use the specification's permitted disabled alternatives: enabled sandbox
+configuration is rejected and `respond` returns unsupported-until-hardened.
+Enabled sandbox/revision implementations are not accepted. General release remains
+held for the live gates below.
 
-Latest terminal full on85fb50e: **1414 passed,4 retained SDK advisories/5466.74s,
-exit0**, including the actual100-chain and20-root/default2 cases. No skips/xfails/
-filtering; all175 source/config/input/JS/helper/65-distribution/Python3.12.13/
-SQLite3.53.1 identities were unchanged before/after. Terminal receipt
-turn25-full-command-01.json and turn26-full1414-terminal-proof.json retain proof.
-This includes the positive-terminal SDK check and missing/boolean/future model-
-policy migration refusal. Original failed receipts/assertions remain intact.
+Final command: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t26-full-01`.
+**1419 passed, 7 warnings in 5207.92s (1:26:47)**, exit0. No skips, xfails or warning
+filtering. The actual100-unit chain and20-root/default2-worker cases pass. All176
+Python sources, inline-JS probe, supervisor, config, original spec/probe,65 installed
+distributions, Python3.12.13 and SQLite3.53.1 match before/after and current rechecks.
+`uv run ruff check` passed on the same unchanged source.
 
-The R02 audit then reproduced missing full contract in paid PR-summary narration,
-1 failed/18.93s. Two-file correction **1d68a6492e53898c5011a24b9d14d771bad6275d**
-is now integrated: summary uses the shared immutable renderer, ignores changed
-original/in-memory PRD, preserves cached prompt identity and names human QA as
-pending. Scope72/854.27s then exact-final25/113.42s pass; all176 source/config/input/
-runtime identities match isolated66beb2a after both hooks. Primary Ruff passes and
-**1419 tests collect/0.66s**. Current completed full1414 does not prove newer code.
+The seven retained SDK advisories concern auto-approved Read/Glob/Grep in the
+four parallel-cancellation modes; repeated constructions produced seven warnings.
+Implement Write/Edit/NotebookEdit stay outside allowed_tools, use default permission
+mode and the guarded callback. No warning was suppressed; live permission behavior
+still belongs to the authorized canary.
 
-Final corrected full1419 **is running exactly once**, handle61391/supervisor9007/
-uv9008. Frozen176-source/runtime record turn26-environment-01.json and terminal
-receipt turn26-full-command-01.json retain exact identity. Archive/cleanup completed;
-16.77GB free at freeze. No terminal pass claimed.
-The [evidence ledger](heavy-prd-evidence.md), [original audit inventory](heavy-prd-turn-26-acceptance-inventory.json)
-and final-source inventory record commands, exact sources and the remaining proof.
-Every requirement/acceptance row must bind to the final terminal1419 result and
-unchanged identities before local completion. Sandbox/respond use only the explicit
-permitted disabled alternatives. No live release gate has passed.
+[Terminal receipt](heavy-prd-turn-26-full-command-01.json),
+[full log](heavy-prd-turn-26-pytest-full-01.log),
+[frozen identity](heavy-prd-turn-26-environment-01.json),
+[Ruff log](heavy-prd-turn-26-ruff-primary-final-01.log),
+[final exact-source audit](heavy-prd-turn-28-final-audit.json) and
+[requirement inventory](heavy-prd-turn-26-final-acceptance-inventory.json) bind all12
+requirements,19 slices and21 exact specification acceptance rows to the result.
+The original failed counterexamples, crash/recovery receipts and earlier baselines
+remain in the [evidence ledger](heavy-prd-evidence.md). R02's final five summary cases
+now pass in the full suite: exact frozen prose/full contract reaches tool-free
+narration, source/in-memory PRD changes preserve cached identity, and manual QA stays
+pending. No paid call class/cap was added; full context can add input tokens.
 
 ## Required design and production wiring
 
@@ -69,9 +72,9 @@ refuses execution without rewriting old evidence. No dependency versions changed
 
 ## Specification acceptance matrix
 
-All rows require the final combined full pytest/Ruff run. Current S19 scopes and
-earlier accepted results are in the ledger; no row below represents a live release
-gate or a claim based on mocks alone.
+All rows below are covered by the exact final1419/Ruff acceptance above. Real
+Git/gate/graph/SQLite evidence and explicit offline transport replacements are
+described in the ledger; no row represents a live release gate.
 
 | Required scenario | Local evidence / prohibited downstream effect |
 | --- | --- |
@@ -90,7 +93,7 @@ gate or a claim based on mocks alone.
 | Kill after plan2/commit/gate/pick/push/create | real process exits and fresh-process recovery in plan/effect/join/publication recovery files; original receipts immutable, no repeated paid model/commit/PR effect |
 | Corrupt/missing/wrong repo-config/concurrent resume | test_run_context/test_recovery_artifacts/control/boundaries; refuse before spend/mutation, old evidence unchanged |
 | Repeated/raw IDs sharing slug | test_run_context distinct UUID paths/branches/raw-ID hashes |
-| 100 chain /20 roots bound2 | test_scheduling_runtime actual CLI/shared graph/Git/gates/review/ledger/SQLite; strict active-worker measurement and original barrier passed in full1398 on539508b. Later terminal-policy changes still require a corrected-source full rerun |
+| 100 chain /20 roots bound2 | test_scheduling_runtime actual CLI/shared graph/Git/gates/review/ledger/SQLite; strict active-worker measurement and original barrier pass in final1419 on1d68a64 |
 | Exhaustion in all paid roles/concurrent grants | S15 audit and admission/recovery files; no later admitted call, unknown usage charged, totals survive resume; respond refuses before calls |
 | Hanging native child/large output/model timeout | test_commands/test_sdk_deadlines/test_parallel_cancellation actual local process groups and late-write sentinels; bounded output/state, retained partials |
 | Sandbox sibling sentinel/timeout/resume | **Permitted disabled alternative:** enabled config rejects before effects. Real Docker lifecycle/smoke remains a future enablement gate |
@@ -99,6 +102,13 @@ gate or a claim based on mocks alone.
 | Honest activity/counts/presentation | new S19 graph/Git recovery and journal identity tests + actual inline-JS offline probe; full original evidence retained, no invented clean/resolved counts |
 
 ## Migration and recovery evidence
+
+The turn27 source audit confirms unchanged WorkUnit/PRDContract field names and
+unchanged uv.lock/pyproject.toml against the starting revision.
+[Compatibility receipt](heavy-prd-turn-27-compatibility-audit.json) and the
+[exact contract diff](heavy-prd-turn-27-contract-review.patch) make the required
+human review concrete; that review is still NOT RUN and is required before merge.
+This is source evidence, not human approval or a substitute for the final full run.
 
 State-version1 completed checkpoints remain readable; execution refuses
 legacy_checkpoint_requires_manual_recovery. Version2 still requires the current
@@ -121,13 +131,15 @@ No protected .env entry was read or archived. Failed test roots were preserved.
 
 ## Final verification and release boundary
 
-Before local completion, save the complete Python/JS/config/input/runtime identity,
-run full pytest (including100/20) and Ruff, verify terminal receipts and unchanged
-source/dependencies/inputs, then update this audit/checklist. Expected counts and
-partial progress are not passing results. Node probe is behavior evidence with a
-minimal DOM stub, not browser layout proof. Installed SDK process tests use local
-offline scripts, not provider billing proof. Git pushes only target scratch local
-bare repositories; GitHub/Docker services are explicitly replaced where documented.
+Final terminal1419/Ruff evidence and the exact identity/matrix audit above complete
+the local verification. Every named requirement, slice and acceptance row has
+source/regression evidence in the inventory. The JavaScript probe passed against
+the actual inline program; dashboard/probe sources are unchanged since its final
+turn23 execution. Its minimal DOM stub is not browser layout proof. Installed SDK
+process tests use local offline scripts, not provider billing proof. GitHub/Docker
+services are replaced where documented. After the retained turn13 exception,
+native Git transport/auth guards restrict fixture pushes to scratch local bare
+repositories. No live release gate is inferred from these fixtures.
 
 Remaining live gates: explicit human review of contract.py before merge; authorized
 disposable-target $10 paid canary with two independent auto units plus terminal QA,
