@@ -104,6 +104,11 @@ Proof turn26-archive-full1414-proof.json has restore prerequisites; source remov
 only10441 owned directory modes changed, never regular/shared-hardlink
 modes. Failed roots untouched by this agent. Free16766197760 bytes at new freeze.
 No archive/cleanup job live; final full61391 is the only live job.
+Latest brain checkpoint now matches this launch: Projects/blacksmith.md updated
+through MCP, targeted lint03 terminal0/0 errors/0 warnings; after70s index errors0/
+invalid0, rank1 retrieval and exact whole-note equality, one feedback. Initial
+lint02 checksum false positive retained; duplicate digest removed from note with
+repository-proof reference, no linter weakening. Proof turn26-brain-proof-02.json.
 
 Current final-source inventory **turn26-final-acceptance-inventory.json** maps
 all12 requirements/19 slices/21 acceptance rows, including5 summary cases, to
