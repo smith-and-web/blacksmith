@@ -1,0 +1,19 @@
+{
+  "all_175_sources_config_original_inputs_match": true,
+  "feature_paths": [
+    "blacksmith/cli.py",
+    "blacksmith/executor.py",
+    "blacksmith/receipts.py",
+    "blacksmith/recovery.py",
+    "blacksmith/review_receipts.py",
+    "tests/test_executor_admission.py",
+    "tests/test_terminal_status_integrity.py"
+  ],
+  "goal_turn": 25,
+  "metadata_and_unrelated_changes_preserved": true,
+  "patch_sha256": "17a36d2a7410f942817b4696ee5cde169836abe6741e4bf08e5d1e8c71838584",
+  "primary_final_full_still_required": true,
+  "recorded_at": "2026-10-25T07:59:09.177351-03:00",
+  "source_record_sha256": "1ae7052caea889832828067fee11e987791ac2fff01a30d1f7a6a20a34f6b4e7",
+  "stage_revision": "24dc05b1ad105461e77aae4be71cbcde4f656a35"
+}

@@ -1,0 +1,20 @@
+Scanning closed, completed S16 adjacent synthetic tree; .env/special entries remain unread.
+Creating archive: 209207 entries; 272333073 logical payload bytes.
+Traceback (most recent call last):
+  File "/private/tmp/blacksmith-heavy-prd-turn-25-archive-s16.py", line 104, in <module>
+    prepare()
+  File "/private/tmp/blacksmith-heavy-prd-turn-25-archive-s16.py", line 72, in prepare
+    tar.add(SOURCE/rel,arcname=SOURCE.name+('/'+rel if rel else ''),recursive=False)
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/tarfile.py", line 2233, in add
+    self.addfile(tarinfo, f)
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/tarfile.py", line 2256, in addfile
+    self.fileobj.write(buf)
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/gzip.py", line 314, in write
+    return self._buffer.write(data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/gzip.py", line 137, in write
+    return gzip_file._write_raw(data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/gzip.py", line 326, in _write_raw
+    self.fileobj.write(self.compress.compress(data))
+OSError: [Errno 28] No space left on device

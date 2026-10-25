@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 24 / 30. Never reset this counter automatically.
+- Goal turn: 25 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; implemented S19 and corrected actual counter/optional-store/child-stream defects; scoped proof and final Ruff pass, complete matrix/docs, candidatefbbd16c, verified brain handoffc693e73. Final full01 launched once at174 frozen sources.
-- Current turn: 24; full01 terminal2/1 failed329 passed480.25s retained; saved disabled-feature inspection correction60/ruff passes with drift assertion unchanged. Accepted S12 archive/cleanup verified0; corrected174 sources frozen at539508b. Final combined full02 handle80505 is live with exact1398 collection/source/runtime proof. Counter incremented23->24 once, never on compaction/status/tools.
+- Previous-turn classification: progress; diagnosed/stopped known failed full01, fixed saved disabled-feature inspection without changing drift assertion, scoped60/ruff passed, archived accepted S12 with verified cleanup, committed539508b/3520cea and launched corrected final full02 once.
+- Current turn: 25; S01-S18 accepted locally after exact full1398/5 warnings/5047.97s. S19 terminal/cached-evidence fixes committed85fb50e; all175 tested sources/config/input/runtime match stage24dc05b after hooks; compatibility134/347.66s, primary Ruff and collection1414 pass. Final corrected full1414 is RUNNING exactly once, handle20455/supervisor25554/uv25555; source/runtime frozen in turn25-environment-01.json and terminal receipt turn25-full-command-01.json. Both completed fixture archives/cleanup verified; free5469110272 at freeze. Counter stays25 during status question/tools/compaction, never reset.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -50,16 +50,151 @@
 - [x] S13: Human-unit validation and exact-SHA approval.
 - [x] S14: Publication reconciliation.
 - [x] S15: Run-wide admission and cancellation.
-- [ ] S16: Bounded scheduling and recursion.
-- [ ] S17: Sandbox ownership or explicit disabled-feature rejection.
-- [ ] S18: Hardened respond or explicit unsupported-command error.
+- [x] S16: Bounded scheduling and recursion.
+- [x] S17: Sandbox ownership or explicit disabled-feature rejection.
+- [x] S18: Hardened respond or explicit unsupported-command error.
 - [ ] S19: Observability, docs and complete acceptance matrix.
 
 ## Acceptance and verification
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn24; corrected full02 live on frozen candidate539508b
+## Current handoff: turn25; final corrected full1414 live on frozen85fb50e
+
+Counter **25/30**, incremented24->25 once; user's status question, tools and
+compaction do not increment it. S01-S18 accepted locally; S19 unchecked. Current
+implementation **85fb50e5f6da462ee5c51962c51af994fa100e8c** is committed on
+feature/heavy-prd-readiness. All175 Python sources/config/original inputs/runtime
+match isolated final candidate **24dc05b1ad105461e77aae4be71cbcde4f656a35** after
+both commit hooks. Source record turn25-terminal-source-03.json; checked seven-file
+migration delta and complete identity in turn25-terminal-migration-integration.json.
+Original spec/probe unchanged and untracked/unstaged. Dependencies unchanged.
+
+Accepted full02 **80505 terminal0**: **1398 passed,5 retained SDK advisory warnings/
+5047.97s (1:24:07)** on539508be01b498749f6cb49c33c80b9d35047a04. Every174
+source/JS/helper/config/input/65 installed distributions/Python3.12.13/SQLite3.53.1
+identity unchanged before/after; turn24-environment-02.json and
+turn24-full-command-02.json/logSHA27cb1c2e37e1690ed045657c3bd496fc59381fdec244e3ce81f41aef9a4a2db7.
+No skips/xfails/filtering. Actual100-chain and20-root/default2 pass in this full,
+accepting S16. S17 enabled sandbox refusal and S18 explicit unsupported respond
+are permitted deferrals accepted in the same full. No Docker/revision/live claim.
+
+S19 acceptance audit reproduced two gaps; neither is hidden by the old full pass:
+- Error/unknown SDK subtype with is_error=false could become a clean result.
+  Require positive subtype=success and non-error flag; preserve text/cost/transcript
+  and known error kinds. Original real CLI negative baseline failed1/6.23s;
+  corrected scopes67/43.64s, SDK50/163.29s, parallel-safe fixture9/38.51s passed.
+- Old cached clean model results bypass fresh normalization. Model intents now
+  commit exact integer terminal_policy_version1 before transport. CLI resume/
+  dispatch, library Executor and retained-review verification refuse absent,
+  boolean or future versions before native execution/options/credentials/clock/
+  amendments/new effects. Read-only inspect reports unsupported model policy,
+  preserving original checkpoints/receipts/events/inputs. No invented historical
+  tag. Baseline05 failed on an invalid new-test flag (retained, no behavioral claim);
+  corrected baseline06 proves native execution before refusal,1 failed/6.02s.
+  Initial scope07 passed16/180.91s. Final scope08 includes direct-dispatch/review
+  refusal and pre-transport intent proof for every paid role: **134 passed/347.66s,
+  terminal0**, no warnings/skips/xfails. Source175 unchanged after stage/primary
+  hooks; primary Ruff-final03 passed, collection-primary03 **1414/0.70s**.
+
+Normal successful SDK calls/caps unchanged; terminal max-turn recovery uses only
+existing saved continuation/admission allowances. Migration adds no paid call or
+allowance. **Final corrected-source full1414 is RUNNING, not yet accepted.**
+Handle **20455**, supervisorPID25554/uvPID25555, launched exactly once via
+/private/tmp/blacksmith-heavy-prd-turn-25-full-supervisor.py. Command
+`uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t25-full-01`;
+log turn25-pytest-full-01.log; durable PID/command/terminal/after-identity receipt
+turn25-full-command-01.json. Complete175 Python sources/JS/helper/config/original
+inputs/65 distributions/Python3.12.13/SQLite3.53.1 frozen after hooks in
+**turn25-environment-01.json**, which also retains supervisor source for recovery.
+Observe same handle; missing observer -> authoritative receipt/PIDs/log, never
+restart after timeout. Do not edit Python/JS/config/tests/helper/dependencies while
+full runs. Documentation-only commits do not change frozen implementation identity.
+Passing terminal full1414/unchanged identities plus acceptance closeout are required
+before S19 or whole-goal completion. All old test/archive/cleanup handles terminal.
+
+Completed adjacent S16 fixture t21-scheduling-regression-03 archived and safely
+removed: attempt02 preparation65900 terminal0, fresh owner39026 terminal1/no process
+records and cleanup54777 terminal0. Every209207 entry/regular byte/mode/symlink
+rechecked; protected0. Archive57095657 bytes/SHA1d34643dad10898701988b9c7c72c94a7d4eed7b5f62e6e4c5e295c9cc2a5ca0,
+compressed manifestSHA8a0875d64c679255d0d2138272d8fdfcbf014f86beae1cb191e8d0f1c8c8723a;
+proof turn25-archive-s16-proof.json. Only1621 owned directory modes changed, never
+regular/shared-hardlink file modes. Earlier ENOSPC archive attempt45361 terminal1
+partial/log retained; source was untouched before verified retry/cleanup.
+
+Accepted full1398 root /private/tmp/blacksmith-heavy-prd-t24-full-02 archived and
+removed: preparation54485 terminal0, fresh owner40442 terminal1/no records, cleanup
+98983 terminal0. Every905063 entry/regular byte/mode/symlink rechecked, protected0.
+Archive337886632 bytes/SHA299b03f94b7396175501607d5b7469554fdd224186d9b0b7fad62a353621bfde,
+compressed manifestSHA2ecd5e7d6000c6fa7b7238220f615cb9aca8a89736f265c6f3204c0d332ca109;
+proof turn25-archive-full1398-proof.json contains restore prerequisites. Only
+10152 owned directory modes changed, never regular/shared-hardlink modes.
+Failed roots remain untouched; free5469110272 bytes at final full freeze. No archive
+or cleanup job live; final full20455 is the only live job.
+
+Brain Projects/blacksmith.md updated via MCP, lint0/0, indexing errors0/invalid0
+after70s, rank1 semantic retrieval/whole-note equality/one feedback; proof
+turn25-brain-proof-01.json. Refresh latest brain checkpoint to this final launch.
+Next: observe full20455 to terminal; verify all exact identities/receipts and1414
+pass with no hidden failures/skips/xfails. If it fails, preserve failed root/log and
+fix the cause without weakening assertions; rerun only after terminal evidence and
+new frozen identity. Then final Ruff if source changes, update acceptance matrix/
+checklist, commit local evidence and complete goal only when required local work
+is done. Live human contract review/paid canary/Docker enablement gates remain unrun.
+At30 stop/save exact completed/outstanding/results/live-job/next-action handoff and
+pause unfinished goal; never reset/resume automatically.
+
+## Historical turn25 verified wait and terminal-status discovery
+
+Counter **25/30**, incremented24->25 once after objective/instructions/memory/brain
+and exact frozen source/runtime checks. Previous turn was progress. S01–S15
+accepted; S16–S19 unchecked. Primary docs HEAD3520cea; implementation539508b.
+Full02 **80505** positively polled live, supervisor42902/child42905 observed at
+5:13 elapsed; log5% plus46 cases with no reported failure at turn entry. All174
+sources/JS/supervisor/config/original inputs/65 distributions/Python3.12.13/SQLite
+3.53.1 match **turn24-environment-02.json**. Keep source/config/tests/JS/helper
+frozen; continue same handle, missing handle→receipt/PIDs/log, never restart
+on observer timeout. Exact command/log/receipt below remain authoritative.
+Turn25 observations: former config drift case passed;1311 test progress markers
+without reported failure, then the actual100-chain began. All100 plan artifacts
+present;40 unit files observed in the retained workspace at49:15 elapsed. These
+artifact counts are progress only, not passing unit outcomes. Original full80505
+still positively live at42902/42905. Detailed timestamp/PID/free-space observations
+are in turn25-full-observations.jsonl. Prior accepted100 fixture allocation was
+778592KiB (metadata-only size check; no replay/change). Current headroom remains
+above that footprint. Keep all source/config/tests/JS/helper frozen.
+Need final terminal full1398 including100/20, refreshed Ruff/identity audit and
+complete acceptance closeout. No live gate claimed. At30 stop/save precise
+handoff/pause unfinished goal; never reset/resume automatically.
+
+Turn25 acceptance audit found an additional R09/S19 terminal-status gap: actual
+Executor offline probe on primary539508 accepts error_max_turns,
+error_during_execution and unknown terminal subtypes as successful if SDK
+is_error=false, allowing clean review text. Probe turn25-terminal-status-probe.json.
+Primary sources remain frozen for full80505. Actual100-chain now has a passing
+progress marker in that full run;20-root is next, no failure markers so far.
+
+Isolated correction lives in /private/tmp/blacksmith-heavy-prd-terminal-stage,
+feature/heavy-prd-terminal-staging, baseline539508b, existing pinned .venv symlink.
+Only executor.py plus new test_terminal_status_integrity.py change. Require both
+positive subtype=success and non-error flag; known failure kinds/cost/transcript
+evidence preserved. No added paid calls; valid successful calls unchanged.
+New actual CLI/Git/SQLite negative test reproduced the old false-clean outcome
+(baseline23930 terminal1,1 failed/6.23s; original effect assertions retained).
+Staged scope **45417** is live, log turn25-terminal-scope-02.log;9 new direct/
+sequential/parallel review tests plus adjacent Executor/review/activity cases.
+Staging ruff01 passed. Do not transfer/edit primary until its full is terminal;
+then checked feature-only delta, final full/Ruff on corrected source required.
+Even a green full02 alone cannot accept S19 while this reproduced gap remains.
+Both actual100-chain and20-root/max2 now have passing markers in primary full02;
+whole full remains live and must finish. Isolated scope45417 terminal0 **67 passed/
+43.64s**, ruff01 passed; imported Executor path verified inside terminal-stage.
+SDK/admission/interrupted-accounting/transcript scope **25990** is now live,
+log turn25-terminal-sdk-03.log. No primary source transfer yet. Normal successes
+and caps unchanged; failing implement turn caps use existing bounded continuation
+allowance, so any recovery spend remains governed by original admission/caps.
+
+## Historical handoff: turn24; corrected full02 live on frozen candidate539508b
 
 Counter **24/30**; S01–S15 accepted locally, S16–S19 unchecked. Current immutable
 implementation **539508be01b498749f6cb49c33c80b9d35047a04**, all174 Python sources,

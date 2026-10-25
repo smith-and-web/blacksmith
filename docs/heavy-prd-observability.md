@@ -30,10 +30,21 @@ ExecutorResult retains the legacy comparison behavior. Transcripts remain
 keyed by unique call ID even when provider session IDs are absent.
 
 Finding previews reuse the strict complete verdict parser and require a successful
-terminal result. Malformed, extra-field, duplicate-field, incomplete and error
+terminal result: the SDK subtype must be `success` and `is_error` must be false.
+An error or unknown subtype cannot become successful merely because its error
+flag is false. Malformed, extra-field, duplicate-field, incomplete and error
 responses cannot create a plausible finding preview. Review status comes from typed
 receipts: disabled and unavailable remain distinct from clean. Observation loss is
 not a clean review. Full review text, findings and critical receipts are preserved.
+
+Model intents record `terminal_policy_version=1` before transport. Cached responses
+and retained review decisions require that exact integer version. Missing, boolean
+and future versions refuse execution before native work, options/credentials,
+clock updates or new paid calls, with
+`legacy_model_terminal_policy_requires_manual_recovery`. Old evidence is never
+retagged as proven. Read-only recovery inspection reports
+`model_terminal_policy.supported=false` and preserves original receipts and inputs.
+Artifact integrity can remain valid even when that execution policy is unsupported.
 
 Aggregate run/unit summaries cannot supply a historical task ID that was never
 recorded. Such fields are null. Legacy events without IDs remain viewable with a
@@ -63,6 +74,10 @@ gate, journal, budget and checkpoint paths. `test_observability_integrity.py` pr
 sequential/parallel review recovery and parent/child event identity.
 `test_activity_integrity.py` exercises actual graph streaming and strict previews;
 `test_presentation_integrity.py` proves bounded output and unchanged full evidence.
+`test_terminal_status_integrity.py` covers contradictory SDK terminal flags and
+historical model-policy refusal through CLI, direct graph dispatch, retained review
+verification and Executor; `test_executor_admission.py` checks every paid role's
+policy-tagged intent already exists before transport starts.
 
 The standalone JavaScript regression executes the actual served inline program with
 an offline DOM stub; it does not claim browser layout verification. Export and run:

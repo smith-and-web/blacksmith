@@ -1,0 +1,82 @@
+F
+=================================== FAILURES ===================================
+_ test_error_or_unknown_sdk_terminal_cannot_be_reviewed_clean[error_max_turns-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t25-terminal-baseline-01/test_error_or_unknown_sdk_term0/target'), Posix...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10a190ec0>
+parallel = False, subtype = 'error_max_turns'
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    @pytest.mark.parametrize("subtype", NON_SUCCESS)
+    def test_error_or_unknown_sdk_terminal_cannot_be_reviewed_clean(
+        project, monkeypatch, parallel, subtype,
+    ):
+        configure_review(project, parallel=parallel)
+        calls = install(monkeypatch)
+        installed_collect = Executor._collect
+    
+        async def contradictory_terminal(self, prompt, options, *, emit_findings=False):
+            ordinary = await installed_collect(self, prompt, options, emit_findings=emit_findings)
+            if not emit_findings:
+                return ordinary
+    
+            async def query(*, prompt, options, transport=None):
+                yield replace(_result_message(CLEAN), subtype=subtype, is_error=False)
+    
+            previous = self._query
+            self._query = query
+            try:
+                return await ORIGINAL_COLLECT(self, prompt, options, emit_findings=True)
+            finally:
+                self._query = previous
+    
+        monkeypatch.setattr(Executor, "_collect", contradictory_terminal)
+        assert run(project, "terminal-status") == 1
+        state = saved_values(project[1], "terminal-status")
+        context = context_from_state(state)
+        units = {"A", "B"} if parallel else {"U1"}
+        assert state["status"] == Status.HALTED and not state.get("pr_url")
+        assert set(state["unit_outcomes"]) == units
+        for outcome in state["unit_outcomes"].values():
+>           assert not outcome["ok"] and not outcome["review_clean"]
+E           assert (not True)
+
+tests/test_terminal_status_integrity.py:57: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 3f7d8d0a-b39a-4f19-91dc-42d060849f05: selected committed HEAD f3b8c7d87ec3d0a7d4ef2e14ac0b6b7d15c622a8
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t25-terminal-baseline-01/test_error_or_unknown_sdk_term0/.blacksmith/runs/3f7d8d0a-b39a-4f19-91dc-42d060849f05
+[auto] gate 'plan': approved
+[auto] gate 'pr': denied
+
+status: halted
+total cost: $0.03; run cap $50.00, remaining $49.97
+tokens: unavailable
+execution time: 3.96s / 21600.00s; remaining 21596.04s
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t25-terminal-baseline-01/test_error_or_unknown_sdk_term0/.blacksmith/runs/3f7d8d0a-b39a-4f19-91dc-42d060849f05/recovery/60d7784c-dc06-43b3-95c1-5c9009dabd68/manifest.json
+Next action: blacksmith recovery inspect --thread-id terminal-status --config /private/tmp/blacksmith-heavy-prd-t25-terminal-baseline-01/test_error_or_unknown_sdk_term0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_terminal_status_integrity.py::test_error_or_unknown_sdk_terminal_cannot_be_reviewed_clean[error_max_turns-False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 6.23s

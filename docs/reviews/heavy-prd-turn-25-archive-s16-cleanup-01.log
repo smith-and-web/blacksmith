@@ -1,0 +1,3 @@
+Rechecking archive identity and every unchanged source entry before removal.
+Removing verified completed root; only owned directory modes changed.
+{"cleanup_completed": true, "entries": 209207, "owned_directory_modes_changed": 1621, "regular_file_modes_changed": false, "free_bytes": 2446848000}

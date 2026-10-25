@@ -1,16 +1,21 @@
 # Heavy-PRD final acceptance audit
 
-Goal turn24/30. **Implementation remains unaccepted as a whole.** S01–S15 have
-local full-suite proof; S16–S18 are integrated with scoped proof; S19 has scoped
-proof and is awaiting final combined verification. Full01 on frozen fbbd16c
-ended intentionally interrupted after1 failed/329 passed/480.25s, exit2;
-turn23-full-command-01.json proves unchanged174-source/config/input/runtime.
-The config drift failure is corrected by read-only saved disabled-feature metadata,
-with its original assertion intact; scoped60/53.32s and Ruff pass. Corrected source
-identity is in turn24-environment-01.json; new full1398 including100/20 still required.
-Corrected candidate539508be01b498749f6cb49c33c80b9d35047a04 is now frozen in
-turn24-environment-02.json; full02 is running, handle80505, with command/terminal
-receipt turn24-full-command-02.json. No passing terminal result yet.
+Goal turn25/30. **Implementation remains unaccepted as a whole.** S01–S18 have
+local full-suite proof: full02 on539508be01b498749f6cb49c33c80b9d35047a04
+ended exit0, **1398 passed/5 retained SDK advisories/5047.97s**, including actual
+100-chain and20-root/default2 cases. All174 source/config/input/runtime identities
+were unchanged before/after; turn24-environment-02.json and
+turn24-full-command-02.json retain the proof. The earlier saved-config drift
+failure is corrected with its original assertion intact; failed receipts remain.
+S19 is open: final audit reproduced SDK error/unknown terminal subtypes accepted
+as successful when is_error=false. Positive success is now required; focused
+67/50/9 and Ruff pass. The cached-evidence migration correction is integrated as
+85fb50e5f6da462ee5c51962c51af994fa100e8c: policy1 model intents prove stricter
+normalization before reuse; unsupported historical results refuse execution while
+remaining inspectable. All175 tested sources/config/inputs/runtime match stage
+24dc05b after hooks; final compatibility134/347.66s passes with no warnings/skips/
+xfails, primary Ruff passes and1414 tests collect. Original assertions are retained.
+Final corrected-source full1414 is running exactly once (20455; supervisor25554/uv25555), frozen in turn25-environment-01.json with terminal receipt turn25-full-command-01.json. Its passing terminal result/unchanged identities and acceptance closeout are still required; no pass claimed.
 This audit maps the settled
 specification to production paths and regression evidence. A test's existence is
 not its passing receipt. Exact command/results and frozen source/runtime manifests
@@ -76,7 +81,7 @@ gate or a claim based on mocks alone.
 | Kill after plan2/commit/gate/pick/push/create | real process exits and fresh-process recovery in plan/effect/join/publication recovery files; original receipts immutable, no repeated paid model/commit/PR effect |
 | Corrupt/missing/wrong repo-config/concurrent resume | test_run_context/test_recovery_artifacts/control/boundaries; refuse before spend/mutation, old evidence unchanged |
 | Repeated/raw IDs sharing slug | test_run_context distinct UUID paths/branches/raw-ID hashes |
-| 100 chain /20 roots bound2 | test_scheduling_runtime actual CLI/shared graph/Git/gates/review/ledger/SQLite; strict active-worker measurement and original barrier. **Final integrated rerun pending** |
+| 100 chain /20 roots bound2 | test_scheduling_runtime actual CLI/shared graph/Git/gates/review/ledger/SQLite; strict active-worker measurement and original barrier passed in full1398 on539508b. Later terminal-policy changes still require a corrected-source full rerun |
 | Exhaustion in all paid roles/concurrent grants | S15 audit and admission/recovery files; no later admitted call, unknown usage charged, totals survive resume; respond refuses before calls |
 | Hanging native child/large output/model timeout | test_commands/test_sdk_deadlines/test_parallel_cancellation actual local process groups and late-write sentinels; bounded output/state, retained partials |
 | Sandbox sibling sentinel/timeout/resume | **Permitted disabled alternative:** enabled config rejects before effects. Real Docker lifecycle/smoke remains a future enablement gate |
@@ -88,7 +93,12 @@ gate or a claim based on mocks alone.
 
 State-version1 completed checkpoints remain readable; execution refuses
 legacy_checkpoint_requires_manual_recovery. Version2 still requires the current
-recovery, scheduling, budget and clock policy. Missing/corrupt metadata is not
+recovery, scheduling, budget, clock and positive-terminal model policy. Model
+intents record exact integer terminal_policy_version1; missing/boolean/future
+versions refuse before native work, SDK credentials, clock writes or budget
+amendments. Read-only inspection reports unsupported model policy separately
+from artifact integrity. The new migration regression also guards direct dispatch,
+retained-review verification and library Executor calls. Missing/corrupt metadata is not
 backfilled with invented hashes, historical usage or timestamps. Existing context,
 checkpoint, journal and bundle bytes stay unchanged on refusal. Read-only recovery
 inspection uses a disabled local sandbox config and does not construct execution

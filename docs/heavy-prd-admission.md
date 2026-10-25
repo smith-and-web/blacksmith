@@ -93,6 +93,12 @@ blacksmith resume --thread-id <id> --continue-attempt --add-budget-usd 5 --confi
 - Pending sealed amendment flags refuse instead of adding budget twice. Ordinary
   resume never replenishes funds/counters. Exhausted time permits inspection, not
   a fresh allowance under the same run ID. Preserve checkpoints and original times.
+- Cached model reuse requires exact integer `terminal_policy_version=1`, proving
+  the positive SDK terminal-success check. Missing/boolean/future evidence refuses
+  before credentials, clock changes, budget amendments or new effects with
+  `legacy_model_terminal_policy_requires_manual_recovery`. Inspection remains
+  available and reports unsupported policy; neither an added budget nor a recovery
+  flag can manufacture missing historical success evidence.
 
 Reports distinguish measured cost, conservative charges, reservations, remaining
 funds and actual overrun. Incomplete metric totals are null with measured/charged

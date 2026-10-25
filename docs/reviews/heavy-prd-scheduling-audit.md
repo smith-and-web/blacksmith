@@ -1,9 +1,12 @@
 # S16 acceptance audit
 
-Goal22/30: **unaccepted pending final integrated full**. S15 is accepted locally
-with full1325/ruff proof. S16 adjacent93 passed and its source is integrated as
-fc94de2; S17/S18 source integration brings primary to169 exact final-stage sources
-at33eba45. Individual scopes do not establish final100/20/full acceptance.
+Goal25/30: **S16 accepted locally**. Full02 on539508b passed1398 tests/5 retained
+SDK warnings/5047.97s, exit0, including the actual100-chain and20-root/default2
+cases. All174 source/config/input/runtime identities remained unchanged before
+and after; turn24-environment-02.json and turn24-full-command-02.json retain proof.
+S17/S18 permitted deferrals are accepted in that same full suite. S19 terminal
+integrity and cached-evidence migration require another corrected-source full;
+the earlier passing result is not proof of later changes. Historical scopes follow.
 
 | Requirement | Production wiring | Evidence / remaining proof |
 | --- | --- | --- |
@@ -57,7 +60,7 @@ The starvation probe field named actual_node_threads_can_start_before_timeout
 counts total starts, not pre-timeout starts; do not use it for timing evidence.
 The original strict barrier failure and installed-source trace establish the bug.
 
-S15 acceptance and checked S16-S18 integration are complete; S19/final integrated
+S01-S18 acceptance is complete; S19/final corrected-source
 full still required. Paid provider
 billing/publication canary, human contract review and real Docker enablement smoke
 remain unperformed release gates. No live readiness is inferred from offline tests.

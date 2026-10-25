@@ -1,0 +1,103 @@
+diff --git a/blacksmith/executor.py b/blacksmith/executor.py
+index e189b54..8d15349 100644
+--- a/blacksmith/executor.py
++++ b/blacksmith/executor.py
+@@ -543,7 +543,9 @@ async def _aggregate(
+             # "error_max_turns", "error_during_execution"). Classify the turn cap distinctly so
+             # a caller can recover from it rather than treating it like any other error.
+             subtype = getattr(result, "subtype", None) if result else None
+-            is_error = is_error or subtype == "error_max_budget_usd"
++            # Both indicators must substantiate success. Error or unknown terminal
++            # subtypes cannot become clean evidence when the SDK error flag is false.
++            is_error = is_error or subtype != "success"
+             error_kind = None
+             if is_error:
+                 error_kind = ("max_turns" if subtype == "error_max_turns" else
+diff --git a/tests/test_terminal_status_integrity.py b/tests/test_terminal_status_integrity.py
+new file mode 100644
+index 0000000..43d32c6
+--- /dev/null
++++ b/tests/test_terminal_status_integrity.py
+@@ -0,0 +1,82 @@
++"""Only positive SDK success can substantiate review or a streamed finding."""
++
++from dataclasses import replace
++
++import pytest
++from test_activity_integrity import drive, verdict
++from test_live_intra_node import _result_message
++from test_review_integrity import (
++    CLEAN,
++    ORIGINAL_COLLECT,
++    configure_review,
++    install,
++    run,
++)
++from test_run_context import project as project
++from test_run_context import saved_values
++
++from blacksmith.executor import Executor
++from blacksmith.run_context import context_from_state
++from blacksmith.state import Status
++
++NON_SUCCESS = ["error_max_turns", "error_during_execution", "unrecognized_terminal"]
++
++
++@pytest.mark.parametrize("parallel", [False, True])
++@pytest.mark.parametrize("subtype", NON_SUCCESS)
++def test_error_or_unknown_sdk_terminal_cannot_be_reviewed_clean(
++    project, monkeypatch, parallel, subtype,
++):
++    configure_review(project, parallel=parallel)
++    calls = install(monkeypatch)
++    installed_collect = Executor._collect
++
++    async def contradictory_terminal(self, prompt, options, *, emit_findings=False):
++        ordinary = await installed_collect(self, prompt, options, emit_findings=emit_findings)
++        if not emit_findings:
++            return ordinary
++
++        async def query(*, prompt, options, transport=None):
++            yield replace(_result_message(CLEAN), subtype=subtype, is_error=False)
++
++        # Parallel seats share the graph's Executor; inject transport on an
++        # isolated collector instead of mutating another seat's query function.
++        collector = Executor(self._config, query_fn=query)
++        return await ORIGINAL_COLLECT(collector, prompt, options, emit_findings=True)
++
++    monkeypatch.setattr(Executor, "_collect", contradictory_terminal)
++    assert run(project, "terminal-status") == 1
++    state = saved_values(project[1], "terminal-status")
++    context = context_from_state(state)
++    units = {"A", "B"} if parallel else {"U1"}
++    assert state["status"] == Status.HALTED and not state.get("pr_url")
++    assert set(state["unit_outcomes"]) == units
++    for outcome in state["unit_outcomes"].values():
++        assert not outcome["ok"] and not outcome["review_clean"]
++        assert outcome["failed_stage"] == "review"
++        assert outcome["review_receipt"].status == "unavailable"
++    reviews = [row for row in context.journal().operations() if row.key.kind == "model.review"]
++    assert len(reviews) == len(units)
++    for row in reviews:
++        assert row.status == "failed"
++        result = row.outcome["result"]
++        assert result["is_error"] is True and result["terminal_received"] is True
++        assert result["error_kind"] == ("max_turns" if subtype == "error_max_turns" else "other")
++        assert result["text"] == CLEAN
++    assert len(calls) == len(state["cost_events"]) == 3 * len(units)
++    assert not state.get("final_gate_receipt") and not state.get("publication_receipt")
++    assert not any(row.key.kind.startswith("command:") and row.intent["stage"] == "open_pr"
++                   for row in context.journal().operations())
++    assert (context.directory / "recovery/index.json").is_file()
++
++
++@pytest.mark.parametrize("subtype", NON_SUCCESS)
++def test_non_success_terminal_never_emits_findings_even_when_error_flag_is_false(
++    tmp_path, monkeypatch, subtype,
++):
++    text = verdict()
++    result, events = drive(tmp_path, monkeypatch,
++                           [replace(_result_message(text), subtype=subtype, is_error=False)])
++    assert result.is_error and result.terminal_received and result.text == text
++    assert result.error_kind == ("max_turns" if subtype == "error_max_turns" else "other")
++    assert not any(payload.get("activity") == "finding" for _, payload in events)

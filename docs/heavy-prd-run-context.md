@@ -154,6 +154,16 @@ results, lost streams and cancellation remain explicit uncertain outcomes;
 automatic replay refuses them with `interrupted_attempt_requires_resume`.
 Known streamed turns and reported terminal usage survive stream errors.
 
+A successful SDK result requires subtype `success` and a false error flag. Model
+intents commit `terminal_policy_version=1` before transport; cached result and
+retained-review acceptance require that exact integer version. Missing, boolean
+or future versions refuse with
+`legacy_model_terminal_policy_requires_manual_recovery` before CLI native work,
+SDK options/credentials, active-clock writes or new effects. Do not edit or retag
+an old receipt to bypass this diagnostic. Read-only recovery inspection preserves
+the old run and reports `model_terminal_policy.supported=false`; artifact integrity
+and execution-policy support are separate results.
+
 Implementation commits carry `Blacksmith-Operation-Id: <id>` trailers. Completed
 commit reuse requires the recorded HEAD, a matching trailer and a clean workspace;
 unknown extra changes stop for inspection. Matching implementation, formatter,

@@ -1,0 +1,89 @@
+F
+=================================== FAILURES ===================================
+_ test_legacy_terminal_policy_is_inspectable_but_refuses_resume_before_effects[None-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t25-terminal-migration-baseline-06/test_legacy_terminal_policy_is0/targe...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bcc0050>
+capsys = <_pytest.capture.CaptureFixture object at 0x10bcc0650>
+parallel = False, version = None
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    @pytest.mark.parametrize("version", [None, True, 2])
+    def test_legacy_terminal_policy_is_inspectable_but_refuses_resume_before_effects(
+        project, monkeypatch, capsys, parallel, version,
+    ):
+        context, state, calls = legacy_completed_run(
+            project, monkeypatch, parallel=parallel, version=version)
+        before_calls = list(calls)
+        operations, events = context.journal().operations(), context.journal().events()
+        inputs = {name: (context.directory / name).read_bytes() for name in (
+            "manifest.json", "runtime-config.json", "input.prd.md", "trusted-blacksmith.toml")}
+    
+        def forbidden(*args, **kwargs):
+            pytest.fail("legacy terminal evidence reached native execution, SDK or an approval")
+    
+        monkeypatch.setattr(cli, "Executor", forbidden)
+        monkeypatch.setattr(cli, "_resolve_approver", forbidden)
+        monkeypatch.setattr("blacksmith.run_context.git_read", forbidden)
+        args = ["--config", str(project[1]), "--thread-id", "old-terminal-policy"]
+>       assert cli.main(["resume", *args, "--approve", "plan,pr"]) == 1
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_terminal_status_integrity.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:1407: in main
+    return _resume(argv[1:])
+           ^^^^^^^^^^^^^^^^^
+blacksmith/cli.py:1063: in _resume
+    context.verify(
+blacksmith/run_context.py:296: in verify
+    origin = git_read(Path(self.repo_path), "remote", "get-url", "origin").strip()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+args = (PosixPath('/private/tmp/blacksmith-heavy-prd-t25-terminal-migration-baseline-06/test_legacy_terminal_policy_is0/target'), 'remote', 'get-url', 'origin')
+kwargs = {}
+
+    def forbidden(*args, **kwargs):
+>       pytest.fail("legacy terminal evidence reached native execution, SDK or an approval")
+E       Failed: legacy terminal evidence reached native execution, SDK or an approval
+
+tests/test_terminal_status_integrity.py:71: Failed
+----------------------------- Captured stdout call -----------------------------
+Run c28a5ee8-10ca-42f2-8f14-9d02a0b9372a: selected committed HEAD ddbe6d8822870aafd029ed9131343aefa9013d0c
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t25-terminal-migration-baseline-06/test_legacy_terminal_policy_is0/.blacksmith/runs/c28a5ee8-10ca-42f2-8f14-9d02a0b9372a
+[auto] gate 'plan': approved
+[auto] gate 'pr': denied
+
+status: halted
+total cost: $0.03; run cap $50.00, remaining $49.97
+tokens: unavailable
+execution time: 3.97s / 21600.00s; remaining 21596.03s
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t25-terminal-migration-baseline-06/test_legacy_terminal_policy_is0/.blacksmith/runs/c28a5ee8-10ca-42f2-8f14-9d02a0b9372a/recovery/8e1dabc8-dddd-42f7-96e9-a7be7c2c37b7/manifest.json
+Next action: blacksmith recovery inspect --thread-id old-terminal-policy --config /private/tmp/blacksmith-heavy-prd-t25-terminal-migration-baseline-06/test_legacy_terminal_policy_is0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_terminal_status_integrity.py::test_legacy_terminal_policy_is_inspectable_but_refuses_resume_before_effects[None-False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 10 deselected in 6.02s

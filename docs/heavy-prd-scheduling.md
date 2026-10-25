@@ -1,9 +1,9 @@
 # Bounded execution scheduling
 
-S16 is integrated and awaiting final combined verification. The
+S16 is accepted locally after the full 1,398-test run. The
 [progress checklist](reviews/heavy-prd-progress.md) records accepted slices and the
 [evidence ledger](reviews/heavy-prd-evidence.md) records exact test/source identity.
-S15's full1325-test suite passed; this document is not S16 acceptance evidence.
+The full run included the actual 100-unit chain and 20-root/default-two-worker cases.
 The [S16 audit](reviews/heavy-prd-scheduling-audit.md) maps current sources and proof.
 
 ## Concurrency and dependency order
@@ -78,7 +78,9 @@ unavailable. Live release gates remain separate from these offline invariants.
 ## Verification boundary
 
 The actual100-unit chain, original20-root/default2 barrier and single-worker CLI
-have scoped passing evidence. Final integrated full pytest/ruff remains required.
+passed in the integrated full suite on source539508b, with exact source, input,
+configuration and runtime identity retained. Later S19 changes require their own
+final integrated full pytest/ruff; the earlier pass is not proof of later code.
 Scratch remotes and replaced billed/GitHub transport do not prove live provider
 billing, physical remote cancellation or successful publication. See the audit
 for exact sources, intermediate failures, live jobs and transfer instructions.
