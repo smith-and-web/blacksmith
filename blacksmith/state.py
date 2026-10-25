@@ -27,9 +27,9 @@ class Status(StrEnum):
     TESTING = "testing"
     AWAITING_PR_APPROVAL = "awaiting_pr_approval"
     HALTED = "halted"
-    # Terminal status for a human-GATED unit that implemented successfully: its work is
-    # parked behind a draft PR for manual QA, distinct from a failed/rejected HALTED run
-    # (work discarded) and from a fully-approved DONE run.
+    # Automatic units passed and exact-candidate approval published a draft for the
+    # terminal manual-QA declaration. HALTED retains failed/rejected work and recovery
+    # evidence; DONE denotes approved normal publication.
     AWAITING_QA = "awaiting_qa"
     DONE = "done"
 
@@ -325,17 +325,11 @@ class BlacksmithState(UnitAttemptState, total=False):
     # built-in rotation, whose findings are aggregated (WU-REVIEW-PANEL-AGGREGATE) into
     # the same ``review_clean``/``review_findings`` keys the revise loop already consumes.
     review_panel_size: int
-    # Report-only RUN-WIDE count of review-driven revisions (WU-REVIEW-RENDER), for the PR
-    # body / gate view's "resolved via revision" line. A reducer (operator.add), UNLIKE the
-    # per-unit ``review_revisions`` above: the sequential ``prepare_review_revision`` adds 1
-    # per revision, and each fan-out ``build_unit`` worker adds its own revision count -- so
-    # concurrent workers never race on it (they can't write the last-write-wins
-    # ``review_revisions``) and the total spans every unit of the run. Never read by routing
-    # or any loop bound; purely for display. Renderers fall back to ``review_revisions`` when
-    # it is absent (old checkpoints / states with no fan-out revision).
+    # Legacy report-only additive total. Shared children return only their new delta,
+    # including recovery; keyed current unit_outcomes are authoritative for display.
+    # Missing historical per-unit counts remain unknown. Revision attempts do not
+    # count resolved findings. Routing/caps use owned per-unit counters instead.
     review_revisions_total: Annotated[int, operator.add]
-    # Blocking findings the review loop gave up on -- revisions exhausted or over budget
-    # (WU-REVIEW-LOOP) -- for a unit that still proceeds to next_unit/approve_pr rather
-    # than halting. A reducer (like ``unit_results``) so a multi-unit run's carried-forward
-    # findings from more than one unit all surface rather than being clobbered.
+    # Retained blocking-finding history. Exhausted blockers halt; current typed receipts
+    # determine outstanding blockers. Historical entries never authorize publication.
     unresolved_review_findings: Annotated[list[ReviewFinding], merge_events]

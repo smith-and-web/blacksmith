@@ -1,9 +1,9 @@
 # Bounded execution scheduling
 
-S16 is an isolated implementation candidate under verification. The
+S16 is integrated and awaiting final combined verification. The
 [progress checklist](reviews/heavy-prd-progress.md) records accepted slices and the
 [evidence ledger](reviews/heavy-prd-evidence.md) records exact test/source identity.
-The corrected primary S15 full03 suite is running; this document is not an acceptance claim.
+S15's full1325-test suite passed; this document is not S16 acceptance evidence.
 The [S16 audit](reviews/heavy-prd-scheduling-audit.md) maps current sources and proof.
 
 ## Concurrency and dependency order

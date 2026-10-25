@@ -1,0 +1,93 @@
+..........F                                                              [100%]
+=================================== FAILURES ===================================
+_ test_parallel_model_activity_matches_real_parent_task_and_critical_call_identity _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t23-activity-02/test_parallel_model_activity_m0/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10bd18f50>
+
+    def test_parallel_model_activity_matches_real_parent_task_and_critical_call_identity(
+        project, monkeypatch,
+    ):
+        from test_integration_integrity import stop_at_pr
+    
+        from blacksmith.executor import Executor, _emit_activity
+    
+        configure_review(project, parallel=True)
+        calls = install(monkeypatch)
+        collect = Executor._collect
+    
+        async def observed_collect(self, prompt, options, *, emit_findings=False):
+            _emit_activity({"activity": "turn", "turn": 1})
+            return await collect(self, prompt, options, emit_findings=emit_findings)
+    
+        monkeypatch.setattr(Executor, "_collect", observed_collect)
+        events = []
+        safe_emitter = cli._safe_event_emitter
+    
+        def observing_emitter(sink, thread_id):
+            emit = safe_emitter(sink, thread_id)
+    
+            def observed(kind, payload):
+                events.append((kind, payload))
+                emit(kind, payload)
+            return observed
+    
+        monkeypatch.setattr(cli, "_safe_event_emitter", observing_emitter)
+        stop_at_pr(monkeypatch)
+        with pytest.raises(KeyboardInterrupt, match="no publication"):
+            run(project, "parallel-observation")
+        state = saved_values(project[1], "parallel-observation")
+        context = context_from_state(state)
+        operations = {row.key.id: row for row in context.journal().operations()
+                      if row.key.kind.startswith("model.")}
+        starts = {payload["task_id"]: payload for kind, payload in events if kind == "node_start"}
+        activity = [payload for kind, payload in events if kind == "node_activity"]
+>       assert len(calls) == len(operations) == len(activity) == len(state["cost_events"]) == 6
+E       assert 6 == 2
+E        +  where 6 = len({'b7732bfe7d5eb61382d88e8dd451ba03b229109f013a6edfca248bbef64375b3': OperationReceipt(key=OperationKey(run_id='eb0e550..._id":"offline","terminal_received":true,"text":"implemented","transcript_path":null,"usage":{}}}', created=False), ...})
+E        +  and   2 = len([{'run_id': 'eb0e5507-59ed-4bd9-bc0c-6f8e3977c343', 'unit_id': 'A', 'attempt_id': 'plan:0', 'task_id': '1756b7e7-8a8f-...d9-bc0c-6f8e3977c343', 'unit_id': 'B', 'attempt_id': 'plan:0', 'task_id': '15fe6e7e-98b9-8bf3-792e-27bcaad4d4d7', ...}])
+
+tests/test_observability_integrity.py:120: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run eb0e5507-59ed-4bd9-bc0c-6f8e3977c343: selected committed HEAD 5737b67dccd687dc082a88b39c5d179d444703f9
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t23-activity-02/test_parallel_model_activity_m0/.blacksmith/runs/eb0e5507-59ed-4bd9-bc0c-6f8e3977c343
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: integration_gate
+blacksmith: advance_joined_level
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+total cost: $0.06; run cap $50.00, remaining $49.94
+execution time: 8.05s / 21600.00s; remaining 21591.95s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-activity-02/test_parallel_model_activity_m0/.blacksmith/runs/eb0e5507-59ed-4bd9-bc0c-6f8e3977c343/recovery/b8eff61e-7e0e-4ced-8c5c-b2affdecdd5c/manifest.json
+Next action: blacksmith recovery inspect --thread-id parallel-observation --config /private/tmp/blacksmith-heavy-prd-t23-activity-02/test_parallel_model_activity_m0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_observability_integrity.py::test_parallel_model_activity_matches_real_parent_task_and_critical_call_identity
+1 failed, 10 passed in 11.69s

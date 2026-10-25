@@ -92,7 +92,7 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         worktree_manager=CloneManager(config.resolve_repo_path()),
         gate=run_gate,
         fix=run_fix,
-        store=build_store(config.store.db_path),
+        store=_optional_store(config),
         limits=config.limits,
         # Wire the post-gate adversarial review loop (WU-REVIEW-LOOP) into production. Without
         # this the review node is never seeded/entered — the whole reviewer feature stays dark
@@ -211,9 +211,11 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     defaults = (getattr(graph, "config", None) or {}).get("configurable", {})
     config = {**config, **invocation_config(
         inputs, fallback_limits=defaults.get("blacksmith_limits"))}
-    with execution_scope(context) as clock, cancellation_signals(clock):
-        with node_execution(config) as owned:
-            return _execute_step(graph, payload, owned, on_node=on_node, on_event=on_event)
+    from blacksmith.observability import observation_scope
+    with observation_scope(inputs, config):
+        with execution_scope(context) as clock, cancellation_signals(clock):
+            with node_execution(config) as owned:
+                return _execute_step(graph, payload, owned, on_node=on_node, on_event=on_event)
 
 
 def _execute_step(graph, payload, config, *, on_node, on_event=None):
@@ -228,40 +230,52 @@ def _execute_step(graph, payload, config, *, on_node, on_event=None):
     driver depends on. This only observes the graph — it drives the same nodes in the same
     order as ``invoke``.
 
-    The ``custom`` stream (WU-LIVE-INTRA-NODE) carries whatever a node's executor call
-    wrote via ``get_stream_writer()`` from INSIDE its (possibly long) call — per-turn /
-    tool_use activity, and each review finding as it is produced — so the live view shows
-    progress WITHIN a node, not only at its boundaries. Each chunk is tagged with the
-    currently-running node (tracked from the same ``debug`` "task" events used for
-    ``on_node``) and forwarded to ``on_event`` under its own ``kind`` (the emitter sets
-    ``"kind": "node_activity"``; default to that if a chunk omits it). This is a pure
-    ADDITIVE OBSERVATION channel — a node with no stream writer bound (or with the sink
-    disabled/failing) emits nothing here and the graph's control flow is entirely unaffected.
+    Custom activity carries actual task/unit/attempt identity from its producing child
+    task and immutable model-call context. Only known, validated event shapes reach
+    the sink. Finding previews require a complete validated verdict and successful
+    terminal result; full review receipts remain authoritative. Presentation is bounded.
 
     ``on_event(kind, payload)``, when given, additionally receives ``node_start`` /
     ``node_end`` events for the additive live sink (WU-RUN-EVENTS): ``node_end`` carries
     the node's wall-clock ``duration``. It is a pure OBSERVATION hook — it never alters
-    which nodes run or in what order, and the emitter itself is best-effort (a failed
-    live-sink write is swallowed at the call site, exactly like the metrics sink).
+    which nodes run or in what order. Optional sink/display errors produce a bounded
+    class-only diagnostic and execution continues; critical receipt failures still halt.
 
     The caller derives finite recursion/concurrency bounds from immutable run
     inputs on every invocation, including recovery and approval resumes.
     """
     interrupt = None
-    starts: dict[str, float] = {}
-    current_node: str | None = None
+    from blacksmith.observability import activity_preview, runtime_identity, warning_once
+    starts = {}
+    warn = warning_once("live events")
+    progress_warning = warning_once("progress display")
+
+    def progress(name):
+        if on_node is not None:
+            try:
+                on_node(name)
+            except Exception as exc:
+                progress_warning(exc)
+
+    def emit(kind, data):
+        if on_event is not None:
+            try:
+                on_event(kind, data)
+            except Exception as exc:
+                warn(exc)
     for mode, chunk in graph.stream(
         payload, config, stream_mode=["updates", "debug", "custom"], durability="sync",
     ):
         if mode == "custom":
-            if isinstance(chunk, dict) and chunk.get("kind") == "unit_stage" and on_node:
-                on_node(chunk["phase"])
-            if on_event is not None and isinstance(chunk, dict):
-                kind = chunk.get("kind") or "node_activity"
-                activity = {k: v for k, v in chunk.items() if k != "kind"}
-                if current_node is not None:
-                    activity.setdefault("node", current_node)
-                on_event(kind, activity)
+            try:
+                if not isinstance(chunk, dict):
+                    raise ValueError("invalid custom observation")
+                kind, activity = activity_preview(chunk)
+                if kind == "unit_stage" and on_node:
+                    progress(activity["phase"])
+                emit(kind, activity)
+            except Exception as exc:
+                warn(exc)
             continue
         if mode == "debug":
             if not isinstance(chunk, dict):
@@ -271,18 +285,18 @@ def _execute_step(graph, payload, config, *, on_node, on_event=None):
             name = cpayload.get("name")
             if ctype == "task" and name:
                 task_id = cpayload.get("id")
+                identity = runtime_identity(cpayload.get("input"), task_id=task_id, node=name)
                 if task_id is not None:
-                    starts[task_id] = time.monotonic()
-                current_node = name
+                    starts[task_id] = (time.monotonic(), identity)
                 if on_node is not None:
-                    on_node(name)
-                if on_event is not None:
-                    on_event(NODE_START, {"node": name})
+                    progress(name)
+                emit(NODE_START, identity)
             elif ctype == "task_result" and name:
-                if on_event is not None:
-                    started = starts.pop(cpayload.get("id"), None)
-                    duration = None if started is None else time.monotonic() - started
-                    on_event(NODE_END, {"node": name, "duration": duration})
+                saved = starts.pop(cpayload.get("id"), None)
+                identity = (saved[1] if saved else runtime_identity(
+                    task_id=cpayload.get("id"), node=name))
+                duration = None if saved is None else time.monotonic() - saved[0]
+                emit(NODE_END, {**identity, "duration": duration})
             continue
         # mode == "updates": the only source of the gate's __interrupt__ payload.
         if not isinstance(chunk, dict):
@@ -394,11 +408,14 @@ def _safe_event_emitter(sink: LiveSink, thread_id: str):
     metrics sink. The live channel is purely additive OBSERVATION.
     """
 
+    from blacksmith.observability import warning_once
+    warn = warning_once("live events")
+
     def emit(kind: str, payload: dict) -> None:
         try:
             sink.emit(thread_id, kind, payload)
-        except Exception:
-            pass
+        except Exception as exc:
+            warn(exc)
 
     return emit
 
@@ -407,16 +424,27 @@ def _live_emitter(config: BlacksmithConfig, thread_id: str):
     """Build the best-effort live run-event emitter for ``thread_id``, or ``None``.
 
     Returns ``None`` when the sink is disabled (``[live] enabled=false``) or cannot be
-    opened, so the drive loop emits nothing and the run behaves exactly as today. Opening
-    the sink is itself swallowed (a bad ``db_path`` yields ``None``, never a raised error).
+    opened. Open/write failures produce a bounded class-only diagnostic; the
+    observation channel never substitutes for critical run evidence.
     """
     if not config.live.enabled:
         return None
     try:
         conn = build_live_store(config.live.db_path)
-    except Exception:
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("live store", exc)
         return None
     return _safe_event_emitter(LiveSink(conn), thread_id)
+
+
+def _optional_store(config):
+    from blacksmith.observability import warn_optional
+    try:
+        return build_store(config.store.db_path)
+    except Exception as exc:
+        warn_optional("memory store", exc)
+        return None
 
 
 def _emit_run_summary(on_event, values) -> None:
@@ -428,9 +456,14 @@ def _emit_run_summary(on_event, values) -> None:
     """
     if on_event is None:
         return
-    for payload in unit_result_payloads(values):
-        on_event(UNIT_RESULT, payload)
-    on_event(RUN_STATUS, run_status_payload(values))
+    from blacksmith.observability import warning_once
+    warn = warning_once("live events")
+    for kind, payload in [*((UNIT_RESULT, p) for p in unit_result_payloads(values)),
+                          (RUN_STATUS, run_status_payload(values))]:
+        try:
+            on_event(kind, payload)
+        except Exception as exc:
+            warn(exc)
 
 
 def drive(
@@ -712,8 +745,9 @@ def _record_metrics(
             )
         finally:
             store.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("metrics", exc)
 
 
 _NO_RUNS_MESSAGE = "no runs recorded yet"

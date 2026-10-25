@@ -340,10 +340,15 @@ def _prior_lessons(contract: PRDContract) -> list[dict]:
     empty Store, this returns ``[]`` and the system prompt is byte-for-byte what it was
     before this unit existed.
     """
-    store = current_store()
-    if store is None:
+    try:
+        store = current_store()
+        if store is None:
+            return []
+        return recent_lessons(store, repo_namespace(contract), _LESSONS_LIMIT)
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("memory lookup", exc)
         return []
-    return recent_lessons(store, repo_namespace(contract), _LESSONS_LIMIT)
 
 
 def _render_lesson(lesson: dict) -> str:

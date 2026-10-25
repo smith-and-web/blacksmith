@@ -440,6 +440,16 @@ LIVE_HTML = """<!doctype html>
 // never an external CDN (offline / air-gapped safe).
 const FLEET_URL = "/api/runs/active";
 const REFRESH_MS = __REFRESH_MS__;
+const DISPLAY_FINDINGS = 20;
+const DISPLAY_STEPS = 200;
+const DISPLAY_UNITS = 100;
+const previewText = (value, limit = 2048) => {
+  const text = String(value == null ? "" : value);
+  return text.length <= limit ? text : text.slice(0, limit) +
+    ` [${text.length - limit} more characters omitted; see run artifacts]`;
+};
+const omitted = (count, label) => count > 0
+  ? `<li class="step-sub">${count} more ${label} omitted; see run artifacts</li>` : "";
 const usd = (n) => n == null ? "—" : "$" + Number(n).toFixed(2);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -464,7 +474,8 @@ function ensureThread(threadId) {
 
   const entry = {
     el, node: null, nodeStartTs: null, lastSeq: -1,
-    steps: [], units: new Map(), findings: [], status: "running", prUrl: null,
+    steps: [], units: new Map(), findings: [], findingsOmitted: 0,
+    status: "running", prUrl: null,
     // Live wiring: one SSE connection per active run, straight to that thread's stream.
     es: new EventSource("/live/" + encodeURIComponent(threadId)),
   };
@@ -473,7 +484,27 @@ function ensureThread(threadId) {
   return entry;
 }
 
-function currentStep(entry) { return entry.steps[entry.steps.length - 1] || null; }
+function currentStep(entry) {
+  return entry.steps.slice().reverse().find((s) => s.endTs == null) || null;
+}
+
+function eventStep(entry, payload) {
+  const steps = entry.steps.slice().reverse();
+  if (payload.task_id || payload.parent_task_id) {
+    return steps.find((s) => s.taskId && (s.taskId === payload.task_id ||
+      s.taskId === payload.parent_task_id)) || null;
+  }
+  // Legacy events have no task IDs: never apply this fallback to a known new task.
+  return steps.find((s) => s.endTs == null && s.node === payload.node) || null;
+}
+
+function findingsHtml(entry) {
+  return entry.findings.slice(0, DISPLAY_FINDINGS).map((f) =>
+    `<li>${esc(f.severity || "?")}: ${esc(previewText(f.file, 512))} — ` +
+    `${esc(previewText(f.detail))}</li>`).join("") +
+    omitted(Math.max(0, entry.findings.length - DISPLAY_FINDINGS) +
+      (entry.findingsOmitted || 0), "findings");
+}
 
 function handleEvent(threadId, frame) {
   const entry = threads.get(threadId);
@@ -489,19 +520,26 @@ function handleEvent(threadId, frame) {
   if (frame.kind === "node_start") {
     entry.node = payload.node;
     entry.nodeStartTs = frame.ts;
-    entry.steps.push({ node: payload.node, startTs: frame.ts, endTs: null, duration: null,
+    entry.steps.push({ node: payload.node, taskId: payload.task_id, unitId: payload.unit_id,
+      startTs: frame.ts, endTs: null, duration: null,
       turns: 0, tools: new Map(), last: null });
   } else if (frame.kind === "node_end") {
-    const s = currentStep(entry);
-    if (s && s.node === payload.node) {
+    const s = eventStep(entry, payload);
+    if (s) {
       s.endTs = frame.ts;
       s.duration = payload.duration != null ? payload.duration : frame.ts - s.startTs;
     }
+    const active = currentStep(entry);
+    entry.node = active ? active.node : null;
+    entry.nodeStartTs = active ? active.startTs : null;
   } else if (frame.kind === "node_activity") {
-    const s = currentStep(entry);
+    const s = eventStep(entry, payload);
     if (payload.activity === "finding") {
       entry.findings.push(payload.finding || {});
       if (s) s.last = "reviewer flagged " + ((payload.finding || {}).file || "an issue");
+    } else if (payload.activity === "findings_omitted") {
+      if (Number.isSafeInteger(payload.count) && payload.count > 0)
+        entry.findingsOmitted = (entry.findingsOmitted || 0) + payload.count;
     } else if (s && payload.activity === "tool_use") {
       s.tools.set(payload.tool, (s.tools.get(payload.tool) || 0) + 1);
       s.last = payload.tool;
@@ -527,10 +565,12 @@ function renderThread(threadId) {
   const elapsed = entry.nodeStartTs ? Math.max(0, Date.now() / 1000 - entry.nodeStartTs) : 0;
   entry.el.querySelector(".elapsed").textContent = elapsed.toFixed(0) + "s";
   entry.el.querySelector(".unit-costs tbody").innerHTML =
-    Array.from(entry.units.values()).map((u) =>
-      `<tr><td>${esc(u.unit_id)}</td><td>${usd(u.cost_usd)}</td></tr>`).join("");
-  entry.el.querySelector(".findings").innerHTML = entry.findings.map((f) =>
-    `<li>${esc(f.severity || "?")}: ${esc(f.file)} — ${esc(f.detail)}</li>`).join("");
+    Array.from(entry.units.values()).slice(0, DISPLAY_UNITS).map((u) =>
+      `<tr><td>${esc(previewText(u.unit_id, 512))}</td><td>${usd(u.cost_usd)}</td></tr>`
+    ).join("") + (entry.units.size > DISPLAY_UNITS
+      ? `<tr><td colspan="2">${entry.units.size - DISPLAY_UNITS} more units omitted; ` +
+        `see run artifacts</td></tr>` : "");
+  entry.el.querySelector(".findings").innerHTML = findingsHtml(entry);
   if (currentPanelThread === threadId) renderRunPanel(threadId);
 }
 
@@ -541,20 +581,26 @@ function showRunPanel(threadId) {
   document.getElementById("run-panel").classList.remove("hidden");
 }
 
-function renderStep(entry, s, isLast, running, nowS) {
-  const active = running && isLast && s.endTs == null;
+function renderStep(entry, s, running, nowS) {
+  const active = running && s.endTs == null;
+  const completed = s.endTs != null;
   const dur = s.duration != null ? s.duration : (active ? nowS - s.startTs : 0);
   const toolCount = Array.from(s.tools.values()).reduce((a, b) => a + b, 0);
-  const chips = Array.from(s.tools.entries())
-    .map(([t, c]) => `<span class="chip">${esc(t)} ×${c}</span>`).join("");
+  const chips = Array.from(s.tools.entries()).slice(0, DISPLAY_FINDINGS)
+    .map(([t, c]) => `<span class="chip">${esc(previewText(t, 256))} ×${c}</span>`).join("") +
+    (s.tools.size > DISPLAY_FINDINGS ? `<span class="chip">` +
+      `${s.tools.size - DISPLAY_FINDINGS} more tools omitted; see run artifacts</span>` : "");
   const parts = [];
   if (s.turns) parts.push(s.turns + " turn" + (s.turns === 1 ? "" : "s"));
   if (toolCount) parts.push(toolCount + " tool call" + (toolCount === 1 ? "" : "s"));
   const sub = parts.length ? `<div class="step-sub">${parts.join(" · ")}</div>` : "";
-  const live = active && s.last ? `<div class="step-live">▸ ${esc(s.last)}</div>` : "";
+  const live = active && s.last
+    ? `<div class="step-live">▸ ${esc(previewText(s.last))}</div>` : "";
   return `<div class="step ${active ? "active" : "done"}">
-      <div class="step-head"><span>${active ? "⚙" : "✓"}</span>` +
-      `<span class="step-node">${esc(s.node)}</span>` +
+      <div class="step-head"><span>${active ? "⚙" : completed ? "✓" : "—"}</span>` +
+      `<span class="step-node">${esc(previewText(s.node, 128))}` +
+      `${s.unitId ? " · " + esc(previewText(s.unitId, 512)) : ""}` +
+      `${!active && !completed ? " (unfinished)" : ""}</span>` +
       `<span class="step-dur">${fmtDur(dur)}</span></div>
       ${sub}${chips ? `<div class="chips">${chips}</div>` : ""}${live}</div>`;
 }
@@ -577,18 +623,22 @@ function renderRunPanel(threadId) {
     banner = `<div class="run-status halted">✕ ${esc(entry.status || "halted")}</div>`;
   }
 
-  const steps = entry.steps
-    .map((s, i) => renderStep(entry, s, i === entry.steps.length - 1, running, nowS)).join("");
+  const historyOmitted = Math.max(0, entry.steps.length - DISPLAY_STEPS);
+  const steps = (historyOmitted
+    ? `<div class="step-sub">${historyOmitted} earlier steps omitted; see run artifacts</div>`
+    : "") + entry.steps.slice(-DISPLAY_STEPS)
+    .map((s) => renderStep(entry, s, running, nowS)).join("");
 
-  const unitRows = Array.from(entry.units.values()).map((u) =>
-    `<tr><td>${esc(u.unit_id)}</td>` +
+  const unitRows = Array.from(entry.units.values()).slice(0, DISPLAY_UNITS).map((u) =>
+    `<tr><td>${esc(previewText(u.unit_id, 512))}</td>` +
     `<td><span class="badge ${esc(u.gate_result)}">${esc(u.gate_result || "")}</span></td>` +
-    `<td>${usd(u.cost_usd)}</td></tr>`).join("");
+    `<td>${usd(u.cost_usd)}</td></tr>`).join("") + (entry.units.size > DISPLAY_UNITS
+      ? `<tr><td colspan="3">${entry.units.size - DISPLAY_UNITS} more units omitted; ` +
+        `see run artifacts</td></tr>` : "");
   const units = unitRows ? `<h3>Units</h3><table><tbody>${unitRows}</tbody></table>` : "";
 
-  const findings = entry.findings.length
-    ? `<h3>Reviewer findings</h3><ul class="findings">` + entry.findings.map((f) =>
-        `<li>${esc(f.severity || "?")}: ${esc(f.file)} — ${esc(f.detail)}</li>`).join("") + `</ul>`
+  const findings = entry.findings.length || entry.findingsOmitted
+    ? `<h3>Reviewer findings</h3><ul class="findings">${findingsHtml(entry)}</ul>`
     : "";
 
   body.innerHTML = `<h2>Run ${esc(threadId)}</h2>${banner}` +

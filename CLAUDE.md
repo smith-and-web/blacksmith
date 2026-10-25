@@ -19,7 +19,7 @@ Python 3.12 · LangGraph · Claude Agent SDK · SQLite checkpointer · `uv`.
 
 ```sh
 uv sync                 # provision + install
-uv run pytest           # full suite (300+ tests)
+uv run pytest           # full suite; exact receipts in docs/reviews/
 uv run ruff check       # lint
 blacksmith <prd>        # run against a PRD (installed as a uv tool)
 blacksmith runs         # run history
@@ -59,11 +59,20 @@ add a dependency without adding it to `pyproject.toml`.
 - `blacksmith/config.py` — `blacksmith.config.toml` parsing.
 - `blacksmith/index.py` — repo map and `search_code` tool.
 - `blacksmith/state.py` — the `BlacksmithState` TypedDict threaded through nodes.
-- `blacksmith/metrics.py`, `dashboard.py` — observability.
+- `blacksmith/observability.py`, `events.py`, `metrics.py`, `dashboard.py` — optional
+  task-owned observations and bounded previews; critical receipts control routing.
 
 Config sections: `[target]`, `[models]`, `[limits]`, `[checkpointer]`, `[api]`,
 `[index]`, `[critic]`. Models are tiered — implement starts on Sonnet and
 escalates to Opus only on a gate failure.
+
+Heavy-PRD changes are on a local feature branch. See `docs/reviews/heavy-prd-progress.md`
+and `heavy-prd-evidence.md` for accepted slices and exact source/test receipts.
+Sandbox execution rejects enabled settings; `respond` explicitly refuses until
+hardened. Native gates run trusted commands on the host, with credentials stripped;
+clones do not provide an OS sandbox. Legacy checkpoints remain inspectable but cannot
+execute without required migration evidence. Never infer live release acceptance
+from offline SDK/GitHub/Docker replacements.
 
 ## Failure classes this codebase has actually exhibited
 

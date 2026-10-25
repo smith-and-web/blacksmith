@@ -1,0 +1,373 @@
+......FFF..........                                                      [100%]
+=================================== FAILURES ===================================
+____ test_missing_or_error_terminal_cannot_emit_a_plausible_finding[False] _____
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t23-activity-01/test_missing_or_error_terminal0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d267380>
+terminal = False
+
+    @pytest.mark.parametrize("terminal", [False, True])
+    def test_missing_or_error_terminal_cannot_emit_a_plausible_finding(
+        tmp_path, monkeypatch, terminal,
+    ):
+        text = verdict()
+        messages = [AssistantMessage(content=[TextBlock(text=text)], model="offline")]
+        if terminal:
+            messages.append(replace(_result_message(text), is_error=True))
+>       result, events = drive(tmp_path, monkeypatch, messages)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_activity_integrity.py:63: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_activity_integrity.py:33: in drive
+    events = _run_single_node_graph(tmp_path, node, thread_id="activity-integrity")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_live_intra_node.py:85: in _run_single_node_graph
+    _step(compiled, {}, config, on_node=lambda _n: None, on_event=recorder)
+blacksmith/cli.py:218: in _step
+    return _execute_step(graph, payload, owned, on_node=on_node, on_event=on_event)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/cli.py:266: in _execute_step
+    for mode, chunk in graph.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_activity_integrity.py:30: in node
+    results.append(executor.run_review("review actual changes", cwd=str(tmp_path)))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/executor.py:427: in run_review
+    return self.run(prompt, model=self._config.models.review, emit_findings=True,
+blacksmith/executor.py:232: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <blacksmith.executor.Executor object at 0x10dface00>
+prompt = 'review actual changes', model = 'claude-opus-4-8'
+raise_on_error = True, emit_findings = True, call_context = None
+operation_kind = 'model.review'
+option_kwargs = {'cwd': '/private/tmp/blacksmith-heavy-prd-t23-activity-01/test_missing_or_error_terminal0'}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+            raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+        options = self.build_options(model=model, **option_kwargs)
+        journal = call_context.journal() if call_context else None
+        key = call_context.key(operation_kind) if call_context else None
+        budget_ledger = reservation = None
+        if journal is not None:
+            from blacksmith.budget import BudgetLedger
+            budget_ledger = BudgetLedger.for_call(call_context)
+            reservation = (budget_ledger.reservation_for(key) if journal.get(key)
+                           else budget_ledger.reserve(key))
+            options = replace(options, max_budget_usd=reservation.amount_usd)
+        cached = None
+        if journal is not None:
+            receipt = journal.intent(key, {
+                "prompt_sha256": digest(prompt),
+                "system_prompt_sha256": digest(str(options.system_prompt or "")),
+                "model": options.model, "cwd": str(options.cwd) if options.cwd else None,
+                "max_turns": options.max_turns, "max_budget_usd": options.max_budget_usd,
+                "admission_id": reservation.operation_id,
+                "allowed_tools": options.allowed_tools,
+                "disallowed_tools": options.disallowed_tools,
+                "tools": options.tools,
+                "permission_mode": options.permission_mode,
+                "mcp_servers": sorted(options.mcp_servers),
+            })
+            if not receipt.created:
+                if receipt.status not in {"completed", "failed"}:
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+                try:
+                    cached = ExecutorResult(**receipt.outcome["result"])
+                except (KeyError, TypeError) as exc:
+                    raise ReceiptError("invalid retained SDK result") from exc
+                if (cached.call_id != key.id or not cached.terminal_received
+                        or cached.is_error != (receipt.status == "failed")):
+                    raise ReceiptError("invalid retained SDK result identity/status")
+        if cached is not None:
+            result = cached
+            if budget_ledger is not None:
+                budget_ledger.settle(reservation)
+        else:
+            call = {"call_id": key.id if key else str(uuid4()), "role": operation_kind}
+            if key:
+                call.update(run_id=key.run_id, unit_id=key.unit_id, attempt_id=key.attempt_id)
+            try:
+                token = _CALL.set(call)
+                try:
+                    result = asyncio.run(self._bounded_collect(
+                        prompt, options, emit_findings=emit_findings))
+                    result = replace(result, transcript_path=_CALL.get().get("transcript_path"))
+                finally:
+                    _CALL.reset(token)
+            except BaseException as exc:
+                if journal is not None:
+                    partial = _partial_result(options.model, call, kind="interrupted",
+                                              text=f"call interrupted: {type(exc).__name__}")
+                    journal.finish(key, "interrupted", {"error_type": type(exc).__name__,
+                        "result": asdict(partial)},
+                        events=_cost_record(key, operation_kind, partial))
+                    budget_ledger.settle(reservation)
+                raise
+            if journal is not None:
+                result = replace(result, call_id=key.id)
+                status = ("unknown" if not result.terminal_received
+                          else "failed" if result.is_error else "completed")
+                journal.finish(key, status,
+                               {"result": asdict(result)},
+                               events=_cost_record(key, operation_kind, result))
+                budget_ledger.settle(reservation)
+                if not result.terminal_received:
+                    if result.error_kind in {"timeout", "run_deadline"}:
+                        raise ModelCallStopped(result.error_kind, result)
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+        if result.error_kind == "budget" or (budget_ledger is not None and (
+                budget_ledger.balance().unacknowledged_overrun)):
+            raise ModelCallStopped("budget", result)
+        if raise_on_error and result.is_error:
+>           raise ExecutorError(f"executor call failed (model={result.model}): {result.text!r}")
+E           blacksmith.executor.ExecutorError: executor call failed (model=offline): '{"verdict": "needs_changes", "findings": [{"severity": "blocking", "file": "result.py", "detail": "required behavior0"}]}'
+E           During task with name 'work' and id '27ae70c6-07f3-a4c1-7ee6-e39d763e1ae2'
+
+blacksmith/executor.py:333: ExecutorError
+_____ test_missing_or_error_terminal_cannot_emit_a_plausible_finding[True] _____
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t23-activity-01/test_missing_or_error_terminal1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dfad2b0>
+terminal = True
+
+    @pytest.mark.parametrize("terminal", [False, True])
+    def test_missing_or_error_terminal_cannot_emit_a_plausible_finding(
+        tmp_path, monkeypatch, terminal,
+    ):
+        text = verdict()
+        messages = [AssistantMessage(content=[TextBlock(text=text)], model="offline")]
+        if terminal:
+            messages.append(replace(_result_message(text), is_error=True))
+>       result, events = drive(tmp_path, monkeypatch, messages)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_activity_integrity.py:63: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_activity_integrity.py:33: in drive
+    events = _run_single_node_graph(tmp_path, node, thread_id="activity-integrity")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_live_intra_node.py:85: in _run_single_node_graph
+    _step(compiled, {}, config, on_node=lambda _n: None, on_event=recorder)
+blacksmith/cli.py:218: in _step
+    return _execute_step(graph, payload, owned, on_node=on_node, on_event=on_event)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/cli.py:266: in _execute_step
+    for mode, chunk in graph.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_activity_integrity.py:30: in node
+    results.append(executor.run_review("review actual changes", cwd=str(tmp_path)))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/executor.py:427: in run_review
+    return self.run(prompt, model=self._config.models.review, emit_findings=True,
+blacksmith/executor.py:232: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <blacksmith.executor.Executor object at 0x10dfac050>
+prompt = 'review actual changes', model = 'claude-opus-4-8'
+raise_on_error = True, emit_findings = True, call_context = None
+operation_kind = 'model.review'
+option_kwargs = {'cwd': '/private/tmp/blacksmith-heavy-prd-t23-activity-01/test_missing_or_error_terminal1'}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+            raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+        options = self.build_options(model=model, **option_kwargs)
+        journal = call_context.journal() if call_context else None
+        key = call_context.key(operation_kind) if call_context else None
+        budget_ledger = reservation = None
+        if journal is not None:
+            from blacksmith.budget import BudgetLedger
+            budget_ledger = BudgetLedger.for_call(call_context)
+            reservation = (budget_ledger.reservation_for(key) if journal.get(key)
+                           else budget_ledger.reserve(key))
+            options = replace(options, max_budget_usd=reservation.amount_usd)
+        cached = None
+        if journal is not None:
+            receipt = journal.intent(key, {
+                "prompt_sha256": digest(prompt),
+                "system_prompt_sha256": digest(str(options.system_prompt or "")),
+                "model": options.model, "cwd": str(options.cwd) if options.cwd else None,
+                "max_turns": options.max_turns, "max_budget_usd": options.max_budget_usd,
+                "admission_id": reservation.operation_id,
+                "allowed_tools": options.allowed_tools,
+                "disallowed_tools": options.disallowed_tools,
+                "tools": options.tools,
+                "permission_mode": options.permission_mode,
+                "mcp_servers": sorted(options.mcp_servers),
+            })
+            if not receipt.created:
+                if receipt.status not in {"completed", "failed"}:
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+                try:
+                    cached = ExecutorResult(**receipt.outcome["result"])
+                except (KeyError, TypeError) as exc:
+                    raise ReceiptError("invalid retained SDK result") from exc
+                if (cached.call_id != key.id or not cached.terminal_received
+                        or cached.is_error != (receipt.status == "failed")):
+                    raise ReceiptError("invalid retained SDK result identity/status")
+        if cached is not None:
+            result = cached
+            if budget_ledger is not None:
+                budget_ledger.settle(reservation)
+        else:
+            call = {"call_id": key.id if key else str(uuid4()), "role": operation_kind}
+            if key:
+                call.update(run_id=key.run_id, unit_id=key.unit_id, attempt_id=key.attempt_id)
+            try:
+                token = _CALL.set(call)
+                try:
+                    result = asyncio.run(self._bounded_collect(
+                        prompt, options, emit_findings=emit_findings))
+                    result = replace(result, transcript_path=_CALL.get().get("transcript_path"))
+                finally:
+                    _CALL.reset(token)
+            except BaseException as exc:
+                if journal is not None:
+                    partial = _partial_result(options.model, call, kind="interrupted",
+                                              text=f"call interrupted: {type(exc).__name__}")
+                    journal.finish(key, "interrupted", {"error_type": type(exc).__name__,
+                        "result": asdict(partial)},
+                        events=_cost_record(key, operation_kind, partial))
+                    budget_ledger.settle(reservation)
+                raise
+            if journal is not None:
+                result = replace(result, call_id=key.id)
+                status = ("unknown" if not result.terminal_received
+                          else "failed" if result.is_error else "completed")
+                journal.finish(key, status,
+                               {"result": asdict(result)},
+                               events=_cost_record(key, operation_kind, result))
+                budget_ledger.settle(reservation)
+                if not result.terminal_received:
+                    if result.error_kind in {"timeout", "run_deadline"}:
+                        raise ModelCallStopped(result.error_kind, result)
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+        if result.error_kind == "budget" or (budget_ledger is not None and (
+                budget_ledger.balance().unacknowledged_overrun)):
+            raise ModelCallStopped("budget", result)
+        if raise_on_error and result.is_error:
+>           raise ExecutorError(f"executor call failed (model={result.model}): {result.text!r}")
+E           blacksmith.executor.ExecutorError: executor call failed (model=offline): '{"verdict": "needs_changes", "findings": [{"severity": "blocking", "file": "result.py", "detail": "required behavior0"}]}'
+E           During task with name 'work' and id 'a8dbd250-0174-9b54-f30b-d05eaa65e535'
+
+blacksmith/executor.py:333: ExecutorError
+_ test_finding_preview_is_bounded_with_real_task_identity_and_full_result_retained _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t23-activity-01/test_finding_preview_is_bounde0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dfacf50>
+
+    def test_finding_preview_is_bounded_with_real_task_identity_and_full_result_retained(
+        tmp_path, monkeypatch,
+    ):
+        text = verdict(50, detail="D" * 5000, file="F" * 1000)
+        result, events = drive(tmp_path, monkeypatch, [_result_message(text)])
+        assert not result.is_error and result.terminal_received and result.text == text
+        start = next(payload for kind, payload in events if kind == "node_start")
+        end = next(payload for kind, payload in events if kind == "node_end")
+        findings = [payload for _, payload in events if payload.get("activity") == "finding"]
+        counts = [payload for _, payload in events
+                  if payload.get("activity") == "findings_omitted"]
+        assert len(findings) == 20 and len(counts) == 1 and counts[0]["count"] == 30
+        assert start["task_id"] == end["task_id"] and start["task_id"]
+        assert len({item["call_id"] for item in findings + counts}) == 1
+>       assert findings[0]["call_id"] == result.call_id
+E       assert '430ccd02-0dca-417d-8e54-436fd647dfe0' == None
+E        +  where None = ExecutorResult(text='{"verdict": "needs_changes", "findings": [{"severity": "blocking", "file": "FFFFFFFFFFFFFFFFFFFFF...='/Users/josh.smith/Code/blacksmith/tests/fixtures/.blacksmith/transcripts/430ccd02-0dca-417d-8e54-436fd647dfe0.jsonl').call_id
+
+tests/test_activity_integrity.py:83: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_activity_integrity.py::test_missing_or_error_terminal_cannot_emit_a_plausible_finding[False]
+FAILED tests/test_activity_integrity.py::test_missing_or_error_terminal_cannot_emit_a_plausible_finding[True]
+FAILED tests/test_activity_integrity.py::test_finding_preview_is_bounded_with_real_task_identity_and_full_result_retained
+3 failed, 16 passed in 7.27s

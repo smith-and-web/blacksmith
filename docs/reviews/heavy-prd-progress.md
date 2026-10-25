@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 22 / 30. Never reset this counter automatically.
+- Goal turn: 23 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; finalized S15 offline adapters and S16 owned-node scheduling fixes, exact source audits, verified S14 fixture archive, updated local/brain handoffs and committed finalized docs/evidence536829f. Full03/44404 and isolated93-case regression verified live; no acceptance claimed.
-- Current turn: 22; S15 full03/44404 terminal1325 passed/6 SDK warnings/3373.29s, exact165-source/runtime/ruff proof accepted. S16 adjacent93 passed; isolated S17/S18 candidates227/30/31 passed. S16-S18 source integration is committed; S19/final full remain. Counter incremented21->22 once; never on compaction, status questions or tools.
+- Previous-turn classification: progress; accepted S15 full1325/ruff and committed44f0108, integrated S16/S17/S18 asfc94de2/24e52e1/33eba45 with exact169-source proof and scoped227/30/31; verified brain/local handoff401a9a2.
+- Current turn: 23; accepted S15 archive fully verified and cleaned. S19 keyed counters, visible optional failures, strict activity/identity, child writer forwarding and bounded presentation are implemented with scoped proof; docs/final matrix audit and final combined full pytest/ruff including100/20 remain. Counter incremented22->23 once; never on compaction/status/tools.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,56 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn22; S15 accepted, S16-S18 scoped candidates ready
+## Current handoff: turn23; S19 scoped proof, final combined verification outstanding
+
+Counter **23/30**, unchanged by the user's status request. S01–S15 accepted locally;
+S16–S18 integrated with scoped proof; S19 remains unchecked. Primary branch
+feature/heavy-prd-readiness has documentation base401a9a2 and final S19 source.
+Original spec/probe unchanged and untracked. Do not stage them or replay old stage
+baselines. No full combined S16–S19 suite has run yet.
+
+S19 scoped results: counter recovery sequential/parallel **2 passed/29.90s**;
+optional store/lookup/live/metrics/progress faults **9 passed/55.26s**; strict
+activity plus actual parallel call/parent identity **11 passed/11.88s**; bounded
+presentation **13 passed/0.29s**; adjacent presentation/events/dashboard batch had
+87 passing cases and two new fixture-signature failures, corrected in the 13-case
+target. Broader adjacent final01 finished **1 failed/162 passed/160.32s, exit1**:
+new context-free result call IDs broke the existing transcript enabled/disabled
+equality assertion. Restored legacy result behavior without changing that assertion;
+activity/transcripts keep unique IDs and production calls retain critical IDs.
+Correction02 finished **40 passed/41.35s, exit0**, including that original test,
+strict activity, both recovery shapes and real parallel identity. Final ruff08
+passed. Collection1397 succeeded; expected count is not a passing suite. Final
+combined full still required. All failed receipts are retained.
+
+Actual defects reproduced and repaired: recovered cumulative revision counted
+twice; optional memory lookup aborted plan and printed private exception detail;
+child model activity was absent from the parent live stream. New strict tests keep
+their original effect/cost/identity assertions. Complete verdict/terminal checks,
+real call/task ownership and bounded previews preserve full critical evidence.
+The actual inline-JS offline probe **passed** after correcting a constant placement
+error it exposed; it verifies task association, concurrent completion, history and
+finding caps, unfinished status and replay deduplication. No browser-layout claim.
+
+Accepted S15 archive cleanup11475 completed exit0. Archive turn21-full03.tar.gz
+is209907938 bytes/SHA256556b59a103c9077b2879708187a6ff49c4ea16da159e132d85a5512d395bb76b;
+manifestSHA610d9e67980843e9ad1a67777cfb71bdee7b13e7b0d677a24f439c6ec6ebc750.
+752885 entries were verified;175489 owned dirs made writable without changing
+regular-file/shared-hardlink modes. No protected entries; failed roots preserved.
+Source t21-full03 removed; restore only after archive identity verification into
+an absent safe destination. Exact proof: turn22-archive-s15-proof.json, cleanup23.
+Latest free3.8GiB. Stable archive directory and restore instructions are in that
+proof. Do not repeat the original expensive fixture or cleanup.
+
+Next: finish full source/config/matrix audit and documentation, scoped adjacent
+regression, then freeze exact sources/runtime and run full pytest/ruff including
+actual100-chain and20-root/max2. Keep all source frozen during the full run and
+observe the same job. Accept S16–S19 only after terminal proof and complete matrix.
+No paid canary/live release gate/Docker smoke/human contract review is claimed.
+Historical turn13 failed external-push attempt remains disclosed. Goal active23/30;
+next actual automatic24; at30 stop/save precise handoff/pause unfinished work.
+
+## Historical handoff: turn22; S15 accepted, S16-S18 scoped candidates ready
 
 Counter **22/30**. S01-S15 accepted locally; S16-S19 unchecked. All test/lint handles are terminal. S15 accepted-fixture archive prepare4182
 is live after owner scan3566 completed exit1; see the pending archive block below. Primary full03/44404 finished **1325 passed,
@@ -309,3 +358,7 @@ compaction/tool calls never change the counter22.
 
 
 Turn22 durable brain validation: Projects/blacksmith.md updated via MCP with S15 accepted1325/44f0108, exact S16-S18 source integration at33eba45, S19 concrete remaining work, archive4182 resource handoff and limit22/30. Targeted lint0 errors/0 warnings. After more than148 seconds, index lastRun.errors0/invalidFrontmatter0; fresh semantic retrieval and exact entire-note readback verified every written byte (64530a99-cca0-4678-a27e-0b00af24bc91), one positive feedback. Receipt turn22-brain-verification.json. No memory-folder write. Test/lint handles terminal; accepted S15 archive prepare4182 remains live at last authoritative poll. Goal active22/30; next actual automatic23. Original inputs preserved/untracked/unstaged. Stop/save/pause unfinished work at30; historical turn13 failed external-push exception retained.
+
+## Turn23 continuation audit
+
+Counter22->23 persisted once after objective, repository instructions, memory/brain and exact169-source/config/input/all-distribution/Python/SQLite checks. Previous turn was progress. Archive4182 authoritatively terminal0; proof says archive verified and cleanup not_started. Other test/lint handles terminal. Source HEAD401a9a2; S01-S15 accepted, S16-S18 integrated/scoped but final full pending; S19 required. Free1.5GiB before cleanup; no new full run until sufficient space. Stop/save/pause unfinished work at30.

@@ -1,0 +1,35 @@
+........................................................................ [ 44%]
+.............................................F.......................... [ 88%]
+...................                                                      [100%]
+=================================== FAILURES ===================================
+__________ test_disabled_writes_no_file_and_returns_identical_result ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e3b4ce0>
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t23-observability-final-01/test_disabled_writes_no_file_a0')
+
+    def test_disabled_writes_no_file_and_returns_identical_result(monkeypatch, tmp_path):
+        stream = [_assistant(text="hi", session_id="s1"), _result(session_id="s1", result="final")]
+        on = _config(monkeypatch, transcripts_dir=tmp_path / "on", enabled=True)
+        off = _config(monkeypatch, transcripts_dir=tmp_path / "off", enabled=False)
+    
+        result_on = Executor(on, query_fn=FakeQuery(stream)).run("p", model="claude-opus-4-8")
+        result_off = Executor(off, query_fn=FakeQuery(stream)).run("p", model="claude-opus-4-8")
+    
+        assert not (tmp_path / "off").exists()  # disabled: nothing written
+>       assert result_off == result_on  # byte-for-byte identical ExecutorResult
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert ExecutorResul...ipt_path=None) == ExecutorResul...84c171.jsonl')
+E         
+E         Omitting 9 identical items, use -vv to show
+E         Differing attributes:
+E         ['call_id']
+E         
+E         Drill down into differing attribute call_id:
+E           call_id: 'f1badf9d-f4cb-4100-bbaa-c2bbfd407c56' != 'd8b6d14d-dc24-4618-8ceb-c881af84c171'
+E           - d8b6d14d-dc24-4618-8ceb-c881af84c171
+E           + f1badf9d-f4cb-4100-bbaa-c2bbfd407c56
+
+tests/test_transcript.py:164: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_transcript.py::test_disabled_writes_no_file_and_returns_identical_result
+1 failed, 162 passed in 160.32s (0:02:40)

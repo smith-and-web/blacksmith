@@ -1,0 +1,112 @@
+F
+=================================== FAILURES ===================================
+_ test_recovered_review_revision_is_counted_once_with_original_evidence_retained[False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t23-observability-baseline-01/test_recovered_review_revision0/target'), ...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e0eb0b0>
+parallel = False
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    def test_recovered_review_revision_is_counted_once_with_original_evidence_retained(
+        project, monkeypatch, parallel,
+    ):
+        configure_review(project, parallel=parallel, revisions=1)
+        selected = "A" if parallel else "U1"
+    
+        def change(unit, number, workspace, prompt):
+            target = unit.lower() + ".txt" if parallel else "result.txt"
+            (workspace / target).write_text("revision " + str(number))
+    
+        def response(unit, number):
+            if unit != selected:
+                return CLEAN
+            return BLOCKING if number == 1 else "malformed" if number == 2 else CLEAN
+    
+        calls = install(monkeypatch, implement=change, responses=response)
+        assert run(project, "observed-recovery") == 1
+        before = saved_values(project[1], "observed-recovery")
+        original = before["unit_outcomes"][selected]
+        assert original["review_revisions"] == before["review_revisions_total"] == 1
+        assert original["review_receipt"].status == "unavailable"
+        old_artifact = Path(original["review_receipt"].artifact_path).read_bytes()
+        context = context_from_state(before)
+        old_models = [row for row in context.journal().operations()
+                      if row.key.kind.startswith("model.")]
+        old_cost_ids = {row["event_id"] for row in before["cost_events"]}
+        old_other_calls = [call for call in calls if call[1] != selected]
+        seen = []
+    
+        def approve(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            seen.append(payload)
+            raise KeyboardInterrupt("observability proof; no publication")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approve)
+        args = ["resume", "--config", str(project[1]), "--thread-id", "observed-recovery",
+                "--continue-attempt"]
+        if parallel:
+            args += ["--unit-id", selected]
+        with pytest.raises(KeyboardInterrupt, match="no publication"):
+            cli.main(args)
+        after = saved_values(project[1], "observed-recovery")
+        outcome = after["unit_outcomes"][selected]
+        assert outcome["review_revisions"] == 1
+>       assert after["review_revisions_total"] == seen[0]["review_revisions_total"] == 1
+E       assert 2 == 1
+
+tests/test_observability_integrity.py:61: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run d5184dea-6572-4715-80ed-8ff2c0a8e86b: selected committed HEAD 57708178fd01ea273e72127e6eb0673e42d2045c
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t23-observability-baseline-01/test_recovered_review_revision0/.blacksmith/runs/d5184dea-6572-4715-80ed-8ff2c0a8e86b
+[auto] gate 'plan': approved
+
+status: halted
+error [review]: review unavailable: Expecting value: line 1 column 1 (char 0)
+total cost: $0.05; run cap $50.00, remaining $49.95
+tokens: unavailable
+execution time: 3.07s / 21600.00s; remaining 21596.93s
+Resuming run d5184dea-6572-4715-80ed-8ff2c0a8e86b, base 57708178fd01ea273e72127e6eb0673e42d2045c, saved configuration
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: prepare_review_revision
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-observability-baseline-01/test_recovered_review_revision0/.blacksmith/runs/d5184dea-6572-4715-80ed-8ff2c0a8e86b/recovery/2025e02b-f476-4e98-bbae-e180f70918f5/manifest.json
+Next action: blacksmith recovery inspect --thread-id observed-recovery --config /private/tmp/blacksmith-heavy-prd-t23-observability-baseline-01/test_recovered_review_revision0/runtime.toml
+blacksmith: recovery_dispatch
+blacksmith: execute_unit
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+total cost: $0.06; run cap $50.00, remaining $49.94
+execution time: 4.93s / 21600.00s; remaining 21595.07s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-observability-baseline-01/test_recovered_review_revision0/.blacksmith/runs/d5184dea-6572-4715-80ed-8ff2c0a8e86b/recovery/57d97432-ae4e-4f9e-9dd6-849bc6194f92/manifest.json
+Next action: blacksmith recovery inspect --thread-id observed-recovery --config /private/tmp/blacksmith-heavy-prd-t23-observability-baseline-01/test_recovered_review_revision0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_observability_integrity.py::test_recovered_review_revision_is_counted_once_with_original_evidence_retained[False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 9.76s

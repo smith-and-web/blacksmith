@@ -1,0 +1,26 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/nodes/hitl.py:83:5
+   |
+82 |   def approve_pr(state: BlacksmithState, *, hitl: HitlConfig | None = None) -> dict:
+83 | /     from blacksmith.contract import ContractError
+84 | |     from blacksmith.gate import GateError
+85 | |     from blacksmith.publication_approval import (
+86 | |         ApprovalError,
+87 | |         cached_decision,
+88 | |         display_patch,
+89 | |         hold,
+90 | |         prepare,
+91 | |         proposal,
+92 | |         record_decision,
+93 | |     )
+94 | |     from blacksmith.observability import review_revision_count
+95 | |     from blacksmith.review_receipts import ReviewPatch, current_blockers
+96 | |     from blacksmith.review_receipts import summary as review_summary
+   | |____________________________________________________________________^
+97 |       try:
+98 |           prepared = state.get("pr_approval_proposal")
+   |
+help: Organize imports
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

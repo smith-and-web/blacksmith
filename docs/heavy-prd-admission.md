@@ -28,7 +28,7 @@ and PR summary share atomic admission. Before transport they reserve
 `min(call cap, remaining unreserved allowance)` and pass that exact SDK
 `max_budget_usd`. Concurrent grants cannot use the same funds. New auto units check
 the authoritative balance before paid execution. Legacy `respond` remains subject
-to S18 hardening or explicit rejection; it is not an accepted heavy-PRD entry point.
+to S18's explicit unsupported-command refusal; it cannot enter paid execution.
 
 Default SDK library entry points also require immutable run/call admission context.
 Missing context refuses before options, credential resolution or transport with

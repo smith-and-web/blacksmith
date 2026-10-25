@@ -237,15 +237,13 @@ class ReviewConfig(_Strict):
     """Additive post-gate review loop settings (WU-REVIEW-CONFIG).
 
     A SEPARATE, bounded loop that runs only AFTER the test gate PASSES; it never
-    alters how the gate itself decides pass/fail. ``enabled`` (default ``True``) is a
-    plain on/off toggle — disabling it makes a run behave exactly as it does today,
-    with no review step attempted regardless of ``[limits].max_review_revisions``.
+    alters how the gate itself decides pass/fail. Enabled review requires complete,
+    strict terminal evidence: any panel blocker blocks; unavailable evidence halts.
+    Disabling review records ``disabled``, never ``clean``, and makes no review call.
 
-    ``panel_size`` (int >= 1, default 1) only controls how ``review_clean`` /
-    ``review_findings`` are COMPUTED — the default of 1 is BYTE-FOR-BYTE today's
-    single-reviewer behaviour (one ``run_review`` call, the current neutral prompt,
-    ``review_clean`` = has-no-blocking-finding). It never changes the post-gate
-    revise loop that consumes those values.
+    ``panel_size`` (int >= 1, default 1) selects independently recorded review seats.
+    Valid completed seats are reused on compatible recovery. Bounded review-driven
+    revisions preserve the cumulative patch; exhausted blockers halt with artifacts.
     """
 
     enabled: bool = True

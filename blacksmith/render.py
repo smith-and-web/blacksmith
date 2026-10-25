@@ -26,6 +26,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 
+from blacksmith.observability import display_text, omitted_rows, preview_rows
 from blacksmith.state import Status
 
 # Color-coded terminal status (rendered mode only — plain mode prints the bare value).
@@ -108,17 +109,19 @@ class Renderer:
         """
         errors = list(errors or [])
         succeeded = status in _SUCCESS_STATUSES
-        shown = [] if succeeded else errors
+        shown, omitted = ([], 0) if succeeded else preview_rows(errors)
+        shown = [{"node": display_text(err.get("node"), 128),
+                  "message": display_text(err.get("message"))} for err in shown]
         recovered = len(errors) if succeeded else 0
         if not self.rendered:
             self._plain_report(status, pr_url, shown, recovered, cost_line, token_line,
-                               pending_qa, clock_line)
+                               pending_qa, clock_line, omitted)
             return
         self._rendered_report(status, pr_url, shown, recovered, cost_line, token_line,
-                              pending_qa, clock_line)
+                              pending_qa, clock_line, omitted)
 
     def _plain_report(self, status, pr_url, errors, recovered, cost_line, token_line,
-                      pending_qa, clock_line) -> None:
+                      pending_qa, clock_line, omitted=0) -> None:
         print(f"\nstatus: {status}", file=self._out)
         if pr_url:
             print(f"PR: {pr_url}", file=self._out)
@@ -126,6 +129,8 @@ class Renderer:
             print(f"QA pending: {pending_qa['id']}: {pending_qa['test_contract']}", file=self._out)
         for err in errors:
             print(f"error [{err.get('node')}]: {err.get('message')}", file=self._out)
+        if omitted:
+            print(omitted_rows(omitted, "errors"), file=self._out)
         if recovered:
             print(f"recovered: {recovered} transient failure(s)", file=self._out)
         print(cost_line, file=self._out)
@@ -134,7 +139,7 @@ class Renderer:
             print(clock_line, file=self._out)
 
     def _rendered_report(self, status, pr_url, errors, recovered, cost_line, token_line,
-                         pending_qa, clock_line) -> None:
+                         pending_qa, clock_line, omitted=0) -> None:
         style = _STATUS_STYLES.get(status, "bold")
         body = Text()
         body.append("status: ", style="dim")
@@ -148,6 +153,8 @@ class Renderer:
         for err in errors:
             body.append(f"\nerror [{err.get('node')}]: ", style="red")
             body.append(str(err.get("message")), style="red")
+        if omitted:
+            body.append("\n" + omitted_rows(omitted, "errors"), style="dim")
         if recovered:
             body.append(
                 f"\nrecovered from {recovered} transient failure(s) "
@@ -226,16 +233,18 @@ class Renderer:
         )
 
     @staticmethod
-    def _review_summary(payload: dict) -> tuple[list, int]:
+    def _review_summary(payload: dict) -> tuple[list, int | None]:
         """The PR gate's reviewer summary (WU-REVIEW-RENDER): any outstanding blocking
         findings the post-gate review loop gave up on, plus how many revision rounds it
         spent getting there. Read straight off the gate payload's ``unresolved_review_findings``
         / ``review_revisions`` keys. Revision attempts do not count resolved findings;
         missing review_status renders unavailable."""
         unresolved = payload.get("unresolved_review_findings") or []
-        # Prefer the run-wide reducer total (fan-out workers' revisions land here, not in the
-        # last-write-wins ``review_revisions``); fall back to the per-unit field when absent.
-        resolved = payload.get("review_revisions_total") or payload.get("review_revisions") or 0
+        # The gate derives its total from current keyed outcomes. Explicit unknown
+        # cannot fall back to an unrelated active-unit counter.
+        resolved = payload.get("review_revisions_total", payload.get("review_revisions", 0))
+        if type(resolved) is not int or resolved < 0:
+            resolved = None
         return unresolved, resolved
 
     @staticmethod
@@ -304,13 +313,17 @@ class Renderer:
                 print("\nreview: " + payload.get("review_status", "unavailable"), file=out)
             else:
                 print("\nUnresolved review findings:", file=out)
-                for finding in unresolved:
+                shown, omitted = preview_rows(unresolved)
+                for finding in shown:
                     print(
-                        f"  - {finding.get('file', '(unknown file)')}: "
-                        f"{finding.get('detail', '')}",
+                        f"  - {display_text(finding.get('file', '(unknown file)'), 512)}: "
+                        f"{display_text(finding.get('detail', ''))}",
                         file=out,
                     )
-                print(f"revision attempts: {resolved}", file=out)
+                if omitted:
+                    print(omitted_rows(omitted, "findings"), file=out)
+                print(f"revision attempts: {resolved if resolved is not None else 'unavailable'}",
+                      file=out)
 
     def _rendered_gate(self, payload: dict) -> None:
         console = self._console
@@ -372,17 +385,22 @@ class Renderer:
                                    style="dim"))
             else:
                 findings = Text()
-                for finding in unresolved:
+                shown, omitted = preview_rows(unresolved)
+                for finding in shown:
                     findings.append(
-                        f"• {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}\n"
+                        f"• {display_text(finding.get('file', '(unknown file)'), 512)}: "
+                        f"{display_text(finding.get('detail', ''))}\n"
                     )
+                if omitted:
+                    findings.append(omitted_rows(omitted, "findings") + "\n")
                 console.print(
                     Panel(
                         findings, title="unresolved review findings",
                         border_style="yellow", expand=False,
                     )
                 )
-                console.print(Text(f"revision attempts: {resolved}", style="dim"))
+                count = resolved if resolved is not None else "unavailable"
+                console.print(Text(f"revision attempts: {count}", style="dim"))
 
     # -- per-node progress ----------------------------------------------------
 

@@ -69,7 +69,11 @@ def current_store() -> BaseStore | None:
     """
     try:
         return get_store()
-    except Exception:
+    except RuntimeError:
+        return None
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("memory context", exc)
         return None
 
 
@@ -112,5 +116,13 @@ def recent_lessons(
     ``updated_at`` descending — so the freshest lessons come first. Returns the stored
     lesson dicts directly.
     """
-    items = store.search((*namespace, _LESSONS), limit=limit)
-    return [item.value for item in items]
+    try:
+        items = store.search((*namespace, _LESSONS), limit=limit)
+        lessons = [item.value for item in items]
+        if not all(isinstance(row, dict) for row in lessons):
+            raise ValueError("invalid optional lesson record")
+        return lessons
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("memory lookup", exc)
+        return []

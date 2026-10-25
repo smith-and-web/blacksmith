@@ -1,6 +1,8 @@
 # Heavy-PRD acceptance evidence
 
-Implementation is incomplete. No live release gate has passed.
+Implementation is incomplete. No live release gate has passed. The
+[final acceptance audit](heavy-prd-final-acceptance.md) traces production wiring,
+new configuration, migration, every specification matrix row and remaining gates.
 
 ## Baseline and inputs
 
@@ -42,8 +44,8 @@ Implementation is incomplete. No live release gate has passed.
 
 - Explicit human review of `contract.py` changes before merge, required by fixed decision2. NOT RUN; offline schema/execution tests do not satisfy that review. Merge remains prohibited by this task.
 - Authorized disposable-target paid canary: fixed $10 budget, review enabled, two independent auto units plus terminal QA, plan-only approval initially; verify no publication, resume with PR approval, inspect draft and exact gated SHA. NOT RUN; explicitly prohibited in this task.
-- Real Docker ownership/sentinel/timeout/restart smoke before sandbox enablement. NOT RUN. S17 may instead reject enabled sandbox configuration and leave sandbox disabled.
-- S18 may instead explicitly disable respond with unsupported-until-hardened diagnostic.
+- Real Docker ownership/sentinel/timeout/restart smoke before sandbox enablement. NOT RUN. S17 implements the permitted enabled-config rejection and leaves execution disabled.
+- S18 implements the permitted explicit unsupported-until-hardened refusal; no actual revision workflow is claimed.
 
 ## Final required local verification
 
@@ -62,20 +64,20 @@ Implementation is incomplete. No live release gate has passed.
 | Gate exception after previous passing result | S06 fresh nonpassing receipt plus HALTED-first routes; unit state reset S07/S08 |
 | Sequential escalated → parallel → sequential state reset | S07/S08 real graph/CLI/checkpointer sequence in `test_unit_state.py` and `test_unit_subgraph.py` |
 | Add/amend/reset/squash failure, fixer/gate source edits | S05/S06/S08 command/integrity/subgraph matrix; S11 exact staged/committed reconciliation in `test_effect_recovery.py`; unknown edits hold |
-| Agent toolchain replacement or sandbox protected edit | Trusted S03 snapshot consumed by S06 gates; real path audits before/after effects; sandbox ownership or enabled-config rejection remains S17 |
+| Agent toolchain replacement or sandbox protected edit | Trusted S03 snapshot consumed by S06 gates; real path audits before/after effects; S17 rejects enabled sandbox before effects, pending final combined verification |
 | Terminal human plus plan-only approval | S13 actual CLI both shapes: no summary/push/create, exact proposal retained; approved draft has exit2 and pending QA/check/URL. Normal publication uses the same guard |
 | Invalid human topology before spend | S03 offline semantic validation proves all prohibited layouts stop before calls; final publication routing remains S13 |
 | Malformed/error/missing-result review and minority blocking | S12 strict typed receipts, actual stream/terminal failures and any-panel blocker halt both shapes with no publication; see R09 audit below |
 | Deletion-only and cumulative revision patch review | S12 actual cumulative deletion/rename/binary patches; >1 MiB full artifact and bounded actual read_diff RPC under a 4096-byte command cap |
-| Restart after plan/commit/gate/join/push/create | S09–S11 real process exits cover plan/critic/SDK/commit/formatter/gate/squash/join/barrier; publication push/create reconciliation remains S14 |
+| Restart after plan/commit/gate/join/push/create | S09–S11 real process exits cover plan/critic/SDK/commit/formatter/gate/squash/join/barrier; accepted S14 includes real-process scratch-remote push/create reconciliation with immutable GitHub fixtures |
 | Corrupt/missing/wrong manifest and concurrent resume | S03 locks/input checks plus S11 artifact/controller/repair/boundary tests refuse before executor; exact original checkpoints/receipts retained |
 | Distinct run/worker/branch identities | S03 real clone/path/branch tests pass |
-| 100-unit chain and 20 roots, max active 2 | Pending S16; measured deterministic concurrency |
+| 100-unit chain and 20 roots, max active 2 | S16 scoped passes with actual workers; final integrated full100/20 still required |
 | Exhaustion across all paid call classes, concurrent reservations | S15 accepted: atomic all-role grants, exact SDK option, unknown full charge, denied/started/overrun recovery and persistent totals; full1325/ruff and named S15 audit. Legacy respond awaits S18 explicit rejection/integration |
 | Hanging command/children/large output and model timeout | S05 native bounded-group proof plus S15 actual installed-SDK local process groups, remaining deadlines, four parallel cancellation modes and partial receipts; full1325 passes |
-| Per-workspace sandbox sentinel, timeout, resume | Deferred option requires explicit enabled-config rejection in S17; real Docker gate remains unrun |
-| Respond preserved feedback, synthetic unit, remote race/push failure | Deferred option requires explicit unsupported-until-hardened error in S18 |
-| Optional observability/memory failure, critical journal failure | S04 critical transaction faults halt before effects; S08 writer failure is best effort; full optional-store/metrics matrix remains S19. Turn 13 native network test guard corrected after the failed unintended push documented below |
+| Per-workspace sandbox sentinel, timeout, resume | S17 implements permitted enabled-config rejection; no enabled sandbox lifecycle claim, final combined verification pending; real Docker gate unrun |
+| Respond preserved feedback, synthetic unit, remote race/push failure | S18 implements permitted explicit unsupported-until-hardened error before effects; actual revision workflow deferred; final combined verification pending |
+| Optional observability/memory failure, critical journal failure | S19 optional-outage CLI/Git/gate/ledger scope9 passes, strict task/terminal scope11 and counter recovery2 pass; S04 critical transaction faults still halt before effects. Final combined suite pending. Historical turn13 unintended push failure is retained below |
 
 Contract schema edits require explicit human review before merge (spec §3.2). No merge is authorized or attempted. Legacy state-v1 execution must be refused without rewriting checkpoints; S03 legacy refusal/readability/no-rewrite proof passes; explicit terminal-stage recovery remains S11.
 
@@ -737,3 +739,64 @@ on exact final source before acceptance. Native goal stays active22/30.
 
 
 Turn22 durable brain validation: Projects/blacksmith.md updated via MCP with S15 accepted1325/44f0108, exact S16-S18 source integration at33eba45, S19 concrete remaining work, archive4182 resource handoff and limit22/30. Targeted lint0 errors/0 warnings. After more than148 seconds, index lastRun.errors0/invalidFrontmatter0; fresh semantic retrieval and exact entire-note readback verified every written byte (64530a99-cca0-4678-a27e-0b00af24bc91), one positive feedback. Receipt turn22-brain-verification.json. No memory-folder write. Test/lint handles terminal; accepted S15 archive prepare4182 remains live at last authoritative poll. Goal active22/30; next actual automatic23. Original inputs preserved/untracked/unstaged. Stop/save/pause unfinished work at30; historical turn13 failed external-push exception retained.
+
+
+## Turn23 continuation audit
+
+Counter22->23 persisted once; prior turn progress. Objective/instructions/memory/brain and current complete169-source/config/input/runtime identity revalidated. Archive4182 terminal0/verified; cleanup pending. S19 implementation plus final full100/20 required; no paused/completed goal claim.
+
+### S19 implementation and scoped proof (turn23)
+
+- Counter remains23/30, including the user's status question. No automatic reset.
+  S01-S15 accepted; S16-S19 stay unchecked until the final combined full proof.
+- Actual CLI/Git/SQLite sequential and parallel recovery reproduced the additive
+  revision-total bug (baseline1 failed/9.76s). Child output now adds only each
+  keyed unit's new delta; gate/PR presentation prefers current keyed outcomes and
+  ignores recovery history/inflated legacy totals. Attempt/cap counters unchanged.
+  Intermediate fixture history assertion failed after all counter/cost/receipt/SHA
+  checks passed; corrected to the actual retained review_findings history without
+  dropping assertions. Final counter03 **2 passed/29.90s, exit0**.
+- Old unchanged final-stage source plus the new optional-lookup test reproduced
+  CLI1 instead of0 and private synthetic exception text (baseline1 failed/1.22s;
+  terminal log retained, supervisor handle unavailable). Optional memory/store,
+  live open/write, metrics open/write and display failures now give bounded
+  exception-class diagnostics, return empty lessons where required and continue
+  already-budgeted work. Actual CLI/Git/gate/ledger assertions retain exact4 calls,
+  $.04 charge, no pending reservation,2 scratch publication effects and DONE.
+  Optional02 **9 passed/55.26s, exit0**.
+- Activity uses strict complete verdict validation, requires successful terminal
+  evidence and carries actual call/run/unit/attempt/task/parent identity. The new
+  real parallel test reproduced a dark child stream (6 critical calls but only2
+  plan events). A parent writer bridge fixes forwarding without sibling inference;
+  original6-call/identity assertions retained. Activity03 **11 passed/11.88s,
+  exit0**. Missing/error/malformed/extra/duplicate verdicts cannot show findings;
+  50 full findings retain full text while emitting20 plus explicit30 omitted.
+- CLI/PR previews cap errors/findings/text with explicit omissions/full artifacts;
+  keyed missing historical revision counts remain unavailable. Full critical
+  state/history/requirements/approved plans and raw gate JSON stay complete.
+  Presentation02 **13 passed/0.29s, exit0**; preceding adjacent batch87 passed and
+  two new fixture-signature failures, retained and corrected without weakened
+  production assertions.
+- Dashboard keeps actual task ownership and concurrent active steps, caps visible
+  findings20/history200/unit rows100 and labels unfinished work. Actual served
+  inline-JS probe executes offline with DOM stubs, no browser-layout claim.
+  Probe01 caught constants inserted into the wrong HTML document; fixed. Final04
+  **exit0**, checks association, interleaved completion, omissions, escaped HTML,
+  full observation retention and replay deduplication. Node26.12.0 is a local
+  verification tool, not a new Blacksmith/pytest dependency.
+- Broader final01 **1 failed/162 passed/160.32s, exit1** caught the new random
+  context-free result ID breaking the existing transcript on/off equality
+  assertion. Restored legacy result behavior, retaining unique activity/transcript
+  IDs and critical production IDs. Original equality assertion unchanged.
+  Correction02 **40 passed/41.35s, exit0** covers transcript/executor/activity and
+  all new real recovery/parallel identity cases. Final ruff08 **passed**.
+- README/runtime comments/runbooks now describe host trust, accepted S15,
+  integrated scheduling, migration refusal and disabled sandbox/respond accurately.
+  New final-acceptance.md maps R01-R12, every new field and every matrix row.
+  Collection01 **1397 tests collected/0.64s, exit0**; expected count is not a pass.
+  Full pytest including100/20 remains mandatory on frozen final code.
+- Verified accepted S15 archive cleanup11475 exit0; source root removed after full
+  byte/mode/symlink and no-owner checks. Exact stable archive hashes/restore proof
+  in turn22-archive-s15-proof.json; protected entries0, failed roots untouched.
+  Fresh free3.8GiB before final scope. No paid/live gate/Docker/human review claim;
+  historical turn13 failed external-push exception retained.

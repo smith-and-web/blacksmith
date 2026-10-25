@@ -15,9 +15,7 @@ tests inject a fake query function and need neither the CLI nor the network.
 from __future__ import annotations
 
 import asyncio
-import json
 import math
-import re
 import warnings
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextvars import ContextVar
@@ -101,49 +99,32 @@ def _emit_activity(payload: dict[str, Any]) -> None:
     Either way this never raises and never affects the executor's return value -- a purely
     additive OBSERVATION channel, exactly like the metrics/live-run-event sinks. Every event
     carries ``"kind": "node_activity"`` so the drive loop's ``_step`` can forward it to the
-    run-event sink unchanged.
+    run-event sink after validation and bounded preview. Actual task identity comes
+    from LangGraph; model-call identity comes from the immutable call context.
     """
+    from blacksmith.observability import parent_activity_writer, runtime_identity, warn_optional
     try:
-        writer = get_stream_writer()
-        writer({"kind": "node_activity", **payload})
-    except Exception:
-        pass
-
-
-# A single fenced ```json ... ``` (or bare) block containing a review verdict object. A
-# small, independent mirror of ``nodes.review``'s own parsing (that module imports
-# ``Executor``, so importing back here would be circular) -- used only to drive the live
-# "finding" activity events; best-effort, never raises.
-_FINDING_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+        writer = parent_activity_writer() or get_stream_writer()
+    except RuntimeError:
+        return  # No runnable stream is an expected direct-library path.
+    try:
+        writer({"kind": "node_activity", **payload,
+                **runtime_identity(call=_CALL.get())})
+    except Exception as exc:
+        warn_optional("activity stream", exc)
 
 
 def _extract_review_findings(text: str) -> list[dict[str, Any]]:
-    """Best-effort parse of a review call's fenced JSON verdict into its findings list.
+    """Preview only the same strict, complete verdict accepted by critical review.
 
-    Fail-open: any unparseable input (no fenced block, invalid JSON, wrong shape) returns
-    an empty list rather than raising -- this only feeds the live activity stream, never
-    the graph's actual review verdict (``nodes.review`` parses the real one independently).
+    Invalid text emits no findings. This optional channel never supplies a verdict
+    to routing; the full typed receipt remains authoritative.
     """
-    if not text or not text.strip():
-        return []
-    match = _FINDING_FENCE_RE.search(text)
-    if match:
-        block = match.group(1)
-    else:
-        stripped = text.strip()
-        block = stripped if stripped.startswith("{") and stripped.endswith("}") else None
-    if block is None:
-        return []
+    from blacksmith.review_receipts import parse_verdict
     try:
-        parsed = json.loads(block)
-    except json.JSONDecodeError:
+        return [finding.model_dump() for finding in parse_verdict(text).findings]
+    except (ValueError, TypeError, AttributeError):
         return []
-    if not isinstance(parsed, dict):
-        return []
-    findings = parsed.get("findings")
-    if not isinstance(findings, list):
-        return []
-    return [f for f in findings if isinstance(f, dict)]
 
 
 @dataclass(frozen=True)
@@ -313,7 +294,9 @@ class Executor:
             if budget_ledger is not None:
                 budget_ledger.settle(reservation)
         else:
-            call = {"call_id": key.id if key else str(uuid4())}
+            call = {"call_id": key.id if key else str(uuid4()), "role": operation_kind}
+            if key:
+                call.update(run_id=key.run_id, unit_id=key.unit_id, attempt_id=key.attempt_id)
             try:
                 token = _CALL.set(call)
                 try:
@@ -567,11 +550,17 @@ class Executor:
                               "budget" if subtype == "error_max_budget_usd" else "other")
             if result is None:
                 error_kind = "missing_terminal"
-            if emit_findings and not is_error:
+            if emit_findings and result is not None and not is_error:
                 # Review call (WU-LIVE-INTRA-NODE): stream each parsed finding, in order, as
                 # its own "finding" activity event -- fail-open (see _extract_review_findings).
-                for finding in _extract_review_findings(text or ""):
-                    _emit_activity({"activity": "finding", "finding": finding})
+                from blacksmith.observability import preview_rows
+                findings, omitted = preview_rows(_extract_review_findings(text or ""))
+                for finding in findings:
+                    _emit_activity({"activity": "finding", "finding": finding,
+                                    "terminal_received": True})
+                if omitted:
+                    _emit_activity({"activity": "findings_omitted", "count": omitted,
+                                    "terminal_received": True})
             return ExecutorResult(
                 text=text or "",
                 model=model,

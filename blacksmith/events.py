@@ -10,9 +10,10 @@ per-thread monotonic ``seq``, so a fleet of runs can share one sink and each thr
 its own ordered stream.
 
 The sink is NEVER read back into the graph and, exactly like the metrics sink, is
-best-effort: with the sink disabled or on any write error a run is byte-for-byte
-unaffected. (The best-effort swallowing lives at the CLI call site, mirroring
-``_record_metrics``.)
+best-effort: disabled sinks emit nothing, while open/write errors produce a bounded
+class-only diagnostic and execution continues. Critical state/receipts remain
+independent. Known task/unit/attempt IDs are carried explicitly; historical or
+aggregate identities that do not exist are null rather than invented.
 """
 
 from __future__ import annotations
@@ -166,10 +167,15 @@ def unit_result_payloads(values: dict) -> list[dict]:
     payloads: list[dict] = []
     for result in results:
         unit_id = result.get("unit_id")
+        outcome = (values.get("unit_outcomes") or {}).get(unit_id) or {}
         info = by_unit.get(unit_id, {"cost": None, "attempts": 0})
         payloads.append(
             {
                 "unit_id": unit_id,
+                "run_id": values.get("run_id"),
+                "attempt_id": outcome.get("attempt_id"),
+                "task_id": None,  # This is an aggregate; do not invent a historical task UUID.
+                "unit_namespace": outcome.get("unit_namespace"),
                 "gate_result": "escalated" if info["attempts"] > 1 else "passed",
                 "cost_usd": info["cost"],
             }
@@ -186,7 +192,8 @@ def run_status_payload(values: dict) -> dict:
         status_str = None
     else:
         status_str = str(status)
-    payload: dict[str, Any] = {"status": status_str}
+    payload: dict[str, Any] = {"status": status_str, "run_id": values.get("run_id"),
+                               "unit_id": "__run__", "task_id": None, "attempt_id": None}
     pr_url = values.get("pr_url")
     if pr_url:
         payload["pr_url"] = pr_url

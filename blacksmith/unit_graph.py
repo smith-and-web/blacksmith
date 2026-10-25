@@ -74,17 +74,19 @@ def build_unit_graph(deps, worktree_manager=None):
             unit = state.get("selected_unit")
             try:
                 writer = _parent_writer.get() or get_stream_writer()
+                from blacksmith.observability import runtime_identity
                 writer(
                     {
                         "kind": "unit_stage",
                         "phase": phase,
-                        "run_id": state.get("run_id"),
-                        "unit_id": unit.id if unit else None,
+                        **runtime_identity(state),
+                        "unit_id": unit.id if unit else "__run__",
                         "attempt_id": attempt_identity(state),
                     }
                 )
-            except Exception:
-                pass  # Optional observation never substitutes for critical checkpoint/receipts.
+            except Exception as exc:
+                from blacksmith.observability import warn_optional
+                warn_optional("activity stream", exc)
             from blacksmith.run_clock import failure_scope
             with failure_scope():
                 with command_scope_for_state(state, phase) as scope, failure_scope(scope.context):
@@ -468,23 +470,31 @@ def unit_runner(unit_graph):
             checkpointer = unit_graph.checkpointer
             if checkpointer is None:
                 checkpointer = inherited_checkpointer
+            from blacksmith.observability import parent_task_scope
             from blacksmith.scheduling import invocation_config
-            result = unit_graph.invoke(
-                seed, config=invocation_config(seed, fallback_limits=
-                    parent_config.get("configurable", {}).get("blacksmith_limits")),
-                durability="sync" if checkpointer else None,
-            )
+            parent_task = parent_config.get("configurable", {}).get("__pregel_task_id")
+            with parent_task_scope(parent_task, parent_writer):
+                result = unit_graph.invoke(
+                    seed, config=invocation_config(seed, fallback_limits=
+                        parent_config.get("configurable", {}).get("blacksmith_limits")),
+                    durability="sync" if checkpointer else None,
+                )
         finally:
             _parent_writer.reset(token)
         outcome = result["unit_outcome"]
         unit_id = selected.id if selected else "__none__"
+        previous = (state.get("unit_outcomes") or {}).get(unit_id) or {}
+        # A recovered child returns its cumulative count. Only the new delta belongs
+        # in the parent's additive legacy display channel; keyed outcomes stay exact.
+        revision_delta = max(0, outcome["review_revisions"]
+                             - previous.get("review_revisions", 0))
         output = {
             "unit_outcomes": {unit_id: outcome},
             "cost_events": result.get("cost_events") or [],
             "errors": result.get("errors") or [],
             "review_findings": result.get("review_findings") or [],
             "unresolved_review_findings": result.get("unresolved_review_findings") or [],
-            "review_revisions_total": result.get("review_revisions_total", 0),
+            "review_revisions_total": revision_delta,
         }
         if recovered:
             output["recovery_queue"] = state["recovery_queue"][1:]

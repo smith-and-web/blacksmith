@@ -479,23 +479,29 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     lines = ["", "**Reviewer notes:**", "Reviewer: " + review_status]
     if not unresolved and not advisory:
         return lines
-    # Prefer the run-wide reducer total (counts fan-out workers' revisions, which can't write
-    # the last-write-wins ``review_revisions``); fall back to the per-unit field for states
-    # without it (a sequential-only run predating the total, or an old checkpoint).
-    revisions = state.get("review_revisions_total") or state.get("review_revisions", 0)
+    # Current keyed outcomes prevent recovery-history or legacy-reducer double counts.
+    from blacksmith.observability import (
+        display_text,
+        omitted_rows,
+        preview_rows,
+        review_revision_count,
+    )
+    revisions = review_revision_count(state)
     # A one-line severity-count header so a reviewer can triage before reading every finding.
-    lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revisions} revisions")
+    revision_label = (f"{revisions} revisions" if revisions is not None
+                      else "revision count unavailable")
+    lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revision_label}")
     if revisions:
         lines.append(f"- revision attempts: {revisions}")
-    for finding in unresolved:
+    shown, omitted = preview_rows([*(('unresolved (blocking)', f) for f in unresolved),
+                                  *(('advisory', f) for f in advisory)])
+    for label, finding in shown:
         lines.append(
-            f"- unresolved (blocking): {finding.get('file', '(unknown file)')}: "
-            f"{finding.get('detail', '')}"
+            f"- {label}: {display_text(finding.get('file', '(unknown file)'), 512)}: "
+            f"{display_text(finding.get('detail', ''))}"
         )
-    for finding in advisory:
-        lines.append(
-            f"- advisory: {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}"
-        )
+    if omitted:
+        lines.append(omitted_rows(omitted, "findings"))
     return lines
 
 

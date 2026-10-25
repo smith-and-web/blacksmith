@@ -82,6 +82,7 @@ def prepare_pr_approval(state: BlacksmithState, *, hitl: HitlConfig | None = Non
 def approve_pr(state: BlacksmithState, *, hitl: HitlConfig | None = None) -> dict:
     from blacksmith.contract import ContractError
     from blacksmith.gate import GateError
+    from blacksmith.observability import review_revision_count
     from blacksmith.publication_approval import (
         ApprovalError,
         cached_decision,
@@ -105,7 +106,7 @@ def approve_pr(state: BlacksmithState, *, hitl: HitlConfig | None = None) -> dic
                    "test_results": state.get("test_results"),
                    "review_status": review_summary(state),
                    "unresolved_review_findings": current_blockers(state),
-                   "review_revisions_total": state.get("review_revisions_total", 0)}
+                   "review_revisions_total": review_revision_count(state)}
         if prepared and prepared.get("diff_manifest") and hitl and hitl.pr_diff_max_bytes > 0:
             diff = display_patch(ReviewPatch.model_validate(prepared["diff_manifest"]),
                                  hitl.pr_diff_max_bytes)

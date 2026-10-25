@@ -435,8 +435,9 @@ def _record_gate_lesson(
     }
     try:
         record_lesson(store, prd.contract, lesson)
-    except Exception:
-        pass
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("memory write", exc)
 
 
 def _will_escalate(state: BlacksmithState) -> bool:
