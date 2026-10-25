@@ -41,11 +41,11 @@ from blacksmith.nodes.plan import plan
 from blacksmith.nodes.pr import Runner, open_draft_pr, open_pr
 from blacksmith.nodes.review import review as _run_review
 from blacksmith.path_policy import PolicyViolation, compile_path_rules, policy_for_state
-from blacksmith.planner import execution_levels
 from blacksmith.receipts import ReceiptError
 from blacksmith.run_context import RunContextError, context_from_state
 from blacksmith.sandbox import SandboxError, SandboxManager
 from blacksmith.sbfl import collect_suspicious_locations, format_suspicious_locations
+from blacksmith.scheduling import execution_batches
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.unit_state import new_unit_attempt, next_attempt
 from blacksmith.verification import fix_candidate, run_candidate_gate
@@ -145,7 +145,7 @@ def prepare_worktree(
     can never touch the source checkout. Every unit is built sequentially on this single
     clone (so each unit's committed changes are visible to the next unit's implement step)
     and the run opens one combined PR against its branch. The plan comes from
-    ``planner.execution_levels``; the implement->gate loop walks it level by level (and,
+    ``scheduling.execution_batches``; the implement->gate loop walks it batch by batch (and,
     within a level, in declaration order) via ``level_cursor``/``unit_in_level`` and
     re-enters ``implement`` (never this node), so the clone is created exactly once. A
     single-unit PRD reduces to the prior behaviour: one level, one unit, one clone, one PR.
@@ -163,7 +163,11 @@ def prepare_worktree(
     if worktree_manager is None:
         return {}  # skeleton pass-through
     prd = state.get("prd")
-    levels = execution_levels(prd.contract) if prd is not None else []
+    scheduling_root = worktree_manager.repo_path
+    if state.get("run_context"):
+        snapshot = context_from_state(state)
+        prd, scheduling_root = snapshot.prd(), snapshot.planning_path
+    levels = execution_batches(prd.contract, root=scheduling_root) if prd is not None else []
     units = [unit for level in levels for unit in level]
     unit = units[0] if units else state.get("selected_unit")
     if unit is None:
@@ -183,6 +187,7 @@ def prepare_worktree(
             "errors": [{"node": "prepare_worktree", "message": str(exc)}],
         }
     update: dict = {
+        "scheduling_version": 1,
         "unit_graph_version": 1,
         "review_version": 1,
         "approval_version": 1,
@@ -216,6 +221,7 @@ def prepare_worktree(
     # because LangGraph edge functions are pure (state) -> str and receive no config.
     if limits is not None:
         update["limits"] = {
+            "max_parallel_units": limits.max_parallel_units,
             "max_fix_attempts": limits.max_fix_attempts,
             "max_run_cost_usd": limits.max_run_cost_usd,
             "max_review_revisions": limits.max_review_revisions,
@@ -1053,6 +1059,8 @@ def _route_to_level(state: BlacksmithState) -> str | list[Send]:
     is exhausted. Shared by every level entry point so the decision lives in one place."""
     if state.get("status") == Status.HALTED:
         return "human_halt"
+    from blacksmith.scheduling import validate_schedule
+    validate_schedule(state)
     levels = state.get("execution_levels") or []
     # No level plan seeded (the skeleton / dependency-free graph tests, where
     # prepare_worktree is a pass-through): fall through to the sequential implement path
@@ -1460,4 +1468,7 @@ def compile_graph(
         checkpointer=checkpointer,
         interrupt_before=list(interrupt_before),
         store=store,
+    ).with_config(
+        max_concurrency=(limits or LimitsConfig()).max_parallel_units,
+        configurable={"blacksmith_limits": (limits or LimitsConfig()).model_dump()},
     )

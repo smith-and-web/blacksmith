@@ -183,6 +183,8 @@ class LimitsConfig(_Strict):
     * ``max_run_cost_usd`` — the run-wide admission budget, default $50. An intentional
       uncapped run uses the recorded CLI --unlimited-cost choice. SDK stopping is soft;
       an actual overrun remains visible and prevents further admission.
+    * ``max_parallel_units`` — maximum simultaneous unit workers, default two.
+      Overlapping target groups are serialized independently of dependency edges.
     * ``max_call_cost_usd`` — default $5; each paid call reserves the smaller of this
       value and remaining unreserved run budget, then receives that SDK budget.
     * ``model_timeout_s`` / ``max_run_seconds`` — model and accumulated execution
@@ -206,6 +208,7 @@ class LimitsConfig(_Strict):
       the saved allowance; a denied-before-start call does not.
     """
 
+    max_parallel_units: int = Field(default=2, ge=1, strict=True)
     max_fix_attempts: int = Field(default=1, ge=0)
     max_run_cost_usd: float | None = Field(default=50.0, gt=0, allow_inf_nan=False)
     max_call_cost_usd: float = Field(default=5.0, gt=0, allow_inf_nan=False)

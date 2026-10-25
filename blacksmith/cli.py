@@ -201,18 +201,19 @@ def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str
     return actual
 
 
-# Compatibility ceiling for parent/child graphs. S16 derives scheduling/recursion
-# limits from validated DAG/recovery bounds; this fixed ceiling is not 100-unit proof.
-RECURSION_LIMIT = 150
-
-
 def _step(graph, payload, config, *, on_node, on_event=None):
     from blacksmith.run_clock import cancellation_signals, execution_scope
     values = payload if isinstance(payload, dict) and payload.get("run_context") else (
         graph.get_state(config).values)
     context = context_from_state(values) if values.get("run_context") else None
+    from blacksmith.scheduling import invocation_config, node_execution
+    inputs = values or (payload if isinstance(payload, dict) else {})
+    defaults = (getattr(graph, "config", None) or {}).get("configurable", {})
+    config = {**config, **invocation_config(
+        inputs, fallback_limits=defaults.get("blacksmith_limits"))}
     with execution_scope(context) as clock, cancellation_signals(clock):
-        return _execute_step(graph, payload, config, on_node=on_node, on_event=on_event)
+        with node_execution(config) as owned:
+            return _execute_step(graph, payload, owned, on_node=on_node, on_event=on_event)
 
 
 def _execute_step(graph, payload, config, *, on_node, on_event=None):
@@ -243,10 +244,9 @@ def _execute_step(graph, payload, config, *, on_node, on_event=None):
     which nodes run or in what order, and the emitter itself is best-effort (a failed
     live-sink write is swallowed at the call site, exactly like the metrics sink).
 
-    The graph-invocation ``config`` is augmented with ``RECURSION_LIMIT`` so large
-    multi-unit DAGs don't trip LangGraph's default-25 super-step ceiling.
+    The caller derives finite recursion/concurrency bounds from immutable run
+    inputs on every invocation, including recovery and approval resumes.
     """
-    config = {**config, "recursion_limit": RECURSION_LIMIT}
     interrupt = None
     starts: dict[str, float] = {}
     current_node: str | None = None
@@ -1022,6 +1022,8 @@ def _resume(argv: list[str] | None = None) -> int:
             from blacksmith.run_clock import used
             BudgetLedger(context).balance()
             used(context)
+            from blacksmith.scheduling import validate_schedule
+            validate_schedule(values)
             stack.enter_context(command_scope(context, stage="cli"))
             context.verify(
                 selected_repo=selected.resolve_repo_path(),

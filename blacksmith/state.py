@@ -180,6 +180,7 @@ class BlacksmithState(UnitAttemptState, total=False):
     state_version: int
     run_id: str
     run_context: dict[str, Any]
+    scheduling_version: int
     unit_graph_version: int
     review_version: int
     approval_version: int
@@ -204,9 +205,9 @@ class BlacksmithState(UnitAttemptState, total=False):
     unit_outcomes: Annotated[dict[str, UnitOutcome], merge_unit_outcomes]
     prd: PRD
     work_units: list[WorkUnit]
-    # Dependency levels (frontiers) from blacksmith.planner.execution_levels: the level
-    # engine walks these in order and, within each level, builds the units sequentially in
-    # declaration order. Flattening them in order yields ``work_units`` (topo order).
+    # Dependency frontiers projected into disjoint target batches by scheduling.
+    # Conflicting declarations serialize without mutating the contract. Each batch
+    # has its own saved base, keyed outcomes, joins and integration barrier.
     execution_levels: list[list[WorkUnit]]
     recovery_version: int
     recovery_target: str

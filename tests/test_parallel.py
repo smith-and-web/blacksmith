@@ -282,14 +282,21 @@ def test_independent_level_builds_in_distinct_clones_to_one_pr(tmp_path):
 
 
 def test_conflicting_level_halts_naming_both_units_and_file(tmp_path):
-    # (2) Two same-level units writing the SAME file conflict at cherry-pick -> HALT.
+    # Undeclared overlap still fails closed at join; declared overlap is serialized.
     repo = _target_repo(tmp_path, gate_cmd="true")  # both gates pass; the clash is at join
     executor = FakeExecutor()
     gh = _recording_gh("https://github.com/owner/demo/pull/9")
     graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
     approver = _recording_approver(decision=True)
 
-    final = drive(graph, _write_prd(tmp_path, _TWO_CONFLICTING), approver=approver, thread_id="cf")
+    original = executor.run_implement
+
+    def unexpected_write(prompt, **kwargs):
+        prompt = re.sub(r"^Target modules: .+$", "Target modules: out.txt", prompt, flags=re.M)
+        return original(prompt, **kwargs)
+
+    executor.run_implement = unexpected_write
+    final = drive(graph, _write_prd(tmp_path, _TWO_INDEPENDENT), approver=approver, thread_id="cf")
 
     assert final.values["status"] == Status.HALTED
     assert final.values.get("pr_url") is None

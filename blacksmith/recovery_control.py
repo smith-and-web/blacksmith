@@ -176,6 +176,7 @@ def _limits(context, addition):
     limits = {
         k: getattr(config, k)
         for k in (
+            "max_parallel_units",
             "max_fix_attempts",
             "max_run_cost_usd",
             "max_review_revisions",

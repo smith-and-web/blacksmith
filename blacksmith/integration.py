@@ -8,9 +8,9 @@ from blacksmith import verification
 from blacksmith.commands import run_command
 from blacksmith.gate import GateError, GateResult
 from blacksmith.path_policy import policy_for_state
-from blacksmith.planner import execution_levels
 from blacksmith.receipts import OperationKey, ReceiptError
 from blacksmith.run_context import context_from_state, run_branch
+from blacksmith.scheduling import execution_batches, validate_schedule
 from blacksmith.state import Status
 
 
@@ -42,7 +42,9 @@ def join_observed(context, key):
 
 def levels_for(state):
     if state.get("run_context"):
-        levels = execution_levels(context_from_state(state).prd().contract)
+        validate_schedule(state)
+        context = context_from_state(state)
+        levels = execution_batches(context.prd().contract, root=context.planning_path)
         if state.get("execution_levels") != levels:
             raise GateError("execution levels differ from immutable contract")
         return levels
@@ -78,7 +80,7 @@ def outcomes_for(state, *, through=None):
 def layer_union(state, *, through=None):
     contract = (context_from_state(state).prd().contract if state.get("run_context")
                 else state["prd"].contract)
-    levels = execution_levels(contract) if state.get("run_context") else levels_for(state)
+    levels = levels_for(state)
     return tuple(dict.fromkeys(layer for level, units in enumerate(levels)
                               if through is None or level <= through
                               for u in units for layer in u.layers

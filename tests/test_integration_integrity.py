@@ -176,11 +176,12 @@ def test_second_pick_conflict_restores_entire_saved_base_and_keeps_both_workers(
     project, monkeypatch,
 ):
     configure(project)
-    root, _, prd, contract = project
-    for unit in contract["work_units"]:
-        unit["target_modules"] = ["same.txt"]
-    write_prd(prd, contract)
-    calls = transport(monkeypatch)
+    root = project[0]
+    # Declared overlaps now serialize. Preserve the join/rollback regression for
+    # unexpected agent edits outside the disjoint declarations instead.
+    def collide(workspace, name):
+        (workspace / (name.lower() + ".txt")).rename(workspace / "same.txt")
+    calls = transport(monkeypatch, on_write=collide)
     approvals = stop_at_pr(monkeypatch)
     assert run(project, "conflict") == 1
     state = saved_values(project[1], "conflict")

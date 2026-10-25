@@ -453,18 +453,25 @@ def unit_runner(unit_graph):
         # Sync durability commits an attempt/cost checkpoint before the next effect.
         try:
             parent_writer = get_stream_writer()
+            parent_config = get_config()
             inherited_checkpointer = (
-                get_config().get("configurable", {}).get(CONFIG_KEY_CHECKPOINTER)
+                parent_config.get("configurable", {}).get(CONFIG_KEY_CHECKPOINTER)
             )
         except RuntimeError:
             parent_writer = None  # Standalone legacy helper, outside a parent task.
             inherited_checkpointer = None
+            parent_config = {}
         token = _parent_writer.set(parent_writer)
         try:
             checkpointer = unit_graph.checkpointer
             if checkpointer is None:
                 checkpointer = inherited_checkpointer
-            result = unit_graph.invoke(seed, durability="sync" if checkpointer else None)
+            from blacksmith.scheduling import invocation_config
+            result = unit_graph.invoke(
+                seed, config=invocation_config(seed, fallback_limits=
+                    parent_config.get("configurable", {}).get("blacksmith_limits")),
+                durability="sync" if checkpointer else None,
+            )
         finally:
             _parent_writer.reset(token)
         outcome = result["unit_outcome"]

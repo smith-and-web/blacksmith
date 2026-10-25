@@ -19,6 +19,7 @@ implement = "claude-sonnet-5"  # implementation
 [limits]
 # Trusted native command wall time and combined stdout/stderr log cap.
 # Git/gh use a separate 120-second default. Toolchain credentials are stripped.
+max_parallel_units = 2
 command_timeout_s = 1800
 max_command_output_bytes = 1048576
 # Every paid role reserves min(call cap, remaining run allowance) before transport.
