@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 25 / 30. Never reset this counter automatically.
+- Goal turn: 26 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; diagnosed/stopped known failed full01, fixed saved disabled-feature inspection without changing drift assertion, scoped60/ruff passed, archived accepted S12 with verified cleanup, committed539508b/3520cea and launched corrected final full02 once.
-- Current turn: 25; S01-S18 accepted locally after exact full1398/5 warnings/5047.97s. S19 terminal/cached-evidence fixes committed85fb50e; all175 tested sources/config/input/runtime match stage24dc05b after hooks; compatibility134/347.66s, primary Ruff and collection1414 pass. Final corrected full1414 is RUNNING exactly once, handle20455/supervisor25554/uv25555; source/runtime frozen in turn25-environment-01.json and terminal receipt turn25-full-command-01.json. Both completed fixture archives/cleanup verified; free5469110272 at freeze. Counter stays25 during status question/tools/compaction, never reset.
+- Previous-turn classification: progress; accepted exact full1398/S16-S18, reproduced/fixed fresh and cached terminal-policy gaps, scoped134/Ruff passed, committed85fb50e/d3ebcd4, archived and safely removed completed fixtures, launched final full1414 once on frozen175-source/runtime identity.
+- Current turn: 26; automatic continuation increments25->26 once. Objective/instructions/memory/brain reread; final full20455 positively live via tool and PIDs25554/25555 at4:29 elapsed; log5% plus24 markers, no reported failure. Keep all175 Python sources/JS/helper/config/original inputs/runtime frozen. S01-S18 accepted, S19 pending final full1414/acceptance closeout. Never increment/reset on compaction/status/tools; stop implementation/save precise handoff/pause unfinished at30.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,30 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn25; final corrected full1414 live on frozen85fb50e
+## Current handoff: turn26; final full1414 positively live, source85fb50e frozen
+
+Counter **26/30**, incremented25->26 once on this automatic continuation.
+Previous turn was progress. Primary implementation85fb50e5f6da462ee5c51962c51af994fa100e8c;
+documentation/evidence HEADd3ebcd4f6229491dbcfd65315d6f38c7290d3384, original spec/
+probe unchanged/untracked. S01-S18 accepted; S19 unchecked pending final exact full
+and requirement-by-requirement closeout. Full **20455** positively polled live and
+PIDs25554/25555 confirmed at4:29 elapsed this turn. Source/config/runtime remain
+frozen in **turn25-environment-01.json**; command/PIDs/terminal/after-identity receipt
+**turn25-full-command-01.json**, log **turn25-pytest-full-01.log**. Same command/root:
+`uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t25-full-01`.
+Observe the same handle; missing handle -> authoritative PIDs/receipt/log, never
+restart after timeout. Do not edit Python/JS/config/tests/helper/dependencies while
+full runs. Documentation/audit reads may continue. Turn26 acceptance inventory
+maps all12 requirements/19 slices/21 matrix rows to frozen sources and collected
+regressions; each row still requires the terminal full result. Existing test bodies
+were sampled for actual sentinels, refusal before effects, cumulative patches,
+immutable recovery, owned process cleanup and exact candidate publication.
+All archive/cleanup jobs terminal;
+full is the only live job. At30 stop implementation, retain live-job details and
+precise completed/outstanding/verification/next action, pause unfinished and do not
+resume without instruction. No live release gate or terminal full pass claimed.
+
+## Historical handoff: turn25; final corrected full1414 live on frozen85fb50e
 
 Counter **25/30**, incremented24->25 once; user's status question, tools and
 compaction do not increment it. S01-S18 accepted locally; S19 unchecked. Current

@@ -1,0 +1,21 @@
+{
+  "all_frozen_identities": {
+    "config": true,
+    "distributions": true,
+    "extra": true,
+    "inputs": true,
+    "python": true,
+    "source": true,
+    "sqlite": true
+  },
+  "counter_increment": "25->26 once; never on compaction/tools/status",
+  "final_full": "positively live on entry; no pass claimed",
+  "full_handle": 20455,
+  "goal_turn": 26,
+  "previous_turn": "progress",
+  "recorded_at": "2026-10-25T08:21:38.726823-03:00",
+  "requirements": "S01-S19 complete local implementation and full matrix, unrun live gates separately recorded",
+  "source_count": 175,
+  "supervisor_pid": 25554,
+  "uv_pid": 25555
+}
