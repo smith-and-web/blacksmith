@@ -745,6 +745,47 @@ Turn22 durable brain validation: Projects/blacksmith.md updated via MCP with S15
 
 Counter22->23 persisted once; prior turn progress. Objective/instructions/memory/brain and current complete169-source/config/input/runtime identity revalidated. Archive4182 terminal0/verified; cleanup pending. S19 implementation plus final full100/20 required; no paused/completed goal claim.
 
+## Turn24 continuation audit
+
+Counter23->24 incremented once after objective/instructions/memory/brain and exact
+frozen174-source/config/input/JS/65-distribution/Python3.12.13/SQLite3.53.1 checks.
+Previous turn progress. Full77877 positively polled live at18729/18730/18731;
+source remained frozen. A reported failure mapped to the unchanged config-leaf
+drift assertion; read-only reproduction proved the sole unread leaf max_attempts.
+S18 had removed its unsafe executable use while retaining reserved compatibility.
+
+Full01 deliberately stopped with one SIGINT to verified pytestPID18731 after a
+known failure, not after an observation timeout. Terminal handle77877 exit2:
+**1 failed/329 passed/480.25s**, interrupted, no passing-full claim. Supervisor
+saved all_identities_unchanged:true and exact final log hash in
+turn23-full-command-01.json. Full original root/log and failed assertion retained;
+no source changed until terminal. Actual100/20 were not reached in this run.
+
+Correction consumes the saved reserved value in read-only recovery inspection:
+disabled_features explicitly reports unsupported respond with reserved max_attempts
+and sandbox's saved enabled flag. CLI/library refusal still precedes execution;
+the setting cannot enable a command. New actual Git/journal/SQLite historical
+inspection test uses saved7/local2 and asserts saved7, no executor/native call,
+unchanged checkpoint/operations/events and identical immutable input bytes. The
+existing config drift assertion is unchanged. Sample config's old CWD comments
+corrected to config-directory semantics; no limit/default/dependency changes.
+Targeted inspection/recovery/deferral regression and new full proof remain required.
+
+Turn24 correction scope01 is terminal **60 passed/53.32s, exit0**; Ruff01 passed.
+Collection01 **1398 tests/0.81s, exit0**. Complete174-source identity differs from
+fbbd16c only in recovery.py and test_feature_deferrals.py; unchanged config-drift
+test SHA verified. Sample config parsed TOML equals fbbd16c exactly (two stale
+path comments corrected). pyproject/lock, both original inputs and all65 installed
+distributions/Python3.12.13/SQLite3.53.1 unchanged. Source/failed-full hashes and
+receipts: turn24-environment-01.json. These scopes do not accept the whole feature.
+
+Resource preparation: accepted completed S12 t14-full01 uses1.17GiB. Original
+1138-pass/1136.16s receipt hash matches turn14-environment.json, terminal evidence
+retained. New owner8434 terminal1/no process records; only validated other-device
+HFS warnings. Archive prepare25075 live; helper turn24-archive-s12.py, log
+turn24-archive-s12-prepare-01.log. Full byte/mode/symlink/protected-alias verification
+must complete before owned-directory-only cleanup; failed roots remain untouched.
+
 ### S19 implementation and scoped proof (turn23)
 
 - Counter remains23/30, including the user's status question. No automatic reset.

@@ -1,5 +1,6 @@
 """Disabled features refuse before effects; historical evidence stays inspectable."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -138,6 +139,34 @@ def test_historical_enabled_run_inspection_succeeds_but_resume_native_and_sdk_re
     assert saved_values(project[1], thread_id) == before
     assert context.journal().operations() == operations
     assert context.journal().events() == events
+
+
+def test_saved_reserved_feature_settings_are_inspected_without_enabling_or_mutating_them(
+    project, monkeypatch, capsys,
+):
+    project[1].write_text(project[1].read_text() + "[respond]\nmax_attempts=7\n")
+    context, thread_id = historical_enabled_run(project, monkeypatch)
+    before = saved_values(project[1], thread_id)
+    operations, events = context.journal().operations(), context.journal().events()
+    retained = {name: (context.directory / name).read_bytes() for name in (
+        "manifest.json", "runtime-config.json", "input.prd.md", "trusted-blacksmith.toml")}
+    # Inspection must show the immutable saved setting, not this new local choice.
+    project[1].write_text(project[1].read_text().replace("max_attempts=7", "max_attempts=2"))
+    monkeypatch.setattr(cli, "Executor", forbidden)
+    monkeypatch.setattr("blacksmith.run_context.git_read", forbidden)
+    assert cli.main(["recovery", "inspect", "--thread-id", thread_id,
+                     "--config", str(project[1])]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["valid"] is True
+    assert result["disabled_features"] == {
+        "respond": {"supported": False, "status": "unsupported_until_hardened",
+                    "reserved_max_attempts": 7},
+        "sandbox": {"supported": False, "status": "unsupported_until_hardened",
+                    "enabled_in_saved_config": True}}
+    assert saved_values(project[1], thread_id) == before
+    assert context.journal().operations() == operations
+    assert context.journal().events() == events
+    assert {name: (context.directory / name).read_bytes() for name in retained} == retained
 
 
 def test_disabled_production_graph_never_advertises_sandbox_tool(project, monkeypatch):

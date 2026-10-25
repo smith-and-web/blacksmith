@@ -35,3 +35,9 @@ common admission/attempt/review/approval/gate services, exact fetched-head check
 non-force publication and retained recovery evidence for races or failed pushes.
 The disabled variant does not claim that those revision behaviors were implemented
 or verified. It provides an explicit refusal under the specification's exception.
+
+Recovery inspection reports a `disabled_features` object from the immutable saved
+configuration: sandbox's saved enabled flag and respond's reserved `max_attempts`
+value, each explicitly marked unsupported. Changed local settings do not replace
+these historical values. This read-only report does not enable either feature or
+write checkpoints, input snapshots, journal operations or events.

@@ -323,6 +323,7 @@ def capture(context, checkpointer, *, reason, stage="cli"):
 
 def inspect(context):
     index = validate(context)
+    settings = context.execution_config()
     records = []
     for entry in index["records"]:
         record = _read(owned_file(_directory(context), entry["manifest"]))
@@ -330,6 +331,13 @@ def inspect(context):
                         "reason": record["reason"], "workspaces": record["workspaces"]})
     return {**_identity(context), "recovery_path": str(_directory(context)),
             "records": records, "total_snapshot_bytes": sum(r["bytes"] for r in records),
+            # Historical settings remain readable, but neither deferred feature can
+            # execute. Report the saved values, never the caller's changed config.
+            "disabled_features": {
+                "respond": {"supported": False, "status": "unsupported_until_hardened",
+                            "reserved_max_attempts": settings.respond.max_attempts},
+                "sandbox": {"supported": False, "status": "unsupported_until_hardened",
+                            "enabled_in_saved_config": settings.sandbox.enabled}},
             "uncertain_model_calls": [op.key.id for op in context.journal().operations()
                                       if op.key.kind.startswith("model.")
                                       and op.status not in {"completed", "failed"}]}

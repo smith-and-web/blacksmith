@@ -1,10 +1,10 @@
 # Heavy-PRD implementation progress
 
 - Goal status: active; implementation incomplete.
-- Goal turn: 23 / 30. Never reset this counter automatically.
+- Goal turn: 24 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
-- Previous-turn classification: progress; accepted S15 full1325/ruff and committed44f0108, integrated S16/S17/S18 asfc94de2/24e52e1/33eba45 with exact169-source proof and scoped227/30/31; verified brain/local handoff401a9a2.
-- Current turn: 23; accepted S15 archive fully verified and cleaned. S19 keyed counters, visible optional failures, strict activity/identity, child writer forwarding and bounded presentation are implemented with scoped proof; docs/final matrix audit and final combined full pytest/ruff including100/20 remain. Counter incremented22->23 once; never on compaction/status/tools.
+- Previous-turn classification: progress; implemented S19 and corrected actual counter/optional-store/child-stream defects; scoped proof and final Ruff pass, complete matrix/docs, candidatefbbd16c, verified brain handoffc693e73. Final full01 launched once at174 frozen sources.
+- Current turn: 24; full01 intentionally stopped after known config-drift failure, terminal2/1 failed329 passed480.25s with all174-source/config/input/runtime identities unchanged. Saved disabled-feature inspection correction passes60/ruff; drift assertion unchanged. Archive accepted S12 fixture for headroom, then freeze corrected source and run final full02 including100/20. Counter incremented23->24 once, never on compaction/status/tools.
 - Turn 13 boundary exception: a missed test crash injection reached a real push attempt to a synthetic GitHub remote; it failed before authentication (128), with no gh creation command. Receipt: `heavy-prd-turn-13-unexpected-push.json`. Child publication guard and native offline transport/auth isolation added before further testing.
 - Stop rule: at turn 30 stop implementation, write a precise handoff, and pause the goal using the user's explicit authorization. Resume only on instruction.
 - Branch: `feature/heavy-prd-readiness`.
@@ -59,7 +59,34 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
-## Current handoff: turn23; S19 scoped proof, final combined verification outstanding
+## Current handoff: turn24; inspection correction passed, archive before full02
+
+Counter **24/30**; incremented23->24 once after objective/instructions/memory/brain
+and exact source/runtime checks. Previous turn was progress. S01–S15 accepted;
+S16–S19 remain unchecked. Full01 **77877** deliberately interrupted after confirmed
+config-leaf failure; terminal **2**,1 failed/329 passed/480.25s. Supervisor receipt
+proves every174-source/config/input/JS/installed-runtime identity unchanged during
+that run. Failed root/log retained; actual100/20 not reached. No passing-full claim.
+
+S18 reserved max_attempts was unread after unsafe flow removal. Read-only recovery
+inspection now displays its saved value and sandbox flag explicitly unsupported.
+The original config drift assertion is unchanged. New real historical Git/SQLite/
+journal test proves saved7/local2 and no checkpoint/input/journal mutation or
+executor/native calls. Targeted60/53.32s and ruff24 pass. Only recovery.py and
+test_feature_deferrals.py differ fromfbbd16c; sample config changes correct two
+CWD comments only, parsed values unchanged. Exact identity turn24-environment-01.
+
+Before new full: accepted S12 completed fixture t14-full01 uses1.17GiB. Its
+1138-pass/1136.16s accepted receipt matches turn14-environment.json. Owner scan8434
+terminal1/no owners, known other-device HFS warnings retained. Archive prepare
+**25075** is live via /private/tmp/blacksmith-heavy-prd-turn-24-archive-s12.py;
+log turn24-archive-s12-prepare-01.log. Wait for terminal archive/byte/mode/symlink
+proof before any removal. Protected inputs excluded unread; failed roots untouched.
+Then post-hook freeze corrected174 sources/config/input/runtime and final full02
+including100-chain/20-root/max2. No new full has launched yet. At30 stop/save/pause
+unfinished work; never reset or resume automatically. No live release gate claimed.
+
+## Historical handoff: turn23; S19 scoped proof, final combined verification outstanding
 
 Counter **23/30**, unchanged by the user's status request. S01–S15 accepted locally;
 S16–S18 integrated with scoped proof; S19 remains unchecked. Primary branch

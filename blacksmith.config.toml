@@ -6,8 +6,8 @@
 
 [target]
 # Absolute path to the repository blacksmith operates on. Optional: when omitted (or
-# commented out), the target resolves to the git root of the current working directory
-# (WU-INSTALL) — so running blacksmith from inside a repo targets that repo.
+# commented out), the target resolves to the git root containing this config's
+# directory. Relative repo_path/storage settings also resolve from this directory.
 # repo_path = "/absolute/path/to/target-repo"
 default_branch = "main"
 
@@ -55,7 +55,7 @@ max_fix_attempts = 1
 max_implement_continuations = 2
 
 [checkpointer]
-# SQLite checkpointer DB (PRD §12 decision 1). Relative to blacksmith's CWD.
+# SQLite checkpointer DB (PRD §12 decision 1). Relative to this config's directory.
 db_path = ".blacksmith/checkpoints.sqlite"
 
 [api]

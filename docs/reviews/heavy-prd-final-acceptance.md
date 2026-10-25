@@ -1,12 +1,14 @@
 # Heavy-PRD final acceptance audit
 
-Goal turn23/30. **Implementation remains unaccepted as a whole.** S01–S15 have
+Goal turn24/30. **Implementation remains unaccepted as a whole.** S01–S15 have
 local full-suite proof; S16–S18 are integrated with scoped proof; S19 has scoped
-proof and is awaiting final combined verification. Frozen local implementation
-candidate is fbbd16c9a3617fd2cbb061b377ad3cc833d94899; full01 is running against
-turn23-environment-02.json (174 Python files, unchanged config/input/runtime).
-Command/PID/terminal-identity receipt: turn23-full-command-01.json. No terminal
-full-suite result is claimed. This audit maps the settled
+proof and is awaiting final combined verification. Full01 on frozen fbbd16c
+ended intentionally interrupted after1 failed/329 passed/480.25s, exit2;
+turn23-full-command-01.json proves unchanged174-source/config/input/runtime.
+The config drift failure is corrected by read-only saved disabled-feature metadata,
+with its original assertion intact; scoped60/53.32s and Ruff pass. Corrected source
+identity is in turn24-environment-01.json; new full1398 including100/20 still required.
+This audit maps the settled
 specification to production paths and regression evidence. A test's existence is
 not its passing receipt. Exact command/results and frozen source/runtime manifests
 belong in [the evidence ledger](heavy-prd-evidence.md).
@@ -45,6 +47,7 @@ refuses execution without rewriting old evidence. No dependency versions changed
 | command_timeout_s=1800 | saved limits → command_scope in parent/child/native helpers → process-session TERM/grace/KILL/reap; Git/gh default120 seconds | test_commands parsing, all toolchain stages, configured real CLI both shapes/resume, remaining-time forwarding |
 | max_command_output_bytes=1048576 | saved limits → file-backed native output capture → shared stdout/stderr cap, counted truncation, bounded checkpoint tails/full artifact refs | test_commands exact byte counts/caps/tails and CLI saved-value resume; test_review_integrity private full patch remains available despite smaller native output cap |
 | sandbox.enabled=false | structural history parsing → require_supported_execution at runtime entry points → reject true before effects | test_feature_deferrals + lifecycle/tool tests; enabled historical inspect remains read-only |
+| reserved respond.max_attempts | saved structural config → read-only recovery disabled_features metadata, explicitly unsupported | test_feature_deferrals nondefault saved7/local2 shows7 without effects/evidence mutation; unchanged config drift guard; no command enablement |
 | existing review/recovery limits | saved config → shared child dependency bundle/counters → finite retries and recursion formula | test_unit_subgraph both shapes; test_review_recovery valid-seat reuse; test_scheduling formula and child configuration |
 
 ## Specification acceptance matrix
