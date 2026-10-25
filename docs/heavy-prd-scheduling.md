@@ -3,7 +3,8 @@
 S16 is an isolated implementation candidate under verification. The
 [progress checklist](reviews/heavy-prd-progress.md) records accepted slices and the
 [evidence ledger](reviews/heavy-prd-evidence.md) records exact test/source identity.
-The corrected primary S15 full02 suite is running; this document is not an acceptance claim.
+The corrected primary S15 full03 suite is running; this document is not an acceptance claim.
+The [S16 audit](reviews/heavy-prd-scheduling-audit.md) maps current sources and proof.
 
 ## Concurrency and dependency order
 
@@ -28,6 +29,22 @@ glob prefixes and normalized case. Internal symlink aliases are resolved against
 the frozen planning snapshot. Unknown pattern scope is treated conservatively.
 Unexpected edits outside declared target groups can still conflict at join; the
 join must halt and preserve work instead of forcing a merge.
+
+## Owned node execution and progress
+
+The CLI owns a separate node executor bounded by the saved worker limit.
+LangGraph custom-stream waiters and checkpoint coordination use their own pool
+with at least two slots. Those slots do not increase active work-unit concurrency;
+even a single-worker run can stream progress and checkpoint without starvation.
+On scope exit queued nodes cancel and active cleanup drains before recovery
+capture. The runtime runner-submit hook is never persisted and adds no paid call.
+Direct library code using custom streaming should wrap invocation in
+`blacksmith.scheduling.node_execution(config)`, as the CLI does.
+
+This fixes an installed LangGraph1.2.9 behavior: its stream waiter occupied one
+slot in the same bounded background pool as real nodes. The original20-root
+barrier exposed this defect. Separate coordination needs at least two slots for
+synchronous checkpointing; the configured node bound remains authoritative.
 
 ## Finite recursion allowance
 
@@ -57,3 +74,11 @@ A run interrupted before workspace preparation can derive its first schedule fro
 its saved inputs. Do not edit a checkpoint to bypass a scheduling diagnostic.
 Inspect the retained run and use a fresh run ID when a compatible continuation is
 unavailable. Live release gates remain separate from these offline invariants.
+
+## Verification boundary
+
+The actual100-unit chain, original20-root/default2 barrier and single-worker CLI
+have scoped passing evidence. Final integrated full pytest/ruff remains required.
+Scratch remotes and replaced billed/GitHub transport do not prove live provider
+billing, physical remote cancellation or successful publication. See the audit
+for exact sources, intermediate failures, live jobs and transfer instructions.

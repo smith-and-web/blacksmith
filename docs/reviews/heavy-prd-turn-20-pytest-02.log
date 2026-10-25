@@ -1,0 +1,813 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 16%]
+........................................................................ [ 21%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 38%]
+........................................................................ [ 43%]
+........................................................................ [ 48%]
+.............................................FFF........................ [ 54%]
+........................................................................ [ 59%]
+........................................................................ [ 65%]
+........................................................................ [ 70%]
+........................................................................ [ 76%]
+............FFFF...FFF.................................................. [ 81%]
+........................................................................ [ 86%]
+........................................................................ [ 92%]
+........................................................................ [ 97%]
+.............................                                            [100%]
+=================================== FAILURES ===================================
+_______ test_denied_attempt_halts_without_committing_valid_sibling_work ________
+
+repository = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_denied_attempt_halts_with0/workspace')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e02eed0>
+
+    def test_denied_attempt_halts_without_committing_valid_sibling_work(repository, monkeypatch):
+        state = state_for(repository)
+    
+        def edit(options):
+            asyncio.run(options.can_use_tool("Write", {"file_path": "../escape.txt"}, None))
+            (repository / "valid.txt").write_text("recover me")
+    
+>       out = implement(state, executor=EditingTransport(monkeypatch, edit))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_path_policy.py:180: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_path_policy.EditingTransport object at 0x10df7db20>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...  ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\n(no approved plan recorded)\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the blacksmith project (smith-and-web/kindling). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+___________ test_unmediated_protected_edit_cannot_commit_or_publish ____________
+
+repository = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_unmediated_protected_edit0/workspace')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dda1100>
+
+    def test_unmediated_protected_edit_cannot_commit_or_publish(repository, monkeypatch):
+        state = state_for(repository)
+    
+        def edit(options):
+            (repository / "blacksmith.toml").write_text('test_cmd = "true"\n')
+    
+>       out = implement(state, executor=EditingTransport(monkeypatch, edit))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_path_policy.py:194: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_path_policy.EditingTransport object at 0x10dfb0ec0>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...  ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\n(no approved plan recorded)\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the blacksmith project (smith-and-web/kindling). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+_____________________ test_prd_rules_reach_implement_guard _____________________
+
+repository = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_prd_rules_reach_implement0/workspace')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e4656d0>
+
+    def test_prd_rules_reach_implement_guard(repository, monkeypatch):
+        state = state_for(repository)
+        prd = state["prd"]
+        state["prd"] = PRD(prd.path, prd.contract.model_copy(update={
+            "untouchables": [*prd.contract.untouchables, "path: source.txt"],
+        }), prd.body)
+    
+        def edit(options):
+            assert isinstance(asyncio.run(options.can_use_tool(
+                "Write", {"file_path": "source.txt"}, None,
+            )), PermissionResultDeny)
+    
+>       out = implement(state, executor=EditingTransport(monkeypatch, edit))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_path_policy.py:216: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_path_policy.EditingTransport object at 0x10e02e390>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...  ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\n(no approved plan recorded)\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the blacksmith project (smith-and-web/kindling). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+_ test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-sequential] _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_every_role_gets_exact_pro0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e087860>
+parallel = False, indexed = False
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+>           graph.invoke({"prd_path": str(prd_path)}, config)
+
+tests/test_requirements_context.py:124: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/graph.py:1159: in node
+    return fn(state, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+blacksmith/nodes/plan.py:249: in plan
+    result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/executor.py:396: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10dd73ef0>
+prompt = 'Produce a concise, step-by-step implementation plan for this work unit. List the steps only — do not write code yet.\n\nUnit U0: unit 0\nLayers: python\nTarget modules: unit_0.txt\nTest contract (must be satisfied): contract sentinel 0'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.plan'
+option_kwargs = {'system_prompt': 'You are blacksmith\'s planner for the context-demo project (example/context-demo). Plan precisely a...s_exact_pro0/explicit-other-target', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+E           During task with name 'plan' and id '3f5e6992-3b45-2cfd-5250-2d0b4b7f8540'
+
+blacksmith/executor.py:273: ReceiptError
+_ test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-fanout] _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_every_role_gets_exact_pro1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10de6a570>
+parallel = True, indexed = False
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+>           graph.invoke({"prd_path": str(prd_path)}, config)
+
+tests/test_requirements_context.py:124: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/graph.py:1159: in node
+    return fn(state, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+blacksmith/nodes/plan.py:249: in plan
+    result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/executor.py:396: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10ded9730>
+prompt = 'Produce a concise, step-by-step implementation plan for this work unit. List the steps only — do not write code yet.\n\nUnit U0: unit 0\nLayers: python\nTarget modules: unit_0.txt\nTest contract (must be satisfied): contract sentinel 0'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.plan'
+option_kwargs = {'system_prompt': 'You are blacksmith\'s planner for the context-demo project (example/context-demo). Plan precisely a...s_exact_pro1/explicit-other-target', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+E           During task with name 'plan' and id '992b9dc2-2c9b-0774-653e-3df869b8a9dd'
+
+blacksmith/executor.py:273: ReceiptError
+_ test_every_role_gets_exact_prose_contract_and_selected_plan[index-sequential] _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_every_role_gets_exact_pro2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10deda720>
+parallel = False, indexed = True
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+>           graph.invoke({"prd_path": str(prd_path)}, config)
+
+tests/test_requirements_context.py:124: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/graph.py:1159: in node
+    return fn(state, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+blacksmith/nodes/plan.py:249: in plan
+    result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/executor.py:396: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10e3cd8b0>
+prompt = 'Produce a concise, step-by-step implementation plan for this work unit. List the steps only — do not write code yet.\n\nUnit U0: unit 0\nLayers: python\nTarget modules: unit_0.txt\nTest contract (must be satisfied): contract sentinel 0'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.plan'
+option_kwargs = {'system_prompt': 'You are blacksmith\'s planner for the context-demo project (example/context-demo). Plan precisely a...p__blacksmith-index__read_symbol', 'mcp__blacksmith-index__search_class', ...], 'tools': ['Read', 'Glob', 'Grep'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+E           During task with name 'plan' and id '9c33b776-2e1b-cfbb-92ec-4c5b980cc72d'
+
+blacksmith/executor.py:273: ReceiptError
+__ test_every_role_gets_exact_prose_contract_and_selected_plan[index-fanout] ___
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_every_role_gets_exact_pro3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e3cc500>
+parallel = True, indexed = True
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+>           graph.invoke({"prd_path": str(prd_path)}, config)
+
+tests/test_requirements_context.py:124: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/graph.py:1159: in node
+    return fn(state, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+blacksmith/nodes/plan.py:249: in plan
+    result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/executor.py:396: in run_plan
+    return self.run(prompt, model=self._config.models.plan,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10dfb16d0>
+prompt = 'Produce a concise, step-by-step implementation plan for this work unit. List the steps only — do not write code yet.\n\nUnit U0: unit 0\nLayers: python\nTarget modules: unit_0.txt\nTest contract (must be satisfied): contract sentinel 0'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.plan'
+option_kwargs = {'system_prompt': 'You are blacksmith\'s planner for the context-demo project (example/context-demo). Plan precisely a...p__blacksmith-index__read_symbol', 'mcp__blacksmith-index__search_class', ...], 'tools': ['Read', 'Glob', 'Grep'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+E           During task with name 'plan' and id 'c9717641-570d-ee2c-2c77-7c2abc934891'
+
+blacksmith/executor.py:273: ReceiptError
+_ test_retries_keep_complete_requirements_plan_and_separate_review_feedback[False-False] _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_retries_keep_complete_req0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e38e4e0>
+resuming = False, escalated = False
+
+    @pytest.mark.parametrize("resuming,escalated", [(False, False), (True, False), (False, True)])
+    def test_retries_keep_complete_requirements_plan_and_separate_review_feedback(
+        tmp_path, monkeypatch, resuming, escalated,
+    ):
+        root = tmp_path / "workspace"
+        root.mkdir()
+        git(root, "init", "-b", "main")
+        git(root, "config", "user.name", "Test")
+        git(root, "config", "user.email", "test@example.invalid")
+        (root / "README").write_text("base")
+        git(root, "add", "-A")
+        git(root, "commit", "-m", "initial")
+        prd = parse_prd(prd_file(tmp_path, parallel=False))
+        unit = prd.contract.work_units[0]
+        request = "ORIGINAL_REVIEW_START\n" + ("review requirement\n" * 1000) + "ORIGINAL_REVIEW_END"
+        executor = RequirementsTransport(monkeypatch)
+>       result = implement({
+            "prd": prd, "selected_unit": unit, "worktree_path": str(root),
+            "plans": [{"unit_id": unit.id, "steps": PLAN}], "review_feedback": request,
+            "last_gate_output": "GATE_ERROR_SENTINEL", "resume_partial_implement": resuming,
+            "escalated": escalated,
+        }, executor=executor)
+
+tests/test_requirements_context.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10e19e7b0>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...n      ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\nAPPROVED_PLAN_SENTINEL\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the context-demo project (example/context-demo). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+_ test_retries_keep_complete_requirements_plan_and_separate_review_feedback[True-False] _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_retries_keep_complete_req1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dfb1d90>
+resuming = True, escalated = False
+
+    @pytest.mark.parametrize("resuming,escalated", [(False, False), (True, False), (False, True)])
+    def test_retries_keep_complete_requirements_plan_and_separate_review_feedback(
+        tmp_path, monkeypatch, resuming, escalated,
+    ):
+        root = tmp_path / "workspace"
+        root.mkdir()
+        git(root, "init", "-b", "main")
+        git(root, "config", "user.name", "Test")
+        git(root, "config", "user.email", "test@example.invalid")
+        (root / "README").write_text("base")
+        git(root, "add", "-A")
+        git(root, "commit", "-m", "initial")
+        prd = parse_prd(prd_file(tmp_path, parallel=False))
+        unit = prd.contract.work_units[0]
+        request = "ORIGINAL_REVIEW_START\n" + ("review requirement\n" * 1000) + "ORIGINAL_REVIEW_END"
+        executor = RequirementsTransport(monkeypatch)
+>       result = implement({
+            "prd": prd, "selected_unit": unit, "worktree_path": str(root),
+            "plans": [{"unit_id": unit.id, "steps": PLAN}], "review_feedback": request,
+            "last_gate_output": "GATE_ERROR_SENTINEL", "resume_partial_implement": resuming,
+            "escalated": escalated,
+        }, executor=executor)
+
+tests/test_requirements_context.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10e38e120>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...n      ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\nAPPROVED_PLAN_SENTINEL\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the context-demo project (example/context-demo). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+_ test_retries_keep_complete_requirements_plan_and_separate_review_feedback[False-True] _
+
+tmp_path = PosixPath('/private/tmp/blacksmith-heavy-prd-t20-full-02/test_retries_keep_complete_req2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e38e1b0>
+resuming = False, escalated = True
+
+    @pytest.mark.parametrize("resuming,escalated", [(False, False), (True, False), (False, True)])
+    def test_retries_keep_complete_requirements_plan_and_separate_review_feedback(
+        tmp_path, monkeypatch, resuming, escalated,
+    ):
+        root = tmp_path / "workspace"
+        root.mkdir()
+        git(root, "init", "-b", "main")
+        git(root, "config", "user.name", "Test")
+        git(root, "config", "user.email", "test@example.invalid")
+        (root / "README").write_text("base")
+        git(root, "add", "-A")
+        git(root, "commit", "-m", "initial")
+        prd = parse_prd(prd_file(tmp_path, parallel=False))
+        unit = prd.contract.work_units[0]
+        request = "ORIGINAL_REVIEW_START\n" + ("review requirement\n" * 1000) + "ORIGINAL_REVIEW_END"
+        executor = RequirementsTransport(monkeypatch)
+>       result = implement({
+            "prd": prd, "selected_unit": unit, "worktree_path": str(root),
+            "plans": [{"unit_id": unit.id, "steps": PLAN}], "review_feedback": request,
+            "last_gate_output": "GATE_ERROR_SENTINEL", "resume_partial_implement": resuming,
+            "escalated": escalated,
+        }, executor=executor)
+
+tests/test_requirements_context.py:215: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:433: in run_implement_escalate
+    return self.run(prompt, model=self._config.models.implement_escalate,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_requirements_context.RequirementsTransport object at 0x10de036e0>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...n      ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\nAPPROVED_PLAN_SENTINEL\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-opus-4-8', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the context-demo project (example/context-demo). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+=============================== warnings summary ===============================
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[worker_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigint]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigterm]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigterm]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_path_policy.py::test_denied_attempt_halts_without_committing_valid_sibling_work
+FAILED tests/test_path_policy.py::test_unmediated_protected_edit_cannot_commit_or_publish
+FAILED tests/test_path_policy.py::test_prd_rules_reach_implement_guard - blac...
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-sequential]
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-fanout]
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[index-sequential]
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[index-fanout]
+FAILED tests/test_requirements_context.py::test_retries_keep_complete_requirements_plan_and_separate_review_feedback[False-False]
+FAILED tests/test_requirements_context.py::test_retries_keep_complete_requirements_plan_and_separate_review_feedback[True-False]
+FAILED tests/test_requirements_context.py::test_retries_keep_complete_requirements_plan_and_separate_review_feedback[False-True]
+10 failed, 1315 passed, 6 warnings in 3013.29s (0:50:13)

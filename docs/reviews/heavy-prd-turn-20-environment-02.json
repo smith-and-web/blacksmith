@@ -280,6 +280,15 @@
   "expected_warnings": "Intentional SDK Read/Glob/Grep allowed-tools advisory; retained, not filtered",
   "full_command": "uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t20-full-02 > docs/reviews/heavy-prd-turn-20-pytest-02.log 2>&1",
   "full_session_id": 3281,
+  "full_session_terminal": true,
+  "full_suite_result": {
+    "duration_s": 3013.29,
+    "exit_code": 1,
+    "failed": 10,
+    "passed": 1315,
+    "scope": "complete1325 tests, no skips/xfails; ten adapter constructors inherited default SDK query without immutable context",
+    "warnings": 6
+  },
   "goal_turn": 20,
   "input_sha256": {
     "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
@@ -294,6 +303,7 @@
     "docs/reviews/heavy-prd-turn-20-admission-final-02.log": "c158ab2a9b53f72a502a47dce167e046e0b9d6994be1a7c79a55732fd9003794",
     "docs/reviews/heavy-prd-turn-20-admission-guard-01.log": "03868cd5f811f9e92379387355ad735ce32dadb1f5cac12db493c59820607f27",
     "docs/reviews/heavy-prd-turn-20-admission-guard-ruff-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/reviews/heavy-prd-turn-20-pytest-02.log": "7d47b486fe6312f6c06d75c7df462c362ed746f157c32fc8112e64234032d952",
     "docs/reviews/heavy-prd-turn-20-receipts-01.log": "00c351a811d4db64f34a083e5b1804643d1e57e0e0392c8c30ced99ad3ea3b1e",
     "docs/reviews/heavy-prd-turn-20-receipts-imports-02.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
     "docs/reviews/heavy-prd-turn-20-ruff-primary-final-01.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
@@ -487,7 +497,8 @@
   },
   "staging_path": "/private/tmp/blacksmith-heavy-prd-admission-stage",
   "staging_revision": "b123b50f7c3d70683e95e24730d43a491488143c",
-  "status": "final S15 full02 running; primary165 sources frozen after launch",
+  "status": "full02 terminal exit1 with10 context-free offline-adapter fixtures failing; production SDK refusal preserved",
+  "verified_goal_turn": 21,
   "versions": {
     "claude-agent-sdk": "0.2.115",
     "langgraph": "1.2.9",

@@ -1,0 +1,129 @@
+.F
+=================================== FAILURES ===================================
+______________ test_twenty_roots_default_bound_two_actual_workers ______________
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t20-scheduling-consolidated-02/test_twenty_roots_default_boun0/target'),...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10aedd790>
+
+    def test_twenty_roots_default_bound_two_actual_workers(project, monkeypatch):
+>       state, seen = execute(project, monkeypatch, 20)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_scheduling_runtime.py:112: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_scheduling_runtime.py:80: in execute
+    assert cli.main([str(project[2]), "--config", str(project[1]), "--thread-id", "publication",
+blacksmith/cli.py:1547: in main
+    final = drive(
+blacksmith/cli.py:462: in drive
+    final = _drive_gates(
+blacksmith/cli.py:352: in _drive_gates
+    result = _step(
+blacksmith/cli.py:215: in _step
+    return _execute_step(graph, payload, config, on_node=on_node, on_event=on_event)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/cli.py:252: in _execute_step
+    for mode, chunk in graph.stream(
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_scheduling_runtime.py:64: in run
+    rendezvous.wait()
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/threading.py:716: in wait
+    self._enter() # Block while the barrier drains.
+    ^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <threading.Barrier at 0x10aedca70: broken>
+
+    def _enter(self):
+        while self._state in (-1, 1):
+            # It is draining or resetting, wait until done
+            self._cond.wait()
+        #see if the barrier is in a broken state
+        if self._state < 0:
+>           raise BrokenBarrierError
+E           threading.BrokenBarrierError
+E           During task with name 'execute_unit' and id 'd7b3f9e7-dcce-35e2-acf8-364213d64a3b'
+
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/threading.py:740: BrokenBarrierError
+----------------------------- Captured stdout call -----------------------------
+Run 9b13b1e1-6cda-4d90-9286-cdf836bd5d3c: selected committed HEAD 2461476e397408896f7067e25c3a9d9fc6430e37
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t20-scheduling-consolidated-02/test_twenty_roots_default_boun0/.blacksmith/runs/9b13b1e1-6cda-4d90-9286-cdf836bd5d3c
+[auto] gate 'plan': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: execute_unit
+total cost: $0.24; run cap $50.00, remaining $49.76
+execution time: 32.94s / 21600.00s; remaining 21567.06s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t20-scheduling-consolidated-02/test_twenty_roots_default_boun0/.blacksmith/runs/9b13b1e1-6cda-4d90-9286-cdf836bd5d3c/recovery/a528f60b-8376-4d11-b084-be3552d50dcb/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t20-scheduling-consolidated-02/test_twenty_roots_default_boun0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_scheduling_runtime.py::test_twenty_roots_default_bound_two_actual_workers
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 1 passed in 2231.83s (0:37:11)

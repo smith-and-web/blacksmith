@@ -16,7 +16,17 @@
     "pyproject.toml": "d0afa4787e97268fc66a93ca0ca7937b86c7de6d434335e3dda83bd27deac85f",
     "uv.lock": "2edace3af5bbea0da7531b9b43cfad3a636bbc7ae7fa6905b2a02e95097536a3"
   },
+  "consolidated_result": {
+    "duration_s": 2231.83,
+    "exit_code": 1,
+    "failed": 1,
+    "first_case": "actual100-unit chain completed all301 model calls, Git/gates/review/ledger/publication assertions",
+    "passed": 1,
+    "remaining_cases_not_run": 63,
+    "second_case": "20-root BrokenBarrierError before second node slot due streaming waiter sharing same bounded executor"
+  },
   "consolidated_session_id": 65567,
+  "consolidated_session_terminal": true,
   "goal_turn": 20,
   "input_sha256": {
     "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
@@ -28,6 +38,7 @@
   "receipt_sha256": {
     "docs/reviews/heavy-prd-turn-20-scheduling-collection-01.log": "a28d8eb59ebb3257b1ee4170efb63f974c31f75f62e3ff95b2b2f865e2916116",
     "docs/reviews/heavy-prd-turn-20-scheduling-consolidated-01.log": "b8d7e850e0617d1672dd5d069ffef07afb695fcff72187eebfdb7123ee3caf82",
+    "docs/reviews/heavy-prd-turn-20-scheduling-consolidated-02.log": "17426dad6745cdfd7c327bedc1643668ad2a69884b71c80c1c2870cb9eda3c96",
     "docs/reviews/heavy-prd-turn-20-scheduling-foundation-01.log": "0e18abaafa1cbf49edee6c2c2de93c8a7c7db6e3a19eb8b257aad76d54c1b44d",
     "docs/reviews/heavy-prd-turn-20-scheduling-foundation-02.log": "c94673157a536249694f4ceec52ec6cfa788637b2d57097baa525ca1b5f3d9a3",
     "docs/reviews/heavy-prd-turn-20-scheduling-imports-02.log": "6f4e3c8cb6a43f32a8b47add0b65207f17bd814c84308623b3720ad789c0d769",
@@ -216,7 +227,7 @@
     "tests/test_worktree.py": "e2917ca1788bdea946ad70f19f97b1dcecd36c8fca3fcb495222c489fe756027"
   },
   "staging_path": "/private/tmp/blacksmith-heavy-prd-scheduling-stage",
-  "status": "S16 scale/remaining65567 running against frozen168-source4d89e01; primary corrected S15 full02/3281 running separately",
+  "status": "terminal65567:100-unit actual chain passed;20-root barrier failed due shared streaming waiter/node pool; remaining63 cases not reached",
   "transfer_rule": "Only delta from c4c18cd to candidate after S15 acceptance; no baseline replay",
   "versions": {
     "claude-agent-sdk": "0.2.115",

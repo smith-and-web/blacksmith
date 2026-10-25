@@ -1,0 +1,179 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_______ test_denied_attempt_halts_without_committing_valid_sibling_work ________
+
+repository = PosixPath('/private/tmp/blacksmith-heavy-prd-t21-path-policy-01/test_denied_attempt_halts_with0/workspace')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1098e1ee0>
+
+    def test_denied_attempt_halts_without_committing_valid_sibling_work(repository, monkeypatch):
+        state = state_for(repository)
+    
+        def edit(options):
+            asyncio.run(options.can_use_tool("Write", {"file_path": "../escape.txt"}, None))
+            (repository / "valid.txt").write_text("recover me")
+    
+>       out = implement(state, executor=EditingTransport(monkeypatch, edit))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_path_policy.py:180: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_path_policy.EditingTransport object at 0x109f216a0>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...  ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\n(no approved plan recorded)\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the blacksmith project (smith-and-web/kindling). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+___________ test_unmediated_protected_edit_cannot_commit_or_publish ____________
+
+repository = PosixPath('/private/tmp/blacksmith-heavy-prd-t21-path-policy-01/test_unmediated_protected_edit0/workspace')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109f23230>
+
+    def test_unmediated_protected_edit_cannot_commit_or_publish(repository, monkeypatch):
+        state = state_for(repository)
+    
+        def edit(options):
+            (repository / "blacksmith.toml").write_text('test_cmd = "true"\n')
+    
+>       out = implement(state, executor=EditingTransport(monkeypatch, edit))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_path_policy.py:194: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_path_policy.EditingTransport object at 0x1093ea5d0>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...  ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\n(no approved plan recorded)\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the blacksmith project (smith-and-web/kindling). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+_____________________ test_prd_rules_reach_implement_guard _____________________
+
+repository = PosixPath('/private/tmp/blacksmith-heavy-prd-t21-path-policy-01/test_prd_rules_reach_implement0/workspace')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109f460f0>
+
+    def test_prd_rules_reach_implement_guard(repository, monkeypatch):
+        state = state_for(repository)
+        prd = state["prd"]
+        state["prd"] = PRD(prd.path, prd.contract.model_copy(update={
+            "untouchables": [*prd.contract.untouchables, "path: source.txt"],
+        }), prd.body)
+    
+        def edit(options):
+            assert isinstance(asyncio.run(options.can_use_tool(
+                "Write", {"file_path": "source.txt"}, None,
+            )), PermissionResultDeny)
+    
+>       out = implement(state, executor=EditingTransport(monkeypatch, edit))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_path_policy.py:216: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/nodes/implement.py:316: in implement
+    result = run_attempt(
+blacksmith/executor.py:423: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:250: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <test_path_policy.EditingTransport object at 0x109c64b00>
+prompt = 'Implement this work unit fully inside the current working directory by creating or editing the target modules. Make t...  ]\n    }\n  ]\n}\n\nAPPROVED IMPLEMENTATION PLAN:\n(no approved plan recorded)\n\nDEPENDENCY COMPLETION RECORDS:\n[]'
+model = 'claude-sonnet-4-6', raise_on_error = False, emit_findings = False
+call_context = None, operation_kind = 'model.implement'
+option_kwargs = {'system_prompt': "You are blacksmith's implementer for the blacksmith project (smith-and-web/kindling). Implement pre...e', 'allowed_tools': ['Read', 'Glob', 'Grep'], 'tools': ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'], ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+>           raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+E           blacksmith.receipts.ReceiptError: run_admission_context_required: default SDK execution needs an immutable run/call context before options or transport
+
+blacksmith/executor.py:273: ReceiptError
+=========================== short test summary info ============================
+FAILED tests/test_path_policy.py::test_denied_attempt_halts_without_committing_valid_sibling_work
+FAILED tests/test_path_policy.py::test_unmediated_protected_edit_cannot_commit_or_publish
+FAILED tests/test_path_policy.py::test_prd_rules_reach_implement_guard - blac...
+3 failed in 1.26s

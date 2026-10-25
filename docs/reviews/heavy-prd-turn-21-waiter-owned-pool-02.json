@@ -1,0 +1,16 @@
+{
+  "max_concurrency": 2,
+  "node_start_offsets_s": [
+    [
+      0,
+      0.0033859580289572477
+    ],
+    [
+      1,
+      0.003437875013332814
+    ]
+  ],
+  "barrier_completed": true,
+  "custom_events": 2,
+  "paid_or_external_effects": false
+}

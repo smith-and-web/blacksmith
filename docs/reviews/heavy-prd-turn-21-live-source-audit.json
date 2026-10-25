@@ -1,0 +1,25 @@
+{
+  "goal_turn": 21,
+  "primary_full_handle": 44404,
+  "process_observation": "51538 82824 06:21 Ss   /Users/josh.smith/Code/blacksmith/.venv/bin/python\n51552 51538 06:21 S    /Users/josh.smith/Code/blacksmith/.venv/bin/python\n",
+  "recorded_at": "2026-10-25T03:06:45.866177-03:00",
+  "s16_command_record": "heavy-prd-turn-21-scheduling-command-03.json",
+  "s16_launch_handle": "unavailable after truncated tool output; verified PIDs/log used instead",
+  "s16_pytest_pid": 51552,
+  "s16_supervisor_pid": 51538,
+  "source_audits": [
+    {
+      "complete_source_and_config_inputs_runtime_match": true,
+      "record": "heavy-prd-turn-21-environment-03.json",
+      "root": "/Users/josh.smith/Code/blacksmith",
+      "source_count": 165
+    },
+    {
+      "complete_source_and_config_inputs_runtime_match": true,
+      "record": "heavy-prd-turn-21-scheduling-source-03.json",
+      "root": "/private/tmp/blacksmith-heavy-prd-scheduling-stage",
+      "source_count": 168
+    }
+  ],
+  "status": "live source audit, not acceptance"
+}
