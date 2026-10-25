@@ -226,7 +226,10 @@ class Executor:
         operation_kind: str = "model.call", **option_kwargs: Any,
     ) -> ExecutorResult:
         from blacksmith.budget import BudgetLedger
+        from blacksmith.receipts import validate_model_terminal_policy
         from blacksmith.run_clock import execution_scope
+        if call_context is not None:
+            validate_model_terminal_policy(call_context.journal())
         context = BudgetLedger.for_call(call_context).context if call_context else None
         with execution_scope(context):
             return self._run(prompt, model=model, raise_on_error=raise_on_error,
@@ -267,7 +270,9 @@ class Executor:
             options = replace(options, max_budget_usd=reservation.amount_usd)
         cached = None
         if journal is not None:
+            from blacksmith.receipts import MODEL_TERMINAL_POLICY_VERSION
             receipt = journal.intent(key, {
+                "terminal_policy_version": MODEL_TERMINAL_POLICY_VERSION,
                 "prompt_sha256": digest(prompt),
                 "system_prompt_sha256": digest(str(options.system_prompt or "")),
                 "model": options.model, "cwd": str(options.cwd) if options.cwd else None,
@@ -543,7 +548,9 @@ class Executor:
             # "error_max_turns", "error_during_execution"). Classify the turn cap distinctly so
             # a caller can recover from it rather than treating it like any other error.
             subtype = getattr(result, "subtype", None) if result else None
-            is_error = is_error or subtype == "error_max_budget_usd"
+            # Both indicators must substantiate success. Error or unknown terminal
+            # subtypes cannot become clean evidence when the SDK error flag is false.
+            is_error = is_error or subtype != "success"
             error_kind = None
             if is_error:
                 error_kind = ("max_turns" if subtype == "error_max_turns" else

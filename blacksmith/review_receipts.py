@@ -219,6 +219,9 @@ def verify_receipt(record, state, *, unit, base, candidate, eligible=True):
     if not isinstance(record, ReviewReceipt):
         raise ReceiptError("missing typed review receipt")
     context = context_from_state(state)
+    from blacksmith.receipts import validate_model_terminal_policy
+    journal = context.journal()
+    validate_model_terminal_policy(journal)
     enabled = context.execution_config().review.enabled
     expected = {"clean"} if enabled else {"disabled"}
     if not eligible and enabled:
@@ -229,7 +232,6 @@ def verify_receipt(record, state, *, unit, base, candidate, eligible=True):
         raise ReceiptError("review unavailable/blocking or belongs to a different unit/candidate")
     if (record.candidate_tree is None or not base or not candidate):
         raise ReceiptError("review lacks original committed candidate identity")
-    journal = context.journal()
     operation = journal.get_by_id(record.receipt_id)
     if (operation is None or operation.status != "completed"
             or operation.key.unit_id != unit.id or operation.key.attempt_id != record.attempt_id

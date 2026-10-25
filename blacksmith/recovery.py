@@ -324,6 +324,16 @@ def capture(context, checkpointer, *, reason, stage="cli"):
 def inspect(context):
     index = validate(context)
     settings = context.execution_config()
+    from blacksmith.receipts import (
+        MODEL_TERMINAL_POLICY_VERSION,
+        LegacyModelTerminalPolicyError,
+        validate_model_terminal_policy,
+    )
+    policy = {"version": MODEL_TERMINAL_POLICY_VERSION, "supported": True}
+    try:
+        validate_model_terminal_policy(context.journal())
+    except LegacyModelTerminalPolicyError as exc:
+        policy.update(supported=False, diagnostic=str(exc))
     records = []
     for entry in index["records"]:
         record = _read(owned_file(_directory(context), entry["manifest"]))
@@ -331,6 +341,7 @@ def inspect(context):
                         "reason": record["reason"], "workspaces": record["workspaces"]})
     return {**_identity(context), "recovery_path": str(_directory(context)),
             "records": records, "total_snapshot_bytes": sum(r["bytes"] for r in records),
+            "model_terminal_policy": policy,
             # Historical settings remain readable, but neither deferred feature can
             # execute. Report the saved values, never the caller's changed config.
             "disabled_features": {

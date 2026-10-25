@@ -206,6 +206,8 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     context = context_from_state(values) if values.get("run_context") else None
     if context is not None:
         context.execution_config().require_supported_execution()
+        from blacksmith.receipts import validate_model_terminal_policy
+        validate_model_terminal_policy(context.journal())
     from blacksmith.scheduling import invocation_config, node_execution
     inputs = values or (payload if isinstance(payload, dict) else {})
     defaults = (getattr(graph, "config", None) or {}).get("configurable", {})
@@ -1053,6 +1055,8 @@ def _resume(argv: list[str] | None = None) -> int:
             # native observations can append command or active-clock receipts.
             context.verify_inputs()
             context.execution_config().require_supported_execution()
+            from blacksmith.receipts import validate_model_terminal_policy
+            validate_model_terminal_policy(context.journal())
             from blacksmith.budget import BudgetLedger
             from blacksmith.run_clock import used
             BudgetLedger(context).balance()

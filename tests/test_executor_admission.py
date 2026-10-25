@@ -10,7 +10,7 @@ from test_run_context import create, saved_values
 from test_run_context import project as project
 
 from blacksmith.budget import AdmissionDenied, BudgetLedger
-from blacksmith.executor import Executor, ExecutorResult, ModelCallStopped
+from blacksmith.executor import _CALL, Executor, ExecutorResult, ModelCallStopped
 from blacksmith.receipts import ReceiptError, call_context_for
 from blacksmith.run_context import context_from_state
 
@@ -25,6 +25,10 @@ def setup(project, monkeypatch, cap=10, *, cost=.25, terminal=True):
     calls = []
 
     async def collect(self, prompt, options, *, emit_findings=False):
+        intent = context.journal().get_by_id(_CALL.get()["call_id"])
+        assert intent.status == "intent"
+        version = intent.intent["terminal_policy_version"]
+        assert type(version) is int and version == 1
         calls.append((prompt, options))
         assert options.setting_sources == [] and options.strict_mcp_config
         assert options.max_budget_usd is not None

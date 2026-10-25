@@ -22,11 +22,33 @@ from urllib.parse import quote
 from uuid import UUID
 
 SCHEMA_VERSION = 1
+MODEL_TERMINAL_POLICY_VERSION = 1
 TERMINAL_STATES = frozenset({"completed", "failed", "interrupted", "unknown"})
 
 
 class ReceiptError(Exception):
     """Critical integrity/storage failure: stop before performing another effect."""
+
+
+class LegacyModelTerminalPolicyError(ReceiptError):
+    """Retained model evidence predates the positive terminal-success policy."""
+
+
+def validate_model_terminal_policy(journal: OperationJournal) -> None:
+    """Refuse unproven cached results without rewriting their original evidence.
+
+    Inspect only model rows: large runs contain many more native receipts. Hash
+    validation still applies, including to rows whose policy tag is unsupported.
+    """
+    with journal._connection() as connection:
+        for row in connection.execute("SELECT * FROM operations WHERE kind LIKE 'model.%'"):
+            operation = journal._receipt(row)
+            version = operation.intent.get("terminal_policy_version")
+            if type(version) is not int or version != MODEL_TERMINAL_POLICY_VERSION:
+                raise LegacyModelTerminalPolicyError(
+                    "legacy_model_terminal_policy_requires_manual_recovery: model receipt "
+                    f"{operation.key.id} lacks supported positive terminal-success evidence; "
+                    "run/checkpoints/artifacts/budgets retained for read-only inspection")
 
 
 def encoded(value: Any) -> str:
