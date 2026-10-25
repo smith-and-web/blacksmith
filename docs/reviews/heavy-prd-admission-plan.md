@@ -1,118 +1,108 @@
 # S15 implementation and acceptance handoff
 
-Status: isolated partial admission wiring at goal17/30. S14 full rerun02 remains
-live in the primary source tree. S15 is not accepted: production deadlines,
-CLI unlimited choice and budget-only recovery are unfinished. The settled R08/R12 requirements govern the remaining work.
+Status: isolated WIP at goal18/30; S14 is accepted/committed locally. S15 remains
+unchecked. All test handles are terminal. R08/R12 decisions remain settled.
 
-## Saved source and foundation proof
+## Exact source and transfer boundary
 
-Worktree: `/private/tmp/blacksmith-heavy-prd-admission-stage`, branch
-`feature/heavy-prd-admission-staging`. Baseline23ad7ff copied exactly the146 frozen
-S14 Python sources. WIPs bc11a18 and latest
-`a10683e09f8a7abe57a0720fc7ae93296e2c4760` add the ledger foundation. Latest
-`fec4d88c216ff9b3b8edb700b491ae5c256f7120` adds CallContext run identity, fresh
-policy bootstrap, Executor role grants/cached-option reuse/settlement and a resume
-policy check plus tests. Transfer only the delta against23ad7ff after S14 acceptance;
-do not merge/replay the baseline.
-Copied spec and .venv symlink are untracked and excluded. Source identity is in
-heavy-prd-turn-17-budget-source.json. No primary source was changed by this work.
+- Primary: feature/heavy-prd-readiness, S14 implementation8652ac237f3f10ab2ac10f37ab40eec15b4de00d.
+  Final S14 full1219/ruff/146-source proof is in turn17 environment-02.json.
+- S15: /private/tmp/blacksmith-heavy-prd-admission-stage,
+  feature/heavy-prd-admission-staging, **1d9841f5e99368b5f92ef01cd9aab0a2fd10f01a**
+  afterf2ff68b/fec4d88. Source-only baseline23ad7ff copied146 frozen S14 sources
+  before its strict legacy receipt-fixture correction. Current156-source set/hashes
+  and terminal receipt hashes: heavy-prd-turn-18-admission-source.json.
+- Transfer only the delta23ad7ff..latest after the remaining audit. Never merge or
+  replay the snapshot baseline; preserve primary tests/test_receipt_wiring.py.
+  The copied untracked spec and .venv symlink are excluded. Tracked staging tree
+  is clean. No S15 source has entered the primary.
 
-The ledger uses existing critical operations, preserving the journal schema.
-Fresh policy initialization records the explicit unlimited choice; absent or
-corrupt policy refuses. An IMMEDIATE SQLite transaction reserves the smaller of
-$5 and remaining unreserved budget. Same-call replay reuses the original grant.
-Denials persist a zero-charge, not-started record and typed identity. Actual SDK
-result cost is read in the allocation transaction even before separate settlement,
-so a settlement gap cannot hide spend/overrun. Missing cost consumes the full
-reservation with incomplete accounting. Model SDK budget must equal its grant.
-An overrun denies further admissions under the unchanged budget; existing verified
-budget amendments determine the revised cap. Cached results retain original grants.
+## Implemented, with scoped evidence only
 
-Foundation-01:14 passed/13.41s. Foundation-02: collection error from a test import
-of a nonexistent module; fixed to the actual contract parser. Foundation-03:
-**16 passed/11.75s**, including eight concurrent reservations under a $12 cap,
-idempotent grants, missing-cost states, known zero versus unknown, before-settlement
-cost/overrun, critical rollback, hash-valid semantic corruption, wrong SDK budget
-and explicit uncapped policy retaining the $5 per-call reserve. Focused ruff05
-passed. Foundation-04 adds semantic call/cap identity checks:18 passed/11.58s,
-focused ruff06 passed. These tests write explicit offline model receipts; they are not SDK/runtime
-admission or billing evidence. Subsequent isolated monetary wiring: combined ledger/Executor
-roles01 passed33/19.88s; actual CLI sequential/parallel normal/draft02 passed4/117.04s,
-all7 paid calls bound to their grants with exact settled cost. Focused ruff10 passed.
-Unknown nonterminal partial cost remains charged at full reservation; cached responses
-keep original options and finish lost settlement without provider replay. S15 remains
-partial: no deadline/cancel/unlimited-CLI/budget-only recovery acceptance.
+- Config defaults run50/call5/model1800s/run21600s, finite positive validation.
+  --unlimited-cost explicitly freezes None and its critical choice; per-call/time
+  limits remain. Fresh budget/clock policies bootstrap; missing/corrupt old policy
+  refuses before executor without inventing spend/timestamps.
+- Atomic IMMEDIATE ledger grants min(call cap, remaining unreserved run allowance).
+  All six paid Executor roles bind immutable CallContext/model key to grant, SDK
+  max_budget_usd and settlement. Actual SDK results count before separate settlement;
+  unknown/nonterminal usage consumes full reservation and incomplete accounting.
+  Cached results reuse original grants/options and finish lost settlement. Actual
+  overrun stops all roles, including critic/summary, and denies further admission.
+- Denied-before-start review becomes typed unavailable, never clean. Budget-only
+  critic/implement/review/summary retry preserves unstarted identity, continuation,
+  fix/revision/attempt counters and valid paid seats; one positive finite amendment
+  is durable/idempotent. Ordinary resume cannot reset allowance. Graph recovery
+  decisions now read authoritative ledger balance instead of worker event sums.
+- OwnedCLITransport uses the installed SDK protocol plus an owned POSIX session;
+  both public query/client paths receive it. Timeout/raw asyncio cancellation
+  completes TERM, grace5, KILL and leader reap before returning. Real local CLI
+  descendants cannot perform their delayed sentinel write. Provider transport is
+  never called in these tests; no installed SDK file/dependency was modified.
+- Active run clock spans graph steps and direct model/native calls, with a shared
+  owner for parallel threads. It journals bounded5-second slices before execution,
+  measures elapsed monotonic time at normal closure and conservatively charges the
+  last unfinished slice after a killed owner. Offline/approval waits get no debit.
+  Model/native timeouts use remaining run time; timer failure cancels active work.
+  Retention capture has its own bounded native scope after active execution stops.
+- Transcripts use unique call IDs without provider session IDs, retain partial
+  streams and expose small paths through cost events/metrics. No unknown-session
+  overwrite. Publication cost validation supports the transcript reference.
 
-## Required production integration
+## Verification receipts (not a full S15 pass)
 
-1. Policy now initializes during fresh RunContext bootstrap after the recovery index,
-   before any model call. Add CLI `--unlimited-cost`, freeze the selected None cap
-   only with its explicit critical policy choice, and record it. Validate missing
-   old admission metadata before executor on resume without inventing costs or
-   timestamps. Keep historical completed inspection and immutable original inputs.
-2. Initial Executor role wiring is present and scoped-tested; finish the full integration: plan, critic, initial and
-   escalated implement, review seats, summary, and respond if enabled (S18 may
-   explicitly disable it). Supply sufficient validated run identity through
-   CallContext now carries and verifies the full immutable RunContext alongside
-   journal identity. Keep that binding through every production path. Pass the actual reservation as SDK max_budget_usd. Completed cached
-   calls/seats must reuse the exact recorded original budget option even after
-   remaining cap changes; they must not reserve or call the provider again.
-3. Reserve before the critical model intent/SDK start. Distinguish denied/unstarted
-   calls from admitted/uncertain ones. Propagate denial/timeout/budget-stop through
-   advisory critic/summary paths instead of silently falling back and publishing.
-   Review denial must produce typed unavailable evidence, never clean or an
-   uncaught generic critical error. Other critical storage/integrity errors still
-   fail closed. Keep original call/denial/reservation/cost receipts immutable.
-4. Budget-only resume of a denied-before-start role must preserve the original
-   attempt/continuation counters and may retry that unstarted SDK identity under
-   the amended cap. Reuse valid review seats and original options. A new review
-   decision generation may be needed without giving a never-started seat an
-   unnecessary new paid-call identity. Started uncertain calls still require the
-   explicit existing continuation allowance; unchanged blocked code cannot seek
-   another review vote. Include publication summary/budget-only recovery, which
-   the current S14 stage selection enables only with --retry-stage.
-5. Use ledger balance in budget-dependent graph/recovery decisions and before each
-   new auto unit; stale per-worker cost_events cannot authorize additional spend.
-   Preserve paid partial work on denial/overrun. Report actual overrun and incomplete
-   accounting; do not turn missing usage into a zero-dollar claim or an estimate.
-   SDK per-call budget termination must halt later paid/effect paths and preserve
-   its original result/cost, including critic and summary roles.
-6. Apply model_timeout_s to both query and guarded ClaudeSDKClient paths, and close
-   the SDK connection plus all owned native children on timeout/cancellation. Use
-   an owned POSIX session/process group, TERM then5-second grace/KILL/reap. Verify
-   transport cleanup against the installed SDK. The installed 0.2.115 close source
-   explicitly notes a raw asyncio cancellation limitation; do not infer complete
-   child cleanup from its version or close method alone. Do not modify installed
-   SDK files. Public query/ClaudeSDKClient support custom transport; options has
-   max_budget_usd and cli_path. Tests must use a local fake CLI/transport, never a
-   real paid query, and prove a delayed child cannot write after timeout.
-7. Persist accumulated execution time across resumes, excluding approval waits.
-   CLI graph-step boundaries can isolate active execution from the approver; direct
-   node/model/command callers also need an enforceable fallback. Enforce remaining
-   run time before/during model and native work, retaining Git/gh's120-second cap.
-   Do not count offline pause/approval time or invent old timestamps. Cancellation
-   must stop active writers before recovery capture; uncertain physical process
-   state must remain explicitly uncertain. Preserve partial bytes/evidence.
-8. Give transcripts unique call-based paths, even without a provider session ID;
-   never overwrite unknown-session.jsonl. Extend honest cost/deadline reporting and
-   docs/config samples. Keep optional sink failures distinct from critical policy.
+- Turn17 foundation18/11.58s; combined ledger/roles33/19.88s; actual CLI both shapes
+  normal/draft4/117.04s, all7 paid calls bound to grants and exact .07 cost.
+- Turn18 initial SDK/admission/transcripts49/152.18s. Expanded ledger/actual-role
+  overrun/SDK/transcript batch74/181.34s. Includes both installed SDK entry paths,
+  timeout/raw cancellation, conservative unknown cost and distinct partial files.
+- Actual CLI budget-only recovery02:5/100.10s (critic, implement, review seat,
+  summary, explicit unlimited policy). Initial fixture run4 failed/1 passed is
+  retained: absent remote log before early halt and invalid leading-dot TOML fixed
+  with assertions preserved.
+- Clock foundation01:5/5.99s; graph/model/native integration02:36/119.94s.
+  Forwarding03:5 passed/1 failed/54.13s proves actual CLI pause exclusion/nondefault
+  SDK grant and installed SDK remaining-run deadline/child cleanup. The native case
+  used command. instead of command: when looking up its receipt; corrected target04
+  passed1/2.57s with all timeout/exit/receipt/elapsed assertions intact.
+- Ruff08 passed. Failed development/ruff receipts remain retained. No xfail/skip or
+  weakened assertion. Current156-source WIP has no full pytest/global acceptance.
 
-S16 owns bounded scheduling/recursion and max_parallel_units=2. Do not mutate the
-original contract to serialize overlap groups. S17/S18 conditional disabled-feature
-alternatives remain allowed only as specified. No dependency bump or paid canary.
+## Remaining work before S15 acceptance
 
-## Required acceptance before S15 completion
+1. Audit and implement started SDK budget-stop recovery for planner/critic and
+   summary (currently failed terminal budget results remain cached and stop again).
+   Explicit continuation may create a new call identity under remaining allowance;
+   denied-before-start amendment must continue to consume no continuation. Extend
+   publication-stage selection to explicitly acknowledged uncertain summary calls;
+   never repeat an uncertain native push/create or approved candidate/gates.
+2. A completed successful call whose actual cost exceeded its reservation should
+   be recoverable after a sufficient explicit budget amendment by reusing its
+   original result, without a new provider call/continuation. Keep original grant,
+   cost and overrun evidence. Review seats must preserve valid cached options.
+3. Preserve known captured turns/terminal usage/transcript on BaseException,
+   KeyboardInterrupt and cancellation. Current generic interrupted outcome records
+   only error_type; conservative charge is safe but known progress may be lost.
+   Other critical failures must still halt, including advisory roles.
+4. Strengthen timer-failure and actual fresh-process clock crash/resume proof.
+   Verify partial last-slice charge, no offline/approval debit, no clock reset,
+   shared parallel owner, all writers stopped before capture, and missing/corrupt
+   policy refusal before executor. Clock cleanup grace may exceed the active limit;
+   report measured time rather than claiming a hard physical instant ceiling.
+5. Complete before-every-new-auto-unit audit, policy/config forwarding/migration
+   matrix and budget-dependent deterministic recovery checks. Paid calls already
+   have atomic admission; avoid stale worker event sums as authority.
+6. Honest CLI/PR/metrics reports must expose actual overrun and incomplete usage
+   (charged/reserved versus measured cost), conservative clock uncertainty and the
+   supported recovery action. Current legacy total-cost text is still insufficient.
+   Update config samples, README/architecture and runtime/recovery runbooks.
+7. Record fresh exact source/dependency/input identity, run consolidated S15 matrix
+   then full pytest/ruff on final primary source; fix without weakening assertions.
+   Preserve all failed/crash receipts, inspect diffs and complete local commit/brain
+   verification before checking S15 complete. No mocked result is a live bill or
+   provider limit/cancellation guarantee.
 
-- Real CLI/graph/Git/checkpointer paths for both scheduling shapes and resume;
-  budget exhaustion in every paid role/seat, before the first call and next unit.
-- Concurrent reserves within cap; actual cost/refund, unknown full charge,
-  interruption/crash, overrun denial, and critical SQL failures before transport.
-- Explicit finite positive budget amendments, repeated amendment recovery without
-  double addition, original cached seat options, and no continuation consumed for
-  denied/unstarted calls. Normal resume cannot reset spend.
-- Finite validation/defaults/config forwarding and explicit unlimited flag proof.
-- Actual SDK option construction and protocol-accurate fakes; real local child
-  timeout/cancel/sentinel tests, run-clock persistence and approval-wait exclusion.
-- Unique transcript paths; incomplete accounting and no false review/done labels.
-- Final full pytest/ruff with exact source/dependency/input identity and retained
-  failed/crash receipts. No mocked test satisfies a live provider or release gate.
+S16 owns max_parallel_units2, overlap serialization and recursion scaling; do not
+change the original dependency contract. S17/S18 disabled alternatives remain only
+as specified. No paid canary, push, merge, live publication or Docker smoke. At30
+save an exact unfinished handoff and pause; do not reset the counter.

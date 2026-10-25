@@ -1,0 +1,24 @@
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+_____ test_native_command_uses_remaining_run_time_and_reaps_before_return ______
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t18-clock-03/test_native_command_uses_remai0/target'), PosixPath('/priva...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_native_command_uses_remaining_run_time_and_reaps_before_return(project):
+        project[1].write_text(project[1].read_text() + '[limits]\nmax_run_seconds=2\n')
+        context = create(project)
+        with command_scope(context, stage='deadline-test'):
+            with pytest.raises(CommandError) as stopped:
+                run_command([sys.executable, '-c', 'import time; time.sleep(20)'], timeout=100)
+        result = stopped.value.result
+        assert result.timed_out or result.cancelled
+        rows = [r for r in context.journal().operations()
+                if r.key.kind.startswith('command.') and r.intent['stage'] == 'deadline-test']
+>       assert len(rows) == 1 and 0 < rows[0].intent['timeout_s'] < 2
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests/test_clock_forwarding.py:61: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_clock_forwarding.py::test_native_command_uses_remaining_run_time_and_reaps_before_return
+1 failed, 5 passed in 54.13s
