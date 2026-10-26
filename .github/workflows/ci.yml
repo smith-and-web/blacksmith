@@ -8,9 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  preflight:
+    name: Preflight regressions
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -26,5 +32,54 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check
 
+      - name: CLI and permission preflight
+        run: >-
+          uv run pytest -v --exitfirst --tb=short --durations=10
+          tests/test_repo_consistency.py tests/test_command_signals.py
+          tests/test_sdk_permissions.py
+
+  regression:
+    name: Tests (${{ matrix.suite }})
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        include:
+          - suite: standard
+            pytest_args: --ignore=tests/test_scheduling_runtime.py
+          - suite: scheduling
+            pytest_args: tests/test_scheduling_runtime.py
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv + Python
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
       - name: Tests (pytest)
-        run: uv run pytest -q
+        run: uv run pytest -v --exitfirst --tb=short --durations=25 ${{ matrix.pytest_args }}
+
+  # Preserve the existing required check name. A skipped/cancelled/failed
+  # prerequisite must never make the merge gate green.
+  test:
+    if: ${{ always() }}
+    needs: [preflight, regression]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every test partition
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          REGRESSION_RESULT: ${{ needs.regression.result }}
+        run: |
+          set -euo pipefail
+          test "$PREFLIGHT_RESULT" = success
+          test "$REGRESSION_RESULT" = success

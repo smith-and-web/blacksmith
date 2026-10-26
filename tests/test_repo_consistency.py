@@ -144,10 +144,14 @@ def test_preflight_raises_when_no_remote(tmp_path):
 # --- main() exits non-zero on a mismatch, before any worktree/model spend ----
 
 
-def test_main_exits_nonzero_on_mismatch(tmp_path, capsys):
+def test_main_exits_nonzero_on_mismatch(tmp_path, capsys, monkeypatch):
     repo = _repo_with_origin(tmp_path, "git@github.com:owner/name.git")
     cfg = _write_config(tmp_path, repo)
     prd = _write_prd(tmp_path, "other/elsewhere")
+
+    # Test the repo mismatch after host-tool preflight, independently of whether
+    # the developer/CI host has gh and claude installed. Git observations stay real.
+    monkeypatch.setattr("blacksmith.run_context.shutil.which", lambda tool: f"/offline/{tool}")
 
     code = main([str(prd), "--config", str(cfg), "--auto-approve", "--quiet"])
 
