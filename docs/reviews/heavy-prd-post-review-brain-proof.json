@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-10-26T00:17:44.338Z",
+  "path": "Projects/blacksmith.md",
+  "checkpoint": "Post-goal human review approved through36885ee; canary proposal unrun and unauthorized; implementation counter stays28",
+  "lint": {
+    "log": "heavy-prd-post-review-brain-lint.log",
+    "exit_code": 0,
+    "errors": 0,
+    "warnings": 0
+  },
+  "index_wait_seconds": 140.738,
+  "index_run": {
+    "id": 17292,
+    "startedAt": "2026-10-26T00:17:18.257Z",
+    "finishedAt": "2026-10-26T00:17:18.287Z",
+    "seen": 149,
+    "changed": 0,
+    "removed": 0,
+    "errors": 0,
+    "errorText": null
+  },
+  "invalid_frontmatter_count": 0,
+  "semantic_request_id": "df4cfe7f-a6e7-4e4c-95c3-02b536722971",
+  "whole_note_equality": true,
+  "feedback": "positive once per used search"
+}

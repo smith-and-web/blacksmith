@@ -4,8 +4,8 @@ Heavy-PRD remediation S01-S19 is implemented and locally verified on the feature
 branch. The [implementation checklist](docs/reviews/heavy-prd-progress.md) and
 [final acceptance audit](docs/reviews/heavy-prd-final-acceptance.md) record the exact
 source, 1,419 passing tests, Ruff pass, migration/recovery evidence and remaining
-live release gates. Human contract review and an authorized paid disposable-target
-canary remain unrun; general heavy-PRD release is held.
+live release gates. Human review is approved for the reviewed source; the paid
+disposable-target canary remains unrun and general heavy-PRD release is held.
 
 [Version-2 run context](docs/heavy-prd-run-context.md) freezes requirements,
 approved plans, execution settings and toolchains; both scheduling shapes use the

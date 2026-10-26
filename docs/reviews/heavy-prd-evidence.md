@@ -42,7 +42,7 @@ new configuration, migration, every specification matrix row and remaining gates
 
 ## Remaining live release gates
 
-- Explicit human review of `contract.py` changes before merge, required by fixed decision2. NOT RUN; offline schema/execution tests do not satisfy that review. Merge remains prohibited by this task.
+- Human review of `contract.py`, required by fixed decision2: APPROVED by the repository owner for the reviewed36885ee diff. See [approval record](heavy-prd-human-approval.json). That approval does not authorize merge or live effects.
 - Authorized disposable-target paid canary: fixed $10 budget, review enabled, two independent auto units plus terminal QA, plan-only approval initially; verify no publication, resume with PR approval, inspect draft and exact gated SHA. NOT RUN; explicitly prohibited in this task.
 - Real Docker ownership/sentinel/timeout/restart smoke before sandbox enablement. NOT RUN. S17 implements the permitted enabled-config rejection and leaves execution disabled.
 - S18 implements the permitted explicit unsupported-until-hardened refusal; no actual revision workflow is claimed.
@@ -929,3 +929,14 @@ verified identical to the original. The original full-context bytes remain in
 76147c2 and their checksum/revision are in the compatibility receipt. No whitespace
 rule or regression assertion was disabled. Final working/staged/range whitespace
 checks and the exact-source audit must pass after this evidence-only correction.
+
+## Post-goal human review and proposed canary
+
+The owner approved the complete diff through36885ee after the source walkthrough,
+including contract.py. [Approval record](heavy-prd-human-approval.json) satisfies
+that review gate; source/config/original inputs match the final1419/Ruff-tested
+identity. Earlier NOT RUN review statuses remain historical, not rewritten proof.
+The [canary plan](heavy-prd-canary-plan.md) proposes two tiny independent Python
+utilities plus terminal QA, fixed10-dollar allowance, plan-only refusal then a
+fresh-process PR approval/draft handoff. It has not run and has no spend or remote
+mutation authorization. The completed goal remains28/30.

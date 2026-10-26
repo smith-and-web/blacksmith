@@ -59,6 +59,15 @@
 
 See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results, requirement coverage and release gates. A checked slice requires production wiring and regression evidence; partial modules are not completion.
 
+## Post-goal human approval
+
+The repository owner explicitly approved the reviewed diff through36885ee,
+including contract.py, after the source walkthrough. See heavy-prd-human-approval.json.
+The implementation and its1419/Ruff-tested identity are unchanged. Human review is
+satisfied for that source; the paid canary and conditional Docker enablement gate
+remain unrun. Heavy-prd-canary-plan.md is a proposed disposable-target run, not
+spend/publication authorization. The completed goal counter stays28/30.
+
 ## Final handoff: turn28; S01-S19 locally accepted
 
 Counter **28/30**, incremented27->28 once on this actual automatic continuation.
@@ -74,9 +83,9 @@ turn26-pytest-full-01.log; final audit turn28-final-audit.json matches12 require
 
 All19 checklist entries are accepted locally. S17/S18 use only the explicitly
 permitted disabled alternatives; enabled sandbox/revision workflows remain
-unimplemented/unaccepted. General release is held for explicit human contract.py
-review (exact diff turn27-contract-review.patch prepared), authorized fixed10-dollar
-paid disposable canary, and real Docker smoke before future sandbox enablement.
+unimplemented/unaccepted. Human contract.py review is now approved for36885ee
+(heavy-prd-human-approval.json). General release awaits the authorized fixed10-dollar
+paid disposable canary; real Docker smoke is required before future sandbox enablement.
 Original spec/probe remain unchanged/untracked/unstaged; original worktree untouched.
 Historical turn13 failed external-push exception remains disclosed with receipt and
 subsequent guards; no successful external publication or paid canary is claimed.
@@ -88,8 +97,8 @@ actual tested baseline in turn28-dashboard-identity.json. This record is include
 identity audit must match it before the goal status transition. No further
 implementation remains.
 
-Next release action (outside this goal): obtain explicit human review of the
-prepared contract diff, then separately authorize the fixed10-dollar canary.
+Next release action (outside this goal): review the proposed disposable-target
+canary plan, then separately authorize its fixed10-dollar spend and draft publication.
 Sandbox stays disabled until separately authorized real Docker proof.
 At30 stop/save/pause any unfinished goal; never reset/resume automatically.
 

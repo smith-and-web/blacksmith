@@ -33,6 +33,13 @@ now pass in the full suite: exact frozen prose/full contract reaches tool-free
 narration, source/in-memory PRD changes preserve cached identity, and manual QA stays
 pending. No paid call class/cap was added; full context can add input tokens.
 
+Human review update: the repository owner approved the complete reviewed diff
+through `36885ee`, including `contract.py`, after the source walkthrough.
+[Approval record](heavy-prd-human-approval.json) satisfies the human review gate for
+that source. The [canary plan](heavy-prd-canary-plan.md) is proposed only; no spend,
+repository creation, push, merge or publication is authorized by that approval.
+Historical receipts retain the status they had when captured.
+
 ## Required design and production wiring
 
 | Requirement | Production path | Regression groups / existing audit |
@@ -107,8 +114,9 @@ The turn27 source audit confirms unchanged WorkUnit/PRDContract field names and
 unchanged uv.lock/pyproject.toml against the starting revision.
 [Compatibility receipt](heavy-prd-turn-27-compatibility-audit.json) and the
 [exact contract diff](heavy-prd-turn-27-contract-review.patch) make the required
-human review concrete; that review is still NOT RUN and is required before merge.
-This is source evidence, not human approval or a substitute for the final full run.
+human review concrete. The repository owner has now explicitly approved the
+reviewed source; see the approval record above. The compatibility receipt remains
+unchanged historical source evidence from before that approval.
 
 State-version1 completed checkpoints remain readable; execution refuses
 legacy_checkpoint_requires_manual_recovery. Version2 still requires the current
@@ -141,10 +149,9 @@ services are replaced where documented. After the retained turn13 exception,
 native Git transport/auth guards restrict fixture pushes to scratch local bare
 repositories. No live release gate is inferred from these fixtures.
 
-Remaining live gates: explicit human review of contract.py before merge; authorized
-disposable-target $10 paid canary with two independent auto units plus terminal QA,
+Remaining live gates: an explicitly authorized disposable-target $10 paid canary with two independent auto units plus terminal QA,
 plan-only refusal then exact-SHA draft approval/publication; real Docker ownership/
-timeout/restart smoke before any future sandbox enablement. None has run. This task
-prohibits push/merge/publication/paid canaries. The historical turn13 unintended
+timeout/restart smoke before any future sandbox enablement. Neither live gate has run. The implementation approval
+does not authorize push/merge/publication/paid canaries. The historical turn13 unintended
 external push attempt failed128 before authentication; its receipt is retained and
 must remain disclosed in the goal closeout. No successful live publication is claimed.
