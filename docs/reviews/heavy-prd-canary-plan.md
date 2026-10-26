@@ -1,8 +1,10 @@
 # Heavy-PRD live canary plan and private setup
 
 Status: the repository owner approved the plan and requested private setup. The
-private target, baseline and launch inputs are prepared; paid execution has not
-started. Human source approval is recorded separately in
+private target, baseline and launch inputs are prepared. The owner started the
+plan-only run: U01 planning completed and U02 planning was interrupted. The live
+canary remains incomplete; credentials worked and the connector warning is
+informational. An explicit same-run continuation is prepared locally, not executed. Human source approval is recorded separately in
 [heavy-prd-human-approval.json](heavy-prd-human-approval.json).
 The implementation goal remains complete at turn28/30; this proposal does not
 resume it or reset its counter.
