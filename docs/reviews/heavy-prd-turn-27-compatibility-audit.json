@@ -1,0 +1,36 @@
+{
+  "at": "2026-10-25T10:47:55.320490-03:00",
+  "baseline_revision": "dcc3bb56940c3907b2e0fcaf13c254e1c55f9767",
+  "contract_patch": "docs/reviews/heavy-prd-turn-27-contract-review.patch",
+  "contract_patch_rendering": "git diff --unified=0; exact added/deleted source lines match original full-context diff; no whitespace check disabled",
+  "contract_patch_sha256": "57f465d32e9a1fa62613d4cb826766381d3f1753e43f8163ccf224d2e784db2b",
+  "contract_v1_field_names_unchanged": true,
+  "evidence_format_corrected_at": "2026-10-25T14:48:24.732806-03:00",
+  "field_sets": {
+    "PRDContract": [
+      "component",
+      "contract_version",
+      "layers",
+      "primary_target_repo",
+      "untouchables",
+      "version",
+      "work_units"
+    ],
+    "WorkUnit": [
+      "depends_on",
+      "id",
+      "layers",
+      "target_modules",
+      "test_contract",
+      "title"
+    ]
+  },
+  "goal_turn": 27,
+  "human_contract_review": "NOT RUN; explicit human review still required before merge",
+  "implementation_revision": "1d68a6492e53898c5011a24b9d14d771bad6275d",
+  "original_full_context_patch_revision": "76147c22c79669f5329c541220501ef947bdcfcf",
+  "original_full_context_patch_sha256": "d59c438cc41b7128bc65e2b2510387089c4e9df34a96999b74c634a605fef5c4",
+  "pyproject_diff_empty": true,
+  "scope": "source audit only; not human approval or final full-suite acceptance",
+  "uv_lock_unchanged": true
+}

@@ -1,0 +1,9 @@
+{
+  "default_sdk_selected": true,
+  "call_context": null,
+  "transport_boundary_reached": true,
+  "per_call_budget_usd": 5.0,
+  "run_ledger_created": false,
+  "reported_cost_usd": 0.01,
+  "paid_transport_replaced": true
+}

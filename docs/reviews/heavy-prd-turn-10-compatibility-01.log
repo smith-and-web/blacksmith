@@ -1,0 +1,53 @@
+....F.F.                                                                 [100%]
+=================================== FAILURES ===================================
+___________ test_gate_failure_escalates_then_passes_and_opens_one_pr ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-97/test_gate_failure_escalates_th0')
+
+    def test_gate_failure_escalates_then_passes_and_opens_one_pr(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        # WU-A passes (call 1); WU-B's first attempt fails (call 2); WU-B's escalation passes (3).
+        gate = FakeGate(fail_calls={2})
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+        approver = _recording_approver(decision=True)
+    
+        final = drive(graph, _write_prd(tmp_path, _TWO_UNITS), approver=approver, thread_id="esc")
+    
+        # The cheaper first-attempt model built WU-A and WU-B's first (failing) attempt...
+        assert executor.implement_calls == ["WU-A", "WU-B"]
+        # ...and the stronger model re-implemented WU-B exactly once (escalation, at most once).
+        assert executor.escalate_calls == ["WU-B"]
+>       assert gate.calls == 3  # WU-A, WU-B (fail), WU-B re-gate (pass) — no extra escalation
+        ^^^^^^^^^^^^^^^^^^^^^^
+E       assert 4 == 3
+E        +  where 4 = <test_escalation.FakeGate object at 0x109e62810>.calls
+
+tests/test_escalation.py:221: AssertionError
+___________________ test_first_attempt_pass_never_escalates ____________________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-97/test_first_attempt_pass_never_0')
+
+    def test_first_attempt_pass_never_escalates(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/1")
+        gate = FakeGate(fail_calls=set())  # the first attempt passes
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+        approver = _recording_approver(decision=True)
+    
+        final = drive(graph, _write_prd(tmp_path, _ONE_UNIT), approver=approver, thread_id="pass")
+    
+        # A passing first attempt never invokes the stronger escalate model.
+        assert executor.implement_calls == ["WU-S"]
+        assert executor.escalate_calls == []
+>       assert gate.calls == 1
+E       assert 2 == 1
+E        +  where 2 = <test_escalation.FakeGate object at 0x109e6c7a0>.calls
+
+tests/test_escalation.py:282: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_escalation.py::test_gate_failure_escalates_then_passes_and_opens_one_pr
+FAILED tests/test_escalation.py::test_first_attempt_pass_never_escalates - as...
+2 failed, 6 passed in 13.11s

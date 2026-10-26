@@ -1,0 +1,23 @@
+E501 Line too long (102 > 100)
+   --> tests/test_approval_recovery.py:115:101
+    |
+113 |     project[1].write_text(project[1].read_text() + '[models]\nplan="changed-local-model"\n')
+114 |     # Restore only the approval chooser; the real transport/graph/remote seams remain installed.
+115 |     monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: lambda payload, values: True)
+    |                                                                                                     ^^
+116 |     assert cli.main(["resume", "--config", str(project[1]), "--thread-id", "frozen"]) == 0
+117 |     after = saved_values(project[1], "frozen")
+    |
+
+E501 Line too long (102 > 100)
+   --> tests/test_approval_recovery.py:162:101
+    |
+160 |     before = saved_values(project[1], "approval-exit")
+161 |     context = context_from_state(before)
+162 |     original = next(o for o in context.journal().operations() if o.key.kind == "approval.pr.decision")
+    |                                                                                                     ^^
+163 |     assert original.status == ("intent" if mode == "intent" else "completed")
+164 |     calls, remote, payloads = install(monkeypatch)
+    |
+
+Found 3 errors (1 fixed, 2 remaining).

@@ -1,0 +1,31 @@
+{
+  "goal_turn": 28,
+  "recorded_at": "2026-10-25T17:43:31.971Z",
+  "path": "Projects/blacksmith.md",
+  "lint": {
+    "log": "heavy-prd-turn-28-brain-lint-01.log",
+    "exit_code": 0,
+    "errors": 0,
+    "warnings": 0
+  },
+  "index_wait_seconds": 118.273,
+  "index_run": {
+    "id": 16965,
+    "startedAt": "2026-10-25T17:41:59.273Z",
+    "finishedAt": "2026-10-25T17:42:07.031Z",
+    "seen": 149,
+    "changed": 1,
+    "removed": 0,
+    "errors": 0,
+    "errorText": null
+  },
+  "last_run_errors": 0,
+  "invalid_frontmatter_count": 0,
+  "semantic_request_id": "2f530261-a702-41f2-a150-9403b63b0cba",
+  "new_checkpoint_note_rank": 1,
+  "whole_note_equality": true,
+  "intended_write_matched_except_server_updated": true,
+  "server_updated_field_changed": false,
+  "feedback": "positive once",
+  "checkpoint": "S01-S19 locally accepted on1d68a64; full1419/7 retained advisories/5207.92s and Ruff pass; exact176-source/runtime identity; live gates held; historical turn13 failed-push exception retained"
+}

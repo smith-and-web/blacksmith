@@ -1,0 +1,93 @@
+F
+=================================== FAILURES ===================================
+_ test_actual_paid_summary_receives_full_frozen_prd_and_contract_in_both_publications[False-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t26-summary-baseline-01/test_actual_paid_summary_recei0/target'), PosixP...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109fd2c30>
+parallel = False, qa = False
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    @pytest.mark.parametrize("qa", [False, True])
+    def test_actual_paid_summary_receives_full_frozen_prd_and_contract_in_both_publications(
+        project, monkeypatch, parallel, qa,
+    ):
+        configure(project, sequential=not parallel, qa=qa)
+        calls, remote, _ = setup(project, monkeypatch)
+        original = cli._resolve_approver
+    
+        def approver(args, renderer):
+            decide = original(args, renderer)
+    
+            def approve(payload, values):
+                if payload["gate"] == "plan":
+                    project[2].write_text("MUTATED_SOURCE_PRD_MUST_NOT_REACH_SUMMARY")
+                return decide(payload, values)
+    
+            return approve
+    
+        monkeypatch.setattr(cli, "_resolve_approver", approver)
+        assert run(project, "publication") == (2 if qa else 0)
+        state = saved_values(project[1], "publication")
+        context = context_from_state(state)
+        summaries = [call for call in calls if call[0] == "summary"]
+        assert len(summaries) == 1
+        _, _, prompt, options = summaries[0]
+        assert context.prd().body in prompt
+>       assert context.prd().contract.model_dump_json(indent=2) in prompt
+E       assert '{\n  "contract_version": 1,\n  "component": "demo",\n  "version": "v1",\n  "primary_target_repo": "example/context-de...\n      ],\n      "test_contract": "integration contract",\n      "depends_on": [\n        "A"\n      ]\n    }\n  ]\n}' in 'Write a concise pull request title and summary for the following completed work.\n\nPRD purpose:\n# Purpose\nEXACT_PR...{"title": "<concise PR title, no unit ids required>", "summary": "<2-4 sentence markdown summary, no heading>"}\n```\n'
+E        +  where '{\n  "contract_version": 1,\n  "component": "demo",\n  "version": "v1",\n  "primary_target_repo": "example/context-de...\n      ],\n      "test_contract": "integration contract",\n      "depends_on": [\n        "A"\n      ]\n    }\n  ]\n}' = model_dump_json(indent=2)
+E        +    where model_dump_json = PRDContract(contract_version=1, component='demo', version='v1', primary_target_repo='example/context-demo', layers={'p...='B', title='B', layers=['python'], target_modules=['b.txt'], test_contract='integration contract', depends_on=['A'])]).model_dump_json
+E        +      where PRDContract(contract_version=1, component='demo', version='v1', primary_target_repo='example/context-demo', layers={'p...='B', title='B', layers=['python'], target_modules=['b.txt'], test_contract='integration contract', depends_on=['A'])]) = PRD(path=PosixPath('/private/tmp/blacksmith-heavy-prd-t26-summary-baseline-01/test_actual_paid_summary_recei0/task.md'... ["A"]}]}\n---\n# Purpose\nEXACT_PROSE_SENTINEL\n# Scope\nall\n# Untouchables\nbrand\n# Acceptance\nall checks pass\n').contract
+E        +        where PRD(path=PosixPath('/private/tmp/blacksmith-heavy-prd-t26-summary-baseline-01/test_actual_paid_summary_recei0/task.md'... ["A"]}]}\n---\n# Purpose\nEXACT_PROSE_SENTINEL\n# Scope\nall\n# Untouchables\nbrand\n# Acceptance\nall checks pass\n') = prd()
+E        +          where prd = RunContext(state_version=2, run_id='1958d461-d442-484d-a2be-affd0826874c', thread_id='publication', repo_path='/privat...avy-prd-t26-summary-baseline-01/test_actual_paid_summary_recei0/.blacksmith/runs/1958d461-d442-484d-a2be-affd0826874c').prd
+
+tests/test_summary_requirements.py:43: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 1958d461-d442-484d-a2be-affd0826874c: selected committed HEAD d53945e69e7fd3d24d6765be81a92101271724a6
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t26-summary-baseline-01/test_actual_paid_summary_recei0/.blacksmith/runs/1958d461-d442-484d-a2be-affd0826874c
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+
+status: done
+PR: https://github.com/example/context-demo/pull/1
+total cost: $0.07; run cap $50.00, remaining $49.93
+tokens: unavailable
+execution time: 17.64s / 21600.00s; remaining 21582.36s
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: next_unit
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+blacksmith: cleanup_worktree
+=========================== short test summary info ============================
+FAILED tests/test_summary_requirements.py::test_actual_paid_summary_receives_full_frozen_prd_and_contract_in_both_publications[False-False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 18.93s

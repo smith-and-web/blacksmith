@@ -1,0 +1,129 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t19-scope-07/test_parallel_sdk_writers_are_0/target'), PosixPath('/priva...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109bb0da0>
+mode = 'scope_entry_error'
+
+    @pytest.mark.parametrize('mode', ['worker_error', 'sigint', 'sigterm', 'scope_entry_error'])
+    def test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture(project, monkeypatch, mode):
+        configure(project)
+        project[1].write_text(project[1].read_text() + '[limits]\nmodel_timeout_s=20\n'
+                               'max_run_seconds=30\n')
+        proof = project[0].parent / 'sdk-proof'
+        proof.mkdir()
+        fake = proof / 'offline-claude'
+        fake.write_text(FAKE)
+        fake.chmod(0o700)
+        monkeypatch.setenv('BLACKSMITH_ANTHROPIC_API_KEY', 'unused-offline')
+        monkeypatch.setattr('blacksmith.run_context.shutil.which', lambda tool: sys.executable)
+        build = Executor.build_options
+    
+        def options(self, **kwargs):
+            actual = build(self, **kwargs)
+            assert actual.strict_mcp_config and actual.setting_sources == []
+            if actual.can_use_tool is not None:
+                assert {'Write', 'Edit', 'MultiEdit', 'NotebookEdit'}.isdisjoint(actual.allowed_tools)
+            return replace(actual, cli_path=str(fake), env={**actual.env,
+                'OFFLINE_PROOF': str(proof), 'OFFLINE_MODE': mode})
+    
+        async def only_local(self):
+            assert Path(self._cli_path) == fake
+            await _LOCAL_SDK_CONNECT(self)
+        monkeypatch.setattr(Executor, 'build_options', options)
+        monkeypatch.setattr(OwnedCLITransport, 'connect', only_local)
+        if mode == 'scope_entry_error':
+            import blacksmith.unit_graph as unit_graph
+            scope = unit_graph.command_scope_for_state
+    
+            @contextmanager
+            def failed_scope(state, stage):
+                if state['selected_unit'].id == 'A' and stage == 'audit_commit':
+                    raise ReceiptError('injected critical scope-open failure')
+                with scope(state, stage) as actual:
+                    yield actual
+            monkeypatch.setattr(unit_graph, 'command_scope_for_state', failed_scope)
+        compile_graph = cli.compile_graph
+        effects = []
+    
+        def forbidden(argv, cwd=None):
+            effects.append(argv)
+            pytest.fail('publication query/effect after cancelled implementation')
+    
+        def compile(checkpointer, **kwargs):
+            return compile_graph(checkpointer, **{**kwargs, 'pr_runner': forbidden})
+        monkeypatch.setattr(cli, 'compile_graph', compile)
+        sent = []
+    
+        def interrupt():
+            until = time.monotonic() + 10
+            while time.monotonic() < until:
+                if (proof / 'A.json').exists() and (proof / 'B.json').exists():
+                    sent.append(True)
+                    os.kill(os.getpid(), signal.SIGINT if mode == 'sigint' else signal.SIGTERM)
+                    return
+                time.sleep(.01)
+        sender = threading.Thread(target=interrupt) if mode in {'sigint', 'sigterm'} else None
+        if sender:
+            sender.start()
+        started = time.monotonic()
+        args = [str(project[2]), '--config', str(project[1]), '--thread-id', 'cancel-workers',
+                '--approve', 'plan']
+        try:
+            if mode == 'sigint':
+                with pytest.raises(KeyboardInterrupt):
+                    cli.main(args)
+            else:
+                assert cli.main(args) == 1
+            if sender:
+                assert sent == [True]
+        finally:
+            if sender:
+                sender.join(timeout=1)
+        assert time.monotonic() - started < 18
+        state = saved_values(project[1], 'cancel-workers')
+        context = context_from_state(state)
+        models = [r for r in context.journal().operations() if r.key.kind == 'model.implement']
+        assert len(models) == 2
+        if mode == 'scope_entry_error':
+            by_unit = {r.key.unit_id: r for r in models}
+>           assert by_unit['A'].status == 'completed'
+E           AssertionError: assert 'interrupted' == 'completed'
+E             
+E             - completed
+E             + interrupted
+
+tests/test_parallel_cancellation.py:158: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 2f56adc1-2d3a-454f-9034-766b2ebdd564: selected committed HEAD dbad8254609cf537590629b65a1f1a3461d117ad
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t19-scope-07/test_parallel_sdk_writers_are_0/.blacksmith/runs/2f56adc1-2d3a-454f-9034-766b2ebdd564
+[auto] gate 'plan': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+total cost: reported $0.03; charged $10.02; reserved $0.00; accounting incomplete; run cap $50.00, remaining $39.98
+execution time: 6.67s / 30.00s; remaining 23.33s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t19-scope-07/test_parallel_sdk_writers_are_0/.blacksmith/runs/2f56adc1-2d3a-454f-9034-766b2ebdd564/recovery/e8e9a6ce-52eb-40b3-82cc-c5dfa30178a6/manifest.json
+Next action: blacksmith recovery inspect --thread-id cancel-workers --config /private/tmp/blacksmith-heavy-prd-t19-scope-07/test_parallel_sdk_writers_are_0/runtime.toml
+blacksmith: SDK owned process cleanup failed; inspect retained call
+=============================== warnings summary ===============================
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+1 failed, 3 deselected, 1 warning in 8.60s

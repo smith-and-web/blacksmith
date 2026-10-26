@@ -1,0 +1,234 @@
+F.FFFFFF                                                                 [100%]
+=================================== FAILURES ===================================
+____________ test_reaped_group_denial_requires_positive_observation ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c92eba0>
+
+    def test_reaped_group_denial_requires_positive_observation(monkeypatch):
+        group = reaped_group()
+        deny_target(monkeypatch, group)
+>       assert commands._group_signal(group, signal.SIGTERM) is False
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_command_signals.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/commands.py:207: in _group_signal
+    os.killpg(pid, sig)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pid = 87935, sig = <Signals.SIGTERM: 15>
+
+    def killpg(pid, sig):
+        if pid == target:
+>           raise PermissionError('injected group signal denial')
+E           PermissionError: injected group signal denial
+
+tests/test_command_signals.py:23: PermissionError
+______ test_completed_command_seals_success_after_observing_reaped_group _______
+
+pid = 87968, sig = <Signals.SIGTERM: 15>
+
+    def deny_first_group(pid, sig):
+        if not denied:
+            denied.append(pid)
+        if pid == denied[0]:
+>           raise PermissionError('injected reaped native group')
+E           PermissionError: injected reaped native group
+
+tests/test_command_signals.py:57: PermissionError
+
+During handling of the above exception, another exception occurred:
+
+project = (PosixPath('/private/tmp/blacksmith-permission-native-red01-20261026/test_completed_command_seals_s0/target'), PosixPa...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d5f2ab0>
+
+    def test_completed_command_seals_success_after_observing_reaped_group(project, monkeypatch):
+        context = create(project)
+        original = os.killpg
+        denied = []
+    
+        def deny_first_group(pid, sig):
+            if not denied:
+                denied.append(pid)
+            if pid == denied[0]:
+                raise PermissionError('injected reaped native group')
+            return original(pid, sig)
+    
+        monkeypatch.setattr(os, 'killpg', deny_first_group)
+        with command_scope(context, stage='native_permission'):
+>           result = run_command([sys.executable, '-c', "print('COMPLETE')"], timeout=10)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_command_signals.py:62: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/commands.py:424: in run_command
+    return _native_command(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/commands.py:342: in run_command
+    _group_signal(proc.pid, signal.SIGTERM)
+blacksmith/commands.py:207: in _group_signal
+    os.killpg(pid, sig)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pid = 87968, sig = <Signals.SIGTERM: 15>
+
+    def deny_first_group(pid, sig):
+        if not denied:
+            denied.append(pid)
+        if pid == denied[0]:
+>           raise PermissionError('injected reaped native group')
+E           PermissionError: injected reaped native group
+
+tests/test_command_signals.py:57: PermissionError
+______________ test_unavailable_inventory_never_reconciles_denial ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d5f2840>
+
+    def test_unavailable_inventory_never_reconciles_denial(monkeypatch):
+        group = reaped_group()
+        deny_target(monkeypatch, group)
+    
+        def unavailable(argv, *, timeout, kind):
+            assert argv == ['ps', '-A', '-o', 'pid=,pgid=,stat='] and timeout == 1
+            raise CommandError('inventory unavailable')
+    
+        monkeypatch.setattr(commands, 'run_command', unavailable)
+        with pytest.raises(CommandError, match='inventory unavailable'):
+>           commands._group_signal(group, signal.SIGTERM)
+
+tests/test_command_signals.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/commands.py:207: in _group_signal
+    os.killpg(pid, sig)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pid = 87969, sig = <Signals.SIGTERM: 15>
+
+    def killpg(pid, sig):
+        if pid == target:
+>           raise PermissionError('injected group signal denial')
+E           PermissionError: injected group signal denial
+
+tests/test_command_signals.py:23: PermissionError
+________ test_incomplete_inventory_is_not_evidence_of_an_empty_group[] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d6509e0>
+inventory = ''
+
+    @pytest.mark.parametrize('inventory', ['', 'malformed\n', '123 456\n'])
+    def test_incomplete_inventory_is_not_evidence_of_an_empty_group(monkeypatch, inventory):
+        group = reaped_group()
+        deny_target(monkeypatch, group)
+        result = SimpleNamespace(stdout=inventory, check_returncode=lambda: None,
+                                 require_complete_output=lambda: None)
+        monkeypatch.setattr(commands, 'run_command', lambda *args, **kwargs: result)
+        with pytest.raises(ReceiptError, match='process observation'):
+>           commands._group_signal(group, signal.SIGTERM)
+
+tests/test_command_signals.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/commands.py:207: in _group_signal
+    os.killpg(pid, sig)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pid = 87970, sig = <Signals.SIGTERM: 15>
+
+    def killpg(pid, sig):
+        if pid == target:
+>           raise PermissionError('injected group signal denial')
+E           PermissionError: injected group signal denial
+
+tests/test_command_signals.py:23: PermissionError
+___ test_incomplete_inventory_is_not_evidence_of_an_empty_group[malformed\n] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d437530>
+inventory = 'malformed\n'
+
+    @pytest.mark.parametrize('inventory', ['', 'malformed\n', '123 456\n'])
+    def test_incomplete_inventory_is_not_evidence_of_an_empty_group(monkeypatch, inventory):
+        group = reaped_group()
+        deny_target(monkeypatch, group)
+        result = SimpleNamespace(stdout=inventory, check_returncode=lambda: None,
+                                 require_complete_output=lambda: None)
+        monkeypatch.setattr(commands, 'run_command', lambda *args, **kwargs: result)
+        with pytest.raises(ReceiptError, match='process observation'):
+>           commands._group_signal(group, signal.SIGTERM)
+
+tests/test_command_signals.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/commands.py:207: in _group_signal
+    os.killpg(pid, sig)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pid = 87971, sig = <Signals.SIGTERM: 15>
+
+    def killpg(pid, sig):
+        if pid == target:
+>           raise PermissionError('injected group signal denial')
+E           PermissionError: injected group signal denial
+
+tests/test_command_signals.py:23: PermissionError
+____ test_incomplete_inventory_is_not_evidence_of_an_empty_group[123 456\n] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d5f3320>
+inventory = '123 456\n'
+
+    @pytest.mark.parametrize('inventory', ['', 'malformed\n', '123 456\n'])
+    def test_incomplete_inventory_is_not_evidence_of_an_empty_group(monkeypatch, inventory):
+        group = reaped_group()
+        deny_target(monkeypatch, group)
+        result = SimpleNamespace(stdout=inventory, check_returncode=lambda: None,
+                                 require_complete_output=lambda: None)
+        monkeypatch.setattr(commands, 'run_command', lambda *args, **kwargs: result)
+        with pytest.raises(ReceiptError, match='process observation'):
+>           commands._group_signal(group, signal.SIGTERM)
+
+tests/test_command_signals.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/commands.py:207: in _group_signal
+    os.killpg(pid, sig)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+pid = 87972, sig = <Signals.SIGTERM: 15>
+
+    def killpg(pid, sig):
+        if pid == target:
+>           raise PermissionError('injected group signal denial')
+E           PermissionError: injected group signal denial
+
+tests/test_command_signals.py:23: PermissionError
+_______ test_inventory_cleanup_denial_cannot_recursively_spawn_observers _______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d6532c0>
+
+    def test_inventory_cleanup_denial_cannot_recursively_spawn_observers(monkeypatch):
+        group = reaped_group()
+        original = subprocess.Popen
+        observers = []
+    
+        def observe(*args, **kwargs):
+            child = original(*args, **kwargs)
+            observers.append(child)
+            return child
+    
+        def denied(pid, sig):
+            raise PermissionError('observer group also denied')
+    
+        monkeypatch.setattr(subprocess, 'Popen', observe)
+        monkeypatch.setattr(os, 'killpg', denied)
+        with pytest.raises(PermissionError, match='observer group also denied'):
+            commands._group_signal(group, signal.SIGTERM)
+>       assert len(observers) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests/test_command_signals.py:114: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_command_signals.py::test_reaped_group_denial_requires_positive_observation
+FAILED tests/test_command_signals.py::test_completed_command_seals_success_after_observing_reaped_group
+FAILED tests/test_command_signals.py::test_unavailable_inventory_never_reconciles_denial
+FAILED tests/test_command_signals.py::test_incomplete_inventory_is_not_evidence_of_an_empty_group[]
+FAILED tests/test_command_signals.py::test_incomplete_inventory_is_not_evidence_of_an_empty_group[malformed\n]
+FAILED tests/test_command_signals.py::test_incomplete_inventory_is_not_evidence_of_an_empty_group[123 456\n]
+FAILED tests/test_command_signals.py::test_inventory_cleanup_denial_cannot_recursively_spawn_observers
+7 failed, 1 passed in 1.64s

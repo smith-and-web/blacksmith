@@ -25,6 +25,7 @@ from blacksmith.graph import build_checkpointer
 
 
 class FakeState(TypedDict, total=False):
+    state_version: int
     prd_path: str
     log: Annotated[list[str], operator.add]
     approved: bool
@@ -41,7 +42,7 @@ def _build_graph(saver, calls, order):
     def ingest(state: FakeState) -> dict:
         calls["ingest"] += 1
         order.append("ingest")
-        return {"log": ["ingest"]}
+        return {"log": ["ingest"], "state_version": 2}
 
     def plan(state: FakeState) -> dict:
         calls["plan"] += 1

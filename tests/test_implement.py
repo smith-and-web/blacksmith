@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
+from blacksmith.context import render_context
 from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.nodes.implement import (
@@ -144,6 +145,7 @@ def _conventional_hook_repo(tmp_path):
     g("init", "-b", "main")
     g("config", "user.email", "t@example.com")
     g("config", "user.name", "Test")
+    g("config", "core.hooksPath", ".git/hooks")
     hook = repo / ".git" / "hooks" / "commit-msg"
     hook.write_text(
         "#!/bin/sh\n"
@@ -216,21 +218,21 @@ def test_is_protected_allows_safe_paths():
 
 
 def test_guard_blocks_protected_write():
-    guard = make_pre_edit_guard()
+    guard = make_pre_edit_guard(worktree_root="/wt")
     result = asyncio.run(guard("Write", {"file_path": "/wt/Cargo.lock"}, None))
     assert isinstance(result, PermissionResultDeny)
     assert guard.blocked[0]["path"] == "/wt/Cargo.lock"
 
 
 def test_guard_allows_safe_write():
-    guard = make_pre_edit_guard()
+    guard = make_pre_edit_guard(worktree_root="/wt")
     result = asyncio.run(guard("Write", {"file_path": "/wt/src/main.rs"}, None))
     assert isinstance(result, PermissionResultAllow)
     assert guard.blocked == []
 
 
 def test_guard_ignores_reads():
-    guard = make_pre_edit_guard()
+    guard = make_pre_edit_guard(worktree_root="/wt")
     result = asyncio.run(guard("Read", {"file_path": "/wt/Cargo.lock"}, None))
     assert isinstance(result, PermissionResultAllow)  # reading an untouchable is fine
     assert guard.blocked == []
@@ -333,9 +335,8 @@ def test_implement_surfaces_blocked_untouchable(tmp_path):
     assert "untouchable" in out["errors"][0]["message"]  # labeled as an untouchable block
 
 
-def test_implement_outside_worktree_block_is_audit_not_error(tmp_path):
-    # Out-of-worktree blocks are the isolation boundary working as intended: benign audit
-    # info, not a run error. With real committed changes the node proceeds to TESTING.
+def test_implement_outside_worktree_block_halts_before_commit(tmp_path):
+    # A denied escape is terminal, even alongside otherwise valid work (R03).
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
@@ -345,15 +346,19 @@ def test_implement_outside_worktree_block_is_audit_not_error(tmp_path):
         executor=OutsideWorktreeFakeExecutor(),
     )
 
-    assert out["status"] == Status.TESTING
-    assert "errors" not in out  # benign — no implement error surfaced
+    assert out["status"] == Status.HALTED
+    assert out["implement_error_kind"] == "policy_violation"
+    assert "outside_worktree" in out["errors"][0]["message"]
+    assert subprocess.run(
+        ["git", "-C", str(wt.path), "rev-list", "--count", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip() == "1"
     blocked = out["implementation"]["blocked"]
     assert blocked and blocked[0]["reason"] == "outside_worktree"  # recorded for audit
 
 
 def test_implement_mixed_blocks_label_each_by_real_reason(tmp_path):
-    # When both kinds of block occur, only the untouchable one is a run error, and the
-    # out-of-worktree path is never mislabeled as "untouchable".
+    # Every denied attempt is preserved with its actual reason and halts.
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
@@ -367,8 +372,8 @@ def test_implement_mixed_blocks_label_each_by_real_reason(tmp_path):
     assert reasons == {"outside_worktree", "untouchable"}
     message = out["errors"][0]["message"]
     assert "untouchable" in message and "Cargo.lock" in message
-    # the out-of-worktree path must not be dragged into the "untouchable" message
-    assert "realrepo" not in message
+    assert "outside_worktree" in message and "realrepo" in message
+    assert out["status"] == Status.HALTED
 
 
 def test_implement_missing_inputs_halts():
@@ -483,41 +488,21 @@ class FakeSandboxForImplement:
         raise AssertionError("run_command must never be invoked from these tests")
 
 
-def test_implement_grants_run_command_tool_and_self_verify_prompt_when_sandbox_enabled(tmp_path):
-    from blacksmith.nodes.implement import (
-        _DISALLOWED_TOOLS,
-        _SANDBOX_SERVER_NAME,
-        _SANDBOX_TOOL_NAME,
-    )
-    from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME
+def test_enabled_sandbox_refuses_before_model_tools_or_workspace_edits(tmp_path):
+    from blacksmith.config import ConfigError
 
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
     fake = EditingFakeExecutor()
-    sandbox = FakeSandboxForImplement(enabled=True)
-
-    out = implement(
-        {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
-        executor=fake,
-        sandbox=sandbox,
-    )
-
-    assert out["status"] == Status.TESTING
-    call = fake.calls[0]
-    # (a) the run_command sandbox tool is granted...
-    assert RUN_COMMAND_TOOL_NAME in _SANDBOX_TOOL_NAME
-    assert _SANDBOX_TOOL_NAME in call["allowed_tools"]
-    assert _SANDBOX_SERVER_NAME in call["mcp_servers"]
-    # ...while raw Bash (and every other escape tool) stays disallowed, unchanged.
-    assert call["disallowed_tools"] == _DISALLOWED_TOOLS
-    assert "Bash" in call["disallowed_tools"]
-    # ...and the prompt instructs the agent to self-verify in the sandbox before finishing.
-    prompt = call["prompt"].lower()
-    assert "run_command" in prompt
-    assert "sandbox" in prompt
-    assert "before you finish" in prompt
-    assert "fix" in prompt
+    before = subprocess.run(["git", "-C", str(wt.path), "status", "--porcelain"],
+                            check=True, capture_output=True).stdout
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        implement({"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+                  executor=fake, sandbox=FakeSandboxForImplement(enabled=True))
+    assert fake.calls == []
+    assert subprocess.run(["git", "-C", str(wt.path), "status", "--porcelain"],
+                          check=True, capture_output=True).stdout == before
 
 
 def test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_unchanged(tmp_path):
@@ -556,15 +541,16 @@ def test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_un
     assert baseline_call["disallowed_tools"] == disabled_call["disallowed_tools"]
     assert baseline_call["prompt"] == disabled_call["prompt"]
     assert baseline_call["system_prompt"] == disabled_call["system_prompt"]
-    # And the prompt is exactly today's no-shell instruction — sandboxed vocabulary never
-    # leaks in when disabled.
-    assert baseline_call["prompt"] == _implement_prompt(unit)
+    # R02 adds the exact requirements context for every role, independently of sandbox.
+    assert baseline_call["prompt"] == _implement_prompt(unit) + render_context(
+        {"prd": prd}, unit, include_plan=True,
+    )
     assert "run_command" not in baseline_call["prompt"].lower()
     assert "sandbox" not in baseline_call["prompt"].lower()
 
 
-def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path):
-    # (c) the pre-edit guard (AC-7) is unaffected by the sandbox being enabled.
+def test_implement_untouchable_guard_still_blocks_with_disabled_sandbox(tmp_path):
+    # (c) the pre-edit guard (AC-7) is unaffected by the a disabled sandbox dependency.
     wt = _scratch_worktree(tmp_path)
     prd = parse_prd(VENDORED_PRD)
     unit = prd.contract.work_unit_by_id("WU-01")
@@ -572,7 +558,7 @@ def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path)
     out = implement(
         {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
         executor=BlockingFakeExecutor(),
-        sandbox=FakeSandboxForImplement(enabled=True),
+        sandbox=FakeSandboxForImplement(enabled=False),
     )
 
     assert out["implementation"]["blocked"]
@@ -580,18 +566,16 @@ def test_implement_untouchable_guard_still_blocks_when_sandbox_enabled(tmp_path)
     assert "untouchable" in out["errors"][0]["message"]
 
 
-def test_implement_prompt_sandbox_enabled_reverses_no_shell_instruction():
+def test_implement_prompt_refuses_unavailable_sandbox_advertisement():
+    from blacksmith.config import ConfigError
     from blacksmith.nodes.implement import _implement_prompt
 
     unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
     disabled = _implement_prompt(unit)
-    enabled = _implement_prompt(unit, sandbox_enabled=True)
-
     assert "no shell" in disabled.lower() and "cannot run" in disabled.lower()
-    assert "no shell" not in enabled.lower()
-    assert "run_command" in enabled.lower()
-    assert "sandbox" in enabled.lower()
-    assert "before you finish" in enabled.lower()
+    assert "run_command" not in disabled.lower()
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        _implement_prompt(unit, sandbox_enabled=True)
 
 
 # --- repo map injection (WU-REPO-MAP-INJECT) ---------------------------------
@@ -800,6 +784,7 @@ def test_implement_calls_prompt_with_index_enabled_and_worktree_path(tmp_path):
     )
 
     expected = _implement_prompt(unit, index_enabled=True, worktree_path=str(wt.path))
+    expected += render_context({"prd": prd}, unit, include_plan=True)
     assert fake.calls[0]["prompt"] == expected
 
 

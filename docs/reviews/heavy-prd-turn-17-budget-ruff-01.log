@@ -1,0 +1,22 @@
+E501 Line too long (102 > 100)
+   --> blacksmith/budget.py:200:101
+    |
+198 |                     f"admission:{key.id}:{len(existing)}", "admission.reserve")
+199 |                 intent = {"call_id": key.id, "model_key": key.__dict__,
+200 |                           "reservation_usd": float(amount), "policy_id": _policy_key(self.context).id,
+    |                                                                                                     ^^
+201 |                           "run_cap_at_admission": float(cap) if cap is not None else None}
+202 |                 _insert(conn, reserve_key, intent)
+    |
+
+E501 Line too long (103 > 100)
+   --> tests/test_budget_admission.py:104:101
+    |
+103 | @pytest.mark.parametrize("status", ["completed", "failed", "interrupted", "unknown"])
+104 | def test_missing_cost_consumes_full_reservation_and_remains_incomplete_across_restart(project, status):
+    |                                                                                                     ^^^
+105 |     context, budget = ledger(project)
+106 |     call = key(context, "A")
+    |
+
+Found 2 errors.

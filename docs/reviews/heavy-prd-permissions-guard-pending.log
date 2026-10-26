@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/private-canary-setup/verify_permission_fix.py", line 33, in <module>
+    assert full['status'] == 'terminal' and full['returncode'] == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

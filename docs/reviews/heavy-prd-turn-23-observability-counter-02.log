@@ -1,0 +1,268 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_recovered_review_revision_is_counted_once_with_original_evidence_retained[False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision0/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b6f9820>
+parallel = False
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    def test_recovered_review_revision_is_counted_once_with_original_evidence_retained(
+        project, monkeypatch, parallel,
+    ):
+        configure_review(project, parallel=parallel, revisions=1)
+        selected = "A" if parallel else "U1"
+    
+        def change(unit, number, workspace, prompt):
+            target = unit.lower() + ".txt" if parallel else "result.txt"
+            (workspace / target).write_text("revision " + str(number))
+    
+        def response(unit, number):
+            if unit != selected:
+                return CLEAN
+            return BLOCKING if number == 1 else "malformed" if number == 2 else CLEAN
+    
+        calls = install(monkeypatch, implement=change, responses=response)
+        assert run(project, "observed-recovery") == 1
+        before = saved_values(project[1], "observed-recovery")
+        original = before["unit_outcomes"][selected]
+        assert original["review_revisions"] == before["review_revisions_total"] == 1
+        assert original["review_receipt"].status == "unavailable"
+        old_artifact = Path(original["review_receipt"].artifact_path).read_bytes()
+        context = context_from_state(before)
+        old_models = [row for row in context.journal().operations()
+                      if row.key.kind.startswith("model.")]
+        old_cost_ids = {row["event_id"] for row in before["cost_events"]}
+        old_other_calls = [call for call in calls if call[1] != selected]
+        seen = []
+    
+        def approve(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            seen.append(payload)
+            raise KeyboardInterrupt("observability proof; no publication")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approve)
+        args = ["resume", "--config", str(project[1]), "--thread-id", "observed-recovery",
+                "--continue-attempt"]
+        if parallel:
+            args += ["--unit-id", selected]
+        with pytest.raises(KeyboardInterrupt, match="no publication"):
+            cli.main(args)
+        after = saved_values(project[1], "observed-recovery")
+        outcome = after["unit_outcomes"][selected]
+        assert outcome["review_revisions"] == 1
+        assert after["review_revisions_total"] == seen[0]["review_revisions_total"] == 1
+        assert outcome["source_commit"] == original["source_commit"]
+        assert outcome["base_commit"] == original["base_commit"]
+        assert outcome["fix_attempts"] == original["fix_attempts"]
+        assert outcome["implement_continuations"] == original["implement_continuations"] + 1
+        assert outcome["review_receipt"].status == seen[0]["review_status"] == "clean"
+        assert outcome["recovery_history"] == [original]
+        assert [call for call in calls if call[1] != selected] == old_other_calls
+        assert len([call for call in calls if call[:2] == ("implement", selected)]) == 2
+        assert len([call for call in calls if call[:2] == ("review", selected)]) == 3
+        assert all(context.journal().get(row.key) == row for row in old_models)
+        assert Path(original["review_receipt"].artifact_path).read_bytes() == old_artifact
+        cost_ids = [row["event_id"] for row in after["cost_events"]]
+        assert len(cost_ids) == len(set(cost_ids)) == len(old_cost_ids) + 1
+        assert old_cost_ids < set(cost_ids)
+>       assert not after.get("pr_url") and after["unresolved_review_findings"]
+E       AssertionError: assert (not None and [])
+E        +  where None = <built-in method get of dict object at 0x10b937ec0>('pr_url')
+E        +    where <built-in method get of dict object at 0x10b937ec0> = {'unit_failed_stage': '', 'recovery_generation': 1, 'recovery_entry': 'review', 'recovery_previous_outcome': {'unit_id': 'U1', 'failed_stage': 'review', 'title': 'create output', 'ok': False, ...}, ...}.get
+
+tests/test_observability_integrity.py:76: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 7a4aded0-473a-4af2-bbf5-d941b48223fe: selected committed HEAD 8f0247cfe19eafb3af2fc12297c16169c545d358
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision0/.blacksmith/runs/7a4aded0-473a-4af2-bbf5-d941b48223fe
+[auto] gate 'plan': approved
+
+status: halted
+error [review]: review unavailable: Expecting value: line 1 column 1 (char 0)
+total cost: $0.05; run cap $50.00, remaining $49.95
+tokens: unavailable
+execution time: 2.96s / 21600.00s; remaining 21597.04s
+Resuming run 7a4aded0-473a-4af2-bbf5-d941b48223fe, base 8f0247cfe19eafb3af2fc12297c16169c545d358, saved configuration
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: prepare_review_revision
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision0/.blacksmith/runs/7a4aded0-473a-4af2-bbf5-d941b48223fe/recovery/fa673049-5a1f-4132-acfc-71849cab802d/manifest.json
+Next action: blacksmith recovery inspect --thread-id observed-recovery --config /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision0/runtime.toml
+blacksmith: recovery_dispatch
+blacksmith: execute_unit
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+total cost: $0.06; run cap $50.00, remaining $49.94
+execution time: 4.85s / 21600.00s; remaining 21595.15s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision0/.blacksmith/runs/7a4aded0-473a-4af2-bbf5-d941b48223fe/recovery/cd0168a5-6377-4606-9751-05e8ec2d22f3/manifest.json
+Next action: blacksmith recovery inspect --thread-id observed-recovery --config /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision0/runtime.toml
+_ test_recovered_review_revision_is_counted_once_with_original_evidence_retained[True] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision1/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b73bc50>
+parallel = True
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    def test_recovered_review_revision_is_counted_once_with_original_evidence_retained(
+        project, monkeypatch, parallel,
+    ):
+        configure_review(project, parallel=parallel, revisions=1)
+        selected = "A" if parallel else "U1"
+    
+        def change(unit, number, workspace, prompt):
+            target = unit.lower() + ".txt" if parallel else "result.txt"
+            (workspace / target).write_text("revision " + str(number))
+    
+        def response(unit, number):
+            if unit != selected:
+                return CLEAN
+            return BLOCKING if number == 1 else "malformed" if number == 2 else CLEAN
+    
+        calls = install(monkeypatch, implement=change, responses=response)
+        assert run(project, "observed-recovery") == 1
+        before = saved_values(project[1], "observed-recovery")
+        original = before["unit_outcomes"][selected]
+        assert original["review_revisions"] == before["review_revisions_total"] == 1
+        assert original["review_receipt"].status == "unavailable"
+        old_artifact = Path(original["review_receipt"].artifact_path).read_bytes()
+        context = context_from_state(before)
+        old_models = [row for row in context.journal().operations()
+                      if row.key.kind.startswith("model.")]
+        old_cost_ids = {row["event_id"] for row in before["cost_events"]}
+        old_other_calls = [call for call in calls if call[1] != selected]
+        seen = []
+    
+        def approve(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            seen.append(payload)
+            raise KeyboardInterrupt("observability proof; no publication")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approve)
+        args = ["resume", "--config", str(project[1]), "--thread-id", "observed-recovery",
+                "--continue-attempt"]
+        if parallel:
+            args += ["--unit-id", selected]
+        with pytest.raises(KeyboardInterrupt, match="no publication"):
+            cli.main(args)
+        after = saved_values(project[1], "observed-recovery")
+        outcome = after["unit_outcomes"][selected]
+        assert outcome["review_revisions"] == 1
+        assert after["review_revisions_total"] == seen[0]["review_revisions_total"] == 1
+        assert outcome["source_commit"] == original["source_commit"]
+        assert outcome["base_commit"] == original["base_commit"]
+        assert outcome["fix_attempts"] == original["fix_attempts"]
+        assert outcome["implement_continuations"] == original["implement_continuations"] + 1
+        assert outcome["review_receipt"].status == seen[0]["review_status"] == "clean"
+        assert outcome["recovery_history"] == [original]
+        assert [call for call in calls if call[1] != selected] == old_other_calls
+        assert len([call for call in calls if call[:2] == ("implement", selected)]) == 2
+        assert len([call for call in calls if call[:2] == ("review", selected)]) == 3
+        assert all(context.journal().get(row.key) == row for row in old_models)
+        assert Path(original["review_receipt"].artifact_path).read_bytes() == old_artifact
+        cost_ids = [row["event_id"] for row in after["cost_events"]]
+        assert len(cost_ids) == len(set(cost_ids)) == len(old_cost_ids) + 1
+        assert old_cost_ids < set(cost_ids)
+>       assert not after.get("pr_url") and after["unresolved_review_findings"]
+E       AssertionError: assert (not None and [])
+E        +  where None = <built-in method get of dict object at 0x10bac25c0>('pr_url')
+E        +    where <built-in method get of dict object at 0x10bac25c0> = {'unit_failed_stage': '', 'recovery_generation': 0, 'recovery_entry': '', 'recovery_previous_outcome': None, ...}.get
+
+tests/test_observability_integrity.py:76: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 84fcb0c4-6281-4f6e-8d84-95979f98b1c6: selected committed HEAD d4f9469ee076300bae276fe70a44278d46a74c63
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision1/.blacksmith/runs/84fcb0c4-6281-4f6e-8d84-95979f98b1c6
+[auto] gate 'plan': approved
+
+status: halted
+error [review]: review unavailable: Expecting value: line 1 column 1 (char 0)
+error [join_level]: unit A lacks exactly one successful auto outcome: review unavailable: Expecting value: line 1 column 1 (char 0)
+total cost: $0.08; run cap $50.00, remaining $49.92
+tokens: unavailable
+execution time: 4.22s / 21600.00s; remaining 21595.78s
+Resuming run 84fcb0c4-6281-4f6e-8d84-95979f98b1c6, base d4f9469ee076300bae276fe70a44278d46a74c63, saved configuration
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: auto_fix
+blacksmith: test_gate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: prepare_review_revision
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: finalize_unit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision1/.blacksmith/runs/84fcb0c4-6281-4f6e-8d84-95979f98b1c6/recovery/7fea1d79-0fbc-47d6-9b0a-b8d3b3af4478/manifest.json
+Next action: blacksmith recovery inspect --thread-id observed-recovery --config /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision1/runtime.toml
+blacksmith: recovery_dispatch
+blacksmith: execute_unit
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: integration_gate
+blacksmith: advance_joined_level
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+total cost: $0.09; run cap $50.00, remaining $49.91
+execution time: 10.68s / 21600.00s; remaining 21589.32s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision1/.blacksmith/runs/84fcb0c4-6281-4f6e-8d84-95979f98b1c6/recovery/171472d1-2f3c-4ca8-aa8b-5d617d9554a7/manifest.json
+Next action: blacksmith recovery inspect --thread-id observed-recovery --config /private/tmp/blacksmith-heavy-prd-t23-observability-counter-02/test_recovered_review_revision1/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_observability_integrity.py::test_recovered_review_revision_is_counted_once_with_original_evidence_retained[False]
+FAILED tests/test_observability_integrity.py::test_recovered_review_revision_is_counted_once_with_original_evidence_retained[True]
+2 failed in 29.48s

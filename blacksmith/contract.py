@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 SUPPORTED_CONTRACT_VERSION = 1
 
@@ -32,7 +32,7 @@ REQUIRED_SECTIONS: tuple[str, ...] = ("purpose", "scope", "untouchables", "accep
 
 # Frontmatter is a leading '---' fenced YAML block. Non-greedy so the first closing
 # fence terminates it (later '---' horizontal rules in the prose are left in the body).
-_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
+_FRONTMATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---(?:\r?\n)?(.*)$", re.DOTALL)
 
 # A layer is either auto-gateable (pytest/clippy decide) or human-gated (smoke/QA).
 # The fixed concept is auto-vs-human; the vocabulary is per-project (PRD §6).
@@ -58,6 +58,25 @@ class WorkUnit(_Strict):
     target_modules: list[str] = Field(min_length=1)
     test_contract: str = Field(min_length=1)
     depends_on: list[str] = Field(default_factory=list)
+
+    @field_validator("id", "title", "test_contract")
+    @classmethod
+    def _nonblank(cls, value: str) -> str:
+        if not value.strip() or any(ord(c) < 32 for c in value if c not in "\n\t"):
+            raise ValueError("must be a nonempty string without control characters")
+        return value
+
+    @field_validator("target_modules")
+    @classmethod
+    def _relative_targets(cls, values: list[str]) -> list[str]:
+        for value in values:
+            if (
+                not value.strip() or PurePosixPath(value).is_absolute()
+                or PureWindowsPath(value).drive or "\\" in value
+                or ".." in PurePosixPath(value).parts or "\x00" in value
+            ):
+                raise ValueError(f"target_modules: expected nonempty relative target: {value!r}")
+        return values
 
 
 class PRDContract(_Strict):
@@ -126,6 +145,7 @@ class PRD:
     path: Path
     contract: PRDContract
     body: str
+    text: str = ""
 
 
 def parse_prd(path: str | Path) -> PRD:
@@ -139,7 +159,16 @@ def parse_prd(path: str | Path) -> PRD:
     if not path.is_file():
         raise ContractError(f"PRD not found: {path}")
 
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ContractError(f"cannot read PRD {path}: {exc}") from exc
+    return parse_prd_text(text, path=path)
+
+
+def parse_prd_text(text: str, *, path: str | Path = "snapshot.md") -> PRD:
+    """Validate persisted input without reloading a mutable original PRD file."""
+    path = Path(path)
     match = _FRONTMATTER_RE.match(text)
     if not match:
         raise ContractError(
@@ -167,7 +196,43 @@ def parse_prd(path: str | Path) -> PRD:
             f"(Contract v1 requires headings for: {', '.join(REQUIRED_SECTIONS)})"
         )
 
-    return PRD(path=path, contract=contract, body=body)
+    return PRD(path=path, contract=contract, body=body, text=text)
+
+
+def validate_execution_contract(contract: PRDContract) -> None:
+    """Stricter execution semantics; historical Contract-v1 documents remain readable."""
+    from blacksmith.path_policy import PolicyViolation, compile_path_rules
+    from blacksmith.planner import PlannerError, execution_levels
+
+    try:
+        compile_path_rules(contract.untouchables)
+        levels = execution_levels(contract)
+    except (PolicyViolation, PlannerError) as exc:
+        raise ContractError(str(exc)) from exc
+    humans = [u for u in contract.work_units if contract.gate_for(u) == "human"]
+    autos = {u.id for u in contract.work_units if contract.gate_for(u) == "auto"}
+    if not autos:
+        raise ContractError("human-only PRDs are invalid: at least one auto unit is required")
+    if len(humans) > 1:
+        raise ContractError("at most one terminal human QA unit is allowed")
+    if humans:
+        human = humans[0]
+        if any(contract.layers[name] != "human" for name in human.layers):
+            raise ContractError(f"human QA unit {human.id} must have exclusively human layers")
+        if levels[-1] != [human]:
+            raise ContractError(f"human QA unit {human.id} must be exclusively terminal")
+        by_id = {u.id: u for u in contract.work_units}
+        ancestors: set[str] = set()
+        pending = list(human.depends_on)
+        while pending:
+            uid = pending.pop()
+            if uid not in ancestors:
+                ancestors.add(uid)
+                pending.extend(by_id[uid].depends_on)
+        if not autos <= ancestors:
+            raise ContractError(
+                f"human QA unit {human.id} must transitively depend on every auto unit"
+            )
 
 
 def _missing_sections(body: str) -> list[str]:

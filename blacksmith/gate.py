@@ -1,4 +1,8 @@
-"""Toolchain-aware test gate (PRD §4 node 6, §5).
+"""Low-level single-layer toolchain helpers (PRD §4 node 6, §5).
+
+Version-2 production execution uses ``verification.py`` with the immutable trusted
+toolchain and typed exact-candidate receipts. These standalone helpers preserve the
+legacy API, including use in directories without Git metadata.
 
 Reads the target repo's own ``blacksmith.toml`` — the per-repo toolchain config,
 distinct from blacksmith's runtime ``blacksmith.config.toml`` — and runs the optional
@@ -28,13 +32,14 @@ stays verify-only; ``fix_cmd`` is a separate step.
 
 from __future__ import annotations
 
-import subprocess
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from blacksmith.commands import run_command
+from blacksmith.gate_receipts import GateReceipt
 from blacksmith.state import TestResults
 
 CONFIG_FILENAME = "blacksmith.toml"
@@ -83,6 +88,7 @@ class GateResult:
     passed: bool
     output: str
     command: str
+    receipt: GateReceipt | None = None
 
     def as_test_results(self) -> TestResults:
         """Project into the state's test_results shape (PRD §4)."""
@@ -94,8 +100,14 @@ def load_toolchain(repo_path: str | Path) -> TargetToolchain:
     path = Path(repo_path) / CONFIG_FILENAME
     if not path.is_file():
         raise GateError(f"no {CONFIG_FILENAME} found in target repo: {path}")
+    return parse_toolchain(path.read_text(encoding="utf-8"), source=path)
+
+
+def parse_toolchain(text: str, *, source: str | Path = CONFIG_FILENAME) -> TargetToolchain:
+    """Validate committed toolchain text without reloading an agent-editable clone."""
+    path = Path(source)
     try:
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        raw = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise GateError(f"invalid TOML in {path}: {exc}") from exc
     try:
@@ -129,9 +141,7 @@ def run_gate(
         setup_ok, setup_output = _run(setup_cmd, path)
         sections.append(f"$ {setup_cmd}\n{setup_output}")
         if not setup_ok:
-            return GateResult(
-                passed=False, output="\n".join(sections), command=" && ".join(ran)
-            )
+            return GateResult(passed=False, output="\n".join(sections), command=" && ".join(ran))
 
     ran.append(test_cmd)
     test_ok, output = _run(test_cmd, path)
@@ -147,12 +157,11 @@ def run_gate(
 
 @dataclass(frozen=True)
 class FixResult:
-    """Outcome of the deterministic auto-fix step (model-free).
+    """Low-level formatter outcome: configured, committed changes, command exit status.
 
-    ``applied`` — a ``fix_cmd`` was configured and ran. ``changed`` — the fixer produced
-    changes that were folded into the unit's commit (``git commit --amend``). ``ok`` — the
-    fixer exited 0; a non-zero exit is recorded but never halts the run (best-effort), since
-    the gate that follows is the real verdict.
+    A nonzero exit may proceed only when source remains clean; partial failed edits
+    raise GateError and are left uncommitted. Production adds journal ownership and
+    complete layer coverage through ``verification.fix_candidate``.
     """
 
     applied: bool
@@ -168,18 +177,11 @@ def run_fix(
     *,
     toolchain: TargetToolchain | None = None,
 ) -> FixResult:
-    """Run the target's optional ``fix_cmd`` in the worktree and fold any change into the
-    unit's existing commit (``git add -A && git commit --amend --no-edit``), BEFORE the gate.
+    """Run an explicitly supplied/configured formatter and check staging/amend.
 
-    This is the deterministic answer to mechanical, zero-correctness gate failures
-    (``cargo fmt --check``, ``prettier --check``): the formatter the agent is worst at
-    reproducing by hand is the one blacksmith can run perfectly for free. When ``fix_cmd`` is
-    unset this is a no-op (``applied=False``) and the gate runs on exactly the agent's commit.
-
-    Best-effort by design: a non-zero ``fix_cmd`` exit is captured in ``ok`` but does not
-    halt — whatever it managed to fix is still committed, and an unfixable problem simply
-    fails the gate and routes to the existing escalate/halt path. The amend only happens when
-    the fixer actually changed tracked content, so a no-op fixer leaves the commit untouched.
+    Successful edits are amended. A failed clean formatter is reported in ``ok``;
+    a failed formatter leaving source changes raises and retains those edits. The
+    version-2 graph uses its journal-owned formatter service instead of this helper.
     """
     path = Path(worktree_path)
     toolchain = toolchain or load_toolchain(path)
@@ -187,25 +189,30 @@ def run_fix(
     if not fix_cmd:
         return FixResult(applied=False, changed=False, ok=True, output="", command="")
     ok, output = _run(fix_cmd, path)
-    changed = _amend_if_changed(path)
+    if (
+        not ok
+        and run_command(["git", "-C", str(path), "status", "--porcelain", "-z"], check=True).stdout
+    ):
+        raise GateError("failed formatter left source changes; retained without staging/amend")
+    changed = _amend_if_changed(path) if ok else False
     return FixResult(applied=True, changed=changed, ok=ok, output=output, command=fix_cmd)
 
 
-def _amend_if_changed(cwd: Path) -> bool:
+def _amend_if_changed(cwd: Path, *, before_amend=None) -> bool:
     """Stage everything and, only if that produced a staged diff, amend the unit's commit.
 
     Returns whether an amend happened. The ``--cached --quiet`` check is what keeps an
     already-formatted tree (the common case) from amending — and stops a degenerate
     no-commit implement path from rewriting an unrelated commit."""
-    subprocess.run(["git", "-C", str(cwd), "add", "-A"], capture_output=True, text=True)
-    staged = subprocess.run(
-        ["git", "-C", str(cwd), "diff", "--cached", "--quiet"], capture_output=True, text=True
+    run_command(["git", "-C", str(cwd), "add", "-A"], check=True)
+    staged = run_command(
+        ["git", "-C", str(cwd), "diff", "--cached", "--quiet"], check=True, allowed=(0, 1)
     )
     if staged.returncode == 0:  # nothing staged -> the fixer changed nothing
         return False
-    amend = subprocess.run(
-        ["git", "-C", str(cwd), "commit", "--amend", "--no-edit"], capture_output=True, text=True
-    )
+    message = before_amend() if before_amend else None
+    args = ["-m", message] if message is not None else ["--no-edit"]
+    amend = run_command(["git", "-C", str(cwd), "commit", "--amend", *args], check=True)
     return amend.returncode == 0
 
 
@@ -216,8 +223,10 @@ def _run(command: str, cwd: Path) -> tuple[bool, str]:
     # Commands come from the target repo's committed blacksmith.toml — trusted config,
     # not untrusted input. A missing binary now surfaces as a failing gate (exit 127 +
     # captured stderr) rather than a hard GateError, which is the right signal to route on.
-    proc = subprocess.run(command, cwd=str(cwd), capture_output=True, text=True, shell=True)
-    return proc.returncode == 0, (proc.stdout or "") + (proc.stderr or "")
+    proc = run_command(
+        command, cwd=str(cwd), capture_output=True, text=True, shell=True, toolchain=True
+    )
+    return proc.returncode == 0, proc.stdout_tail + proc.stderr_tail
 
 
 def _format_validation_error(path: Path, err: ValidationError) -> str:

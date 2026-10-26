@@ -1,0 +1,2096 @@
+.F....F.................................................FFFFFFFFFFF....F [ 78%]
+FF.FFFFF.FFFFF......                                                     [100%]
+=================================== FAILURES ===================================
+_____________________________ test_graph_compiles ______________________________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_graph_compiles0')
+
+    def test_graph_compiles(tmp_path):
+        saver = build_checkpointer(tmp_path / "c.sqlite")
+        compiled = compile_graph(saver)
+        node_ids = set(compiled.get_graph().nodes)
+>       assert EXPECTED_NODES <= node_ids
+E       AssertionError: assert {'approve_pla...est_prd', ...} <= {'__end__', '...te_unit', ...}
+E         
+E         Extra items in the left set:
+E         'auto_fix'
+E         'test_gate'
+E         'implement'
+
+tests/test_graph.py:59: AssertionError
+____________ test_checkpointer_persists_and_resumes_across_restart _____________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_checkpointer_persists_and0')
+
+    def test_checkpointer_persists_and_resumes_across_restart(tmp_path):
+        db = tmp_path / "ckpt.sqlite"
+        cfg = {"configurable": {"thread_id": "wu03"}}
+    
+        # --- first "process": run until the approve_plan HITL gate, then exit ---
+        saver1 = build_checkpointer(db)
+        g1 = compile_graph(saver1)
+        g1.invoke({"status": Status.PENDING}, cfg)  # halts at the approve_plan interrupt
+        paused = g1.get_state(cfg)
+        assert paused.next == ("approve_plan",)
+        assert paused.values["status"] == Status.AWAITING_PLAN_APPROVAL
+        saver1.conn.close()  # simulate process exit
+    
+        # --- second "process": fresh checkpointer on the same file, resume ---
+        saver2 = build_checkpointer(db)
+        g2 = compile_graph(saver2)
+        resumed = g2.get_state(cfg)
+        assert resumed.next == ("approve_plan",)  # the pause point survived the restart
+        assert resumed.values["status"] == Status.AWAITING_PLAN_APPROVAL  # so did the state
+    
+>       g2.invoke(Command(resume=True), cfg)  # inject approval; resume to completion
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_graph.py:161: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'status': <Status.AWAITING_PLAN_APPROVAL: 'awaiting_plan_approval'>, 'unit_mode': 'sequential', 'unit_initialized': True, 'unit_stage': 'prepare_attempt', ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '9acb69cd-b6d7-feee-dc95-e2d5421f8f42'
+E       During task with name 'execute_unit' and id '1044c88a-ade4-c2f3-b908-29bc0c3fe875'
+
+blacksmith/unit_graph.py:96: AttributeError
+__________ test_independent_level_builds_in_distinct_clones_to_one_pr __________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_independent_level_builds_0')
+
+    def test_independent_level_builds_in_distinct_clones_to_one_pr(tmp_path):
+        # (1) Two independent units in one level fan out into DISTINCT clones and BOTH land on
+        # one combined branch via cherry-pick -> exactly one combined PR.
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+        approver = _recording_approver(decision=True)
+    
+>       final = drive(graph, _write_prd(tmp_path, _TWO_INDEPENDENT), approver=approver, thread_id="ind")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_parallel.py:259: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-X', 'unit_base_commit': '1fc547ac20726ec041bad1fdeaa73cefeded580c', 'attempt_base_commit': '1fc547ac20726ec041bad1fdeaa73cefeded580c', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '3e31124f-4aa0-9d2d-ade7-0b1d714eb709'
+E       During task with name 'execute_unit' and id '09f5b215-4810-854a-328d-fff8c9d89115'
+
+blacksmith/unit_graph.py:96: AttributeError
+___________ test_conflicting_level_halts_naming_both_units_and_file ____________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_conflicting_level_halts_n0')
+
+    def test_conflicting_level_halts_naming_both_units_and_file(tmp_path):
+        # (2) Two same-level units writing the SAME file conflict at cherry-pick -> HALT.
+        repo = _target_repo(tmp_path, gate_cmd="true")  # both gates pass; the clash is at join
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/9")
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+        approver = _recording_approver(decision=True)
+    
+>       final = drive(graph, _write_prd(tmp_path, _TWO_CONFLICTING), approver=approver, thread_id="cf")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_parallel.py:291: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-Y', 'unit_base_commit': '1fc547ac20726ec041bad1fdeaa73cefeded580c', 'attempt_base_commit': '1fc547ac20726ec041bad1fdeaa73cefeded580c', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '9af2c3ef-04b1-e172-8ac9-478885bc9c20'
+E       During task with name 'execute_unit' and id 'b501d88e-3b9f-b979-3aa2-bae230891546'
+
+blacksmith/unit_graph.py:96: AttributeError
+_________ test_level_gate_failure_halts_with_no_cherry_pick_and_no_pr __________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_level_gate_failure_halts_0')
+
+    def test_level_gate_failure_halts_with_no_cherry_pick_and_no_pr(tmp_path):
+        # (3) One unit's gate fails inside its own clone -> the whole level halts with nothing
+        # cherry-picked onto the combined branch and no PR.
+        repo = _target_repo(tmp_path, gate_cmd="true")  # unused: a unit-failing gate is injected
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/11")
+        gate = FailUnitGate(fail_substr="wu-y")  # WU-Y's build clone fails its gate
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+        approver = _recording_approver(decision=True)
+    
+>       final = drive(graph, _write_prd(tmp_path, _TWO_INDEPENDENT), approver=approver, thread_id="gf")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_parallel.py:315: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-X', 'unit_base_commit': '339f8d27516daa49c3a99cfdf9bf5d74c530eed3', 'attempt_base_commit': '339f8d27516daa49c3a99cfdf9bf5d74c530eed3', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '29ae3302-a745-721c-bb36-ef4c8d747a4f'
+E       During task with name 'execute_unit' and id '66b816bf-47a6-226e-11f4-afa6556a5c2e'
+
+blacksmith/unit_graph.py:96: AttributeError
+___________ test_dependent_level_builds_from_prior_levels_merged_tip ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_dependent_level_builds_fr0')
+
+    def test_dependent_level_builds_from_prior_levels_merged_tip(tmp_path):
+        # (4) A size-1 root level, then a size-2 fan-out level: A and B both build from the
+        # combined tip that already carries ROOT's commit, so each sees root.txt.
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/13")
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+        approver = _recording_approver(decision=True)
+    
+>       final = drive(
+            graph, _write_prd(tmp_path, _ROOT_THEN_FANOUT), approver=approver, thread_id="dep"
+        )
+
+tests/test_parallel.py:335: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-ROOT', 'unit_base_commit': '480a1f89a3c2651d83489af3212c726f7d986e20', 'attempt_base_commit': '480a1f89a3c2651d83489af3212c726f7d986e20', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '2c7caaa4-a674-eaf0-ac17-36400382a38f'
+E       During task with name 'execute_unit' and id 'af6387f0-b761-df97-c5c3-99785b3a881a'
+
+blacksmith/unit_graph.py:96: AttributeError
+______________ test_single_unit_uses_shared_clone_without_fanout _______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_single_unit_uses_shared_c0')
+
+    def test_single_unit_uses_shared_clone_without_fanout(tmp_path):
+        # (5a) A single-unit run uses the run's ONE shared clone — no per-unit build clone.
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/1")
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+        approver = _recording_approver(decision=True)
+    
+>       final = drive(graph, _write_prd(tmp_path, _ONE_UNIT), approver=approver, thread_id="solo")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_parallel.py:369: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-S', 'unit_base_commit': '480a1f89a3c2651d83489af3212c726f7d986e20', 'attempt_base_commit': '480a1f89a3c2651d83489af3212c726f7d986e20', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'be518951-aa67-85f1-09ec-2f3ab1c26756'
+E       During task with name 'execute_unit' and id '1a0abdd9-bfc7-ea9a-a123-cc28def50fa2'
+
+blacksmith/unit_graph.py:96: AttributeError
+_____________ test_all_size_one_level_chain_stays_on_shared_clone ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_all_size_one_level_chain_0')
+
+    def test_all_size_one_level_chain_stays_on_shared_clone(tmp_path):
+        # (5b) An all-size-1-level chain builds every unit sequentially on the ONE shared clone:
+        # no fan-out, no per-unit clone, no cherry-pick — exactly the pre-fan-out behaviour.
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/3")
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh)
+        approver = _recording_approver(decision=True)
+    
+>       final = drive(graph, _write_prd(tmp_path, _CHAIN), approver=approver, thread_id="chain")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_parallel.py:390: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-1', 'unit_base_commit': '5e55769f5d337685f013de35b9b898e5511a92c8', 'attempt_base_commit': '5e55769f5d337685f013de35b9b898e5511a92c8', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'd86c3c8b-74a9-5541-7785-9429ad405842'
+E       During task with name 'execute_unit' and id 'aa065f04-be54-eee1-3e57-5d19dbdc08fe'
+
+blacksmith/unit_graph.py:96: AttributeError
+_________ test_fanout_build_unit_implement_receives_index_and_sandbox __________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_fanout_build_unit_impleme0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dd73590>
+
+    def test_fanout_build_unit_implement_receives_index_and_sandbox(tmp_path, monkeypatch):
+        """Fan-out feature parity (review finding #2 / #5, Workstream A1).
+    
+        A unit that lands in a multi-unit level is built by the ``build_unit`` worker, not the
+        sequential ``implement`` node. Before the ``UnitDeps`` bundle, the worker called
+        ``implement(sub, executor=executor)`` and silently dropped index/sandbox — so an operator
+        with ``[index]``/``[sandbox]`` enabled got them on single-chain PRDs but NOT on parallel
+        ones. This pins that the worker's inner implement call now receives the SAME index/sandbox
+        deps the sequential node is bound with. (Would fail on ``main``: pre-A1 the worker passed
+        only ``executor``.)"""
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    
+        index_cfg = IndexConfig(enabled=True)
+        # A wired-but-disabled sandbox is fully inert (no docker started) yet still proves the
+        # OBJECT is threaded into the worker's implement call — which is exactly what was missing.
+        sandbox_mgr = SandboxManager(config=SandboxConfig(enabled=False))
+    
+        saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+        graph = compile_graph(
+            saver,
+            executor=executor,
+            worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+            gate=run_gate,
+            pr_runner=gh,
+            index=index_cfg,
+            sandbox=sandbox_mgr,
+        )
+    
+        # Spy on the ``implement`` the fan-out worker calls (build_unit looks it up as a module
+        # global at call time), recording the kwargs each call receives, then delegating so the
+        # real implement still commits and the level joins normally.
+>       real_implement = bsgraph.implement
+                         ^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+
+tests/test_parallel.py:439: AttributeError
+_____________ test_fanout_units_are_reviewed_and_findings_reach_pr _____________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_fanout_units_are_reviewed0')
+
+    def test_fanout_units_are_reviewed_and_findings_reach_pr(tmp_path):
+        """Review on the fan-out path (review finding #1, Workstream A2).
+    
+        The default-ON post-gate reviewer only ran on the sequential path, so a unit that landed
+        in a parallel level was NEVER reviewed — a regression the unit tests missed shipped
+        unreviewed, depending only on the PRD's dependency shape. This pins that BOTH units of a
+        parallel level are reviewed on their own build clones and their blocking findings reach the
+        ONE combined PR body. (Would fail before A2: the worker never called run_review.)"""
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    
+        saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+        graph = compile_graph(
+            saver,
+            executor=executor,
+            worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+            gate=run_gate,
+            pr_runner=gh,
+            review=ReviewConfig(enabled=True),
+        )
+    
+>       final = drive(
+            graph,
+            _write_prd(tmp_path, _TWO_INDEPENDENT),
+            approver=_recording_approver(),
+            thread_id="rev",
+        )
+
+tests/test_parallel.py:491: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-X', 'unit_base_commit': '5e55769f5d337685f013de35b9b898e5511a92c8', 'attempt_base_commit': '5e55769f5d337685f013de35b9b898e5511a92c8', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'aea45cb4-abab-0116-69c6-77a99a38023a'
+E       During task with name 'execute_unit' and id '93d27e0b-069d-80f7-12e4-cee33e0fc97e'
+
+blacksmith/unit_graph.py:96: AttributeError
+____________ test_fanout_node_seam_every_feature_reaches_the_worker ____________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_fanout_node_seam_every_fe0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dd77350>
+
+    def test_fanout_node_seam_every_feature_reaches_the_worker(tmp_path, monkeypatch):
+        """Node-seam exhaustiveness guard (review finding #4, Workstream A3).
+    
+        The forwarding guard (test_reviewer_wiring.py, seam 1) stops at ``compile_graph``'s kwargs —
+        it never checks a feature reaches the NODE that reads it, and never touches ``build_unit``,
+        which is exactly how the reviewer (#1) and index/sandbox (#2) went dark on parallel units
+        while it stayed green. This drives the REAL graph with a ``CloneManager`` + a 2-unit fan-out
+        level + index/sandbox/review ALL wired on, and asserts NODE BEHAVIOUR on the parallel path:
+        each worker's inner implement call receives the index + sandbox deps AND the reviewer runs on
+        both units. Green now; red on the pre-fix main (the worker passed only ``executor`` and never
+        reviewed)."""
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+    
+        index_cfg = IndexConfig(enabled=True)
+        # Wired-but-disabled sandbox: threaded into the graph (so we can assert it reaches the
+        # worker's implement) without requiring docker in the test.
+        sandbox_mgr = SandboxManager(config=SandboxConfig(enabled=False))
+    
+        saver = build_checkpointer(tmp_path / "ckpt.sqlite")
+        graph = compile_graph(
+            saver,
+            executor=executor,
+            worktree_manager=CloneManager(repo, base_dir=tmp_path / "clones"),
+            gate=run_gate,
+            pr_runner=gh,
+            index=index_cfg,
+            sandbox=sandbox_mgr,
+            review=ReviewConfig(enabled=True),
+        )
+    
+        # Spy on the implement the fan-out worker calls (looked up as a module global at call time).
+>       real_implement = bsgraph.implement
+                         ^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+
+tests/test_parallel.py:542: AttributeError
+________ test_fanout_blocking_review_revises_in_worker_then_lands_clean ________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_fanout_blocking_review_re0')
+
+    def test_fanout_blocking_review_revises_in_worker_then_lands_clean(tmp_path):
+        """In-worker review revision on the fan-out path (A-i, follow-up to finding #1).
+    
+        A blocking review finding on a parallel unit now RE-IMPLEMENTS the unit in place on its own
+        build clone (findings fed back), re-gates, and re-reviews — instead of merely surfacing the
+        finding. With a reviewer that flags once then clears, both units of a parallel level revise
+        once and land CLEAN: no unresolved note in the PR, and the revise commits squashed so each
+        unit is still one cherry-pick onto the combined branch."""
+        repo = _target_repo(tmp_path, gate_cmd="true")  # every gate passes
+        executor = ReviseExecutor(clears_at=1)  # blocking first review, clean after the revision
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        graph, saver = _wire_review_revise(tmp_path, repo, executor=executor, gh=gh)
+    
+>       final = drive(
+            graph,
+            _write_prd(tmp_path, _TWO_INDEPENDENT),
+            approver=_recording_approver(),
+            thread_id="revise",
+        )
+
+tests/test_parallel.py:640: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-Y', 'unit_base_commit': 'f4fb8871018dfb3025e9decf71c858708513fb43', 'attempt_base_commit': 'f4fb8871018dfb3025e9decf71c858708513fb43', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '6384f109-3a5a-321b-ab71-dafd9df6f030'
+E       During task with name 'execute_unit' and id '736d2fef-0912-215b-2581-daf10a452134'
+
+blacksmith/unit_graph.py:96: AttributeError
+_________ test_fanout_blocking_review_exhausts_revisions_then_surfaces _________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_fanout_blocking_review_ex0')
+
+    def test_fanout_blocking_review_exhausts_revisions_then_surfaces(tmp_path):
+        """The revise loop is BOUNDED (A-i): a reviewer that never clears revises up to
+        ``max_review_revisions`` (default 1) then SURFACES the outstanding blocking finding on the
+        PR and proceeds — it never halts the run on it, mirroring the sequential finalize_review."""
+        repo = _target_repo(tmp_path, gate_cmd="true")
+        executor = ReviseExecutor(clears_at=99)  # reviewer never clears
+        gh = _recording_gh("https://github.com/owner/demo/pull/7")
+        graph, saver = _wire_review_revise(tmp_path, repo, executor=executor, gh=gh)
+    
+>       final = drive(
+            graph,
+            _write_prd(tmp_path, _TWO_INDEPENDENT),
+            approver=_recording_approver(),
+            thread_id="exhaust",
+        )
+
+tests/test_parallel.py:668: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-Y', 'unit_base_commit': '62ee32d35d3c5d071aa27b7f82a066cff4801d56', 'attempt_base_commit': '62ee32d35d3c5d071aa27b7f82a066cff4801d56', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '2470b2a5-e96d-e8b5-71b0-0fe3454dc941'
+E       During task with name 'execute_unit' and id 'b99d4e7b-925b-2863-5815-9fa4880bd7f5'
+
+blacksmith/unit_graph.py:96: AttributeError
+_ test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[False] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_mixed_sequent...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10da7fef0>
+resume = False
+
+    @pytest.mark.parametrize("resume", [False, True])
+    def test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh(
+        project, monkeypatch, resume
+    ):
+        root, config, prd, contract = project
+        contract["work_units"] = [
+            {
+                "id": name,
+                "title": name,
+                "layers": ["python"],
+                "target_modules": [name.lower() + ".txt"],
+                "test_contract": "all implemented files start with good",
+                "depends_on": deps,
+            }
+            for name, deps in (("A", []), ("B", ["A"]), ("C", ["A"]), ("D", ["B", "C"]))
+        ]
+        write_prd(prd, contract)
+        command = (
+            'for f in a.txt b.txt c.txt d.txt; do if [ -f "$f" ]; then '
+            'grep -q "^good" "$f" || exit 1; fi; done'
+        )
+        (root / "blacksmith.toml").write_text("test_cmd=" + json.dumps(command) + "\n")
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "mixed gate")
+        config.write_text(config.read_text() + "[limits]\nmax_fix_attempts=0\nmax_review_revisions=1\n")
+        monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "unused-offline")
+        monkeypatch.setattr("blacksmith.run_context.shutil.which", lambda tool: f"/offline/{tool}")
+        calls, entries = [], []
+        implement_counts, review_counts = {}, {}
+    
+        async def collect(self, prompt, options, *, emit_findings=False):
+            assert options.setting_sources == [] and options.strict_mcp_config
+            if prompt.startswith("Produce a concise"):
+                return ExecutorResult("PLAN_SENTINEL", options.model, False, 1, 0.01, {}, "offline")
+            unit = re.search(r"^Unit ([^:]+):", prompt, re.M).group(1)
+            calls.append((unit, "review" if emit_findings else "implement", options.model, prompt))
+            if emit_findings:
+                review_counts[unit] = review_counts.get(unit, 0) + 1
+                findings = (
+                    [{"severity": "blocking", "file": "a.txt", "detail": "FIX_A_REQUEST"}]
+                    if unit == "A" and review_counts[unit] == 1
+                    else []
+                )
+                text = json.dumps(
+                    {"verdict": "clean" if not findings else "blocked", "findings": findings}
+                )
+            else:
+                implement_counts[unit] = implement_counts.get(unit, 0) + 1
+                target = unit.lower() + ".txt"
+                allowed = await options.can_use_tool("Write", {"file_path": target}, None)
+                assert isinstance(allowed, PermissionResultAllow)
+                prefix = "bad" if unit == "A" and implement_counts[unit] == 1 else "good"
+                (Path(options.cwd) / target).write_text(f"{prefix} attempt {implement_counts[unit]}\n")
+                if unit == "A" and implement_counts[unit] == 2:
+                    assert "FAILED THE TEST GATE" in prompt
+                if unit == "A" and implement_counts[unit] == 3:
+                    assert "FIX_A_REQUEST" in prompt
+                text = "implemented"
+            return ExecutorResult(text, options.model, False, 1, 0.01, {}, "offline")
+    
+        monkeypatch.setattr(Executor, "_collect", collect)
+>       actual_implement = graph_module.implement
+                           ^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+
+tests/test_unit_state.py:198: AttributeError
+_ test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[True] _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_mixed_sequent...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10da92ed0>
+resume = True
+
+    @pytest.mark.parametrize("resume", [False, True])
+    def test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh(
+        project, monkeypatch, resume
+    ):
+        root, config, prd, contract = project
+        contract["work_units"] = [
+            {
+                "id": name,
+                "title": name,
+                "layers": ["python"],
+                "target_modules": [name.lower() + ".txt"],
+                "test_contract": "all implemented files start with good",
+                "depends_on": deps,
+            }
+            for name, deps in (("A", []), ("B", ["A"]), ("C", ["A"]), ("D", ["B", "C"]))
+        ]
+        write_prd(prd, contract)
+        command = (
+            'for f in a.txt b.txt c.txt d.txt; do if [ -f "$f" ]; then '
+            'grep -q "^good" "$f" || exit 1; fi; done'
+        )
+        (root / "blacksmith.toml").write_text("test_cmd=" + json.dumps(command) + "\n")
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "mixed gate")
+        config.write_text(config.read_text() + "[limits]\nmax_fix_attempts=0\nmax_review_revisions=1\n")
+        monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "unused-offline")
+        monkeypatch.setattr("blacksmith.run_context.shutil.which", lambda tool: f"/offline/{tool}")
+        calls, entries = [], []
+        implement_counts, review_counts = {}, {}
+    
+        async def collect(self, prompt, options, *, emit_findings=False):
+            assert options.setting_sources == [] and options.strict_mcp_config
+            if prompt.startswith("Produce a concise"):
+                return ExecutorResult("PLAN_SENTINEL", options.model, False, 1, 0.01, {}, "offline")
+            unit = re.search(r"^Unit ([^:]+):", prompt, re.M).group(1)
+            calls.append((unit, "review" if emit_findings else "implement", options.model, prompt))
+            if emit_findings:
+                review_counts[unit] = review_counts.get(unit, 0) + 1
+                findings = (
+                    [{"severity": "blocking", "file": "a.txt", "detail": "FIX_A_REQUEST"}]
+                    if unit == "A" and review_counts[unit] == 1
+                    else []
+                )
+                text = json.dumps(
+                    {"verdict": "clean" if not findings else "blocked", "findings": findings}
+                )
+            else:
+                implement_counts[unit] = implement_counts.get(unit, 0) + 1
+                target = unit.lower() + ".txt"
+                allowed = await options.can_use_tool("Write", {"file_path": target}, None)
+                assert isinstance(allowed, PermissionResultAllow)
+                prefix = "bad" if unit == "A" and implement_counts[unit] == 1 else "good"
+                (Path(options.cwd) / target).write_text(f"{prefix} attempt {implement_counts[unit]}\n")
+                if unit == "A" and implement_counts[unit] == 2:
+                    assert "FAILED THE TEST GATE" in prompt
+                if unit == "A" and implement_counts[unit] == 3:
+                    assert "FIX_A_REQUEST" in prompt
+                text = "implemented"
+            return ExecutorResult(text, options.model, False, 1, 0.01, {}, "offline")
+    
+        monkeypatch.setattr(Executor, "_collect", collect)
+>       actual_implement = graph_module.implement
+                           ^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+
+tests/test_unit_state.py:198: AttributeError
+___ test_real_cli_continuation_keeps_partial_work_and_uses_separate_feedback ___
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_real_cli_cont...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10da92bd0>
+
+    def test_real_cli_continuation_keeps_partial_work_and_uses_separate_feedback(project, monkeypatch):
+        root, config, prd, _ = project
+        (root / "blacksmith.toml").write_text('test_cmd="grep -qx final result.txt"\n')
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "continuation verifier")
+        original_head = git(root, "rev-parse", "HEAD")
+        config.write_text(config.read_text() + "[review]\nenabled=false\n")
+        monkeypatch.setenv("BLACKSMITH_ANTHROPIC_API_KEY", "unused-offline")
+        monkeypatch.setattr("blacksmith.run_context.shutil.which", lambda tool: f"/offline/{tool}")
+        calls = []
+    
+        async def collect(self, prompt, options, *, emit_findings=False):
+            if prompt.startswith("Produce a concise"):
+                return ExecutorResult("PLAN", options.model, False, 1, 0.01, {}, "offline")
+            assert prompt.startswith("Implement this work unit")
+            assert not emit_findings
+            calls.append(prompt)
+            target = Path(options.cwd) / "result.txt"
+            allowed = await options.can_use_tool("Write", {"file_path": str(target)}, None)
+            assert isinstance(allowed, PermissionResultAllow)
+            if len(calls) == 1:
+                target.write_text("partial work")
+                return ExecutorResult(
+                    "turn cap", options.model, True, 40, 0.01, {}, "offline", error_kind="max_turns"
+                )
+            assert target.read_text() == "partial work"
+            assert "CONTINUATION FEEDBACK:" in prompt
+            assert "Retain its saved partial changes" in prompt
+            assert "PLAN" in prompt
+            target.write_text("final\n")
+            return ExecutorResult("done", options.model, False, 1, 0.01, {}, "offline")
+    
+        monkeypatch.setattr(Executor, "_collect", collect)
+    
+        def approve(payload, values):
+            if payload["gate"] == "plan":
+                return True
+            raise KeyboardInterrupt("no publication")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: approve)
+        with pytest.raises(KeyboardInterrupt):
+>           cli.main([str(prd), "--config", str(config), "--thread-id", "continue"])
+
+tests/test_unit_state.py:297: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:1336: in main
+    final = drive(
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'U1', 'unit_base_commit': 'd265b411b7ef9c4d162b0c756e62b55ba8666be1', 'attempt_base_commit': 'd265b411b7ef9c4d162b0c756e62b55ba8666be1', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'f1353996-1123-deae-835c-e49f1dc86afa'
+E       During task with name 'execute_unit' and id 'ef610098-81d2-f137-af17-2e8087e4d7d7'
+
+blacksmith/unit_graph.py:96: AttributeError
+----------------------------- Captured stdout call -----------------------------
+Run 799ee754-a832-4350-9796-c262677d750f: selected committed HEAD d265b411b7ef9c4d162b0c756e62b55ba8666be1
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_real_cli_continuation_kee0/.blacksmith/runs/799ee754-a832-4350-9796-c262677d750f
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: execute_unit
+__________ test_review_clean_first_pass_proceeds_with_one_review_call __________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_review_clean_first_pass_p0')
+
+    def test_review_clean_first_pass_proceeds_with_one_review_call(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[CLEAN_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/1")
+        gate = FakeGate()  # every gate call passes
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            limits=LimitsConfig(), review=ReviewConfig(enabled=True),
+        )
+    
+>       final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="clean")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_review_loop.py:221: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-S', 'unit_base_commit': '796a192aeb66d6698c1ec7c13d912e1a2fbeb9c7', 'attempt_base_commit': '796a192aeb66d6698c1ec7c13d912e1a2fbeb9c7', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'e90b1533-c9d0-aa7a-7022-6c6fd9af50a4'
+E       During task with name 'execute_unit' and id '034841ed-4ee7-8e29-4b40-8c4454a5effe'
+
+blacksmith/unit_graph.py:96: AttributeError
+__________ test_review_blocking_then_clean_revises_once_and_proceeds ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_review_blocking_then_clea0')
+
+    def test_review_blocking_then_clean_revises_once_and_proceeds(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT, CLEAN_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/2")
+        gate = FakeGate()  # both the base gate call and the re-gate pass
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            limits=LimitsConfig(max_review_revisions=1), review=ReviewConfig(enabled=True),
+        )
+    
+>       final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="revise")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_review_loop.py:245: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-S', 'unit_base_commit': '86b86b4b082ed0605828f15ed074c44556abd5da', 'attempt_base_commit': '86b86b4b082ed0605828f15ed074c44556abd5da', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '57ca3368-fe69-0dbd-3a7f-37f1d1a25875'
+E       During task with name 'execute_unit' and id '038f43ec-aff7-4ca7-34d0-a9e472f488a9'
+
+blacksmith/unit_graph.py:96: AttributeError
+___________ test_review_revisions_exhausted_proceeds_without_halting ___________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_review_revisions_exhauste0')
+
+    def test_review_revisions_exhausted_proceeds_without_halting(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/3")
+        gate = FakeGate()
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            # No revisions allowed at all: the first blocking finding is immediately exhausted.
+            limits=LimitsConfig(max_review_revisions=0), review=ReviewConfig(enabled=True),
+        )
+    
+>       final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="exhausted")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_review_loop.py:284: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-S', 'unit_base_commit': '86b86b4b082ed0605828f15ed074c44556abd5da', 'attempt_base_commit': '86b86b4b082ed0605828f15ed074c44556abd5da', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '711e8113-a9b5-974d-3dfc-1325cc43d8cd'
+E       During task with name 'execute_unit' and id 'db65f93c-6951-86ee-8174-93aa7525d310'
+
+blacksmith/unit_graph.py:96: AttributeError
+________________ test_review_disabled_never_enters_review_node _________________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_review_disabled_never_ent0')
+
+    def test_review_disabled_never_enters_review_node(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[])  # never consumed
+        gh = _recording_gh("https://github.com/owner/demo/pull/4")
+        gate = FakeGate()
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            limits=LimitsConfig(), review=ReviewConfig(enabled=False),
+        )
+    
+>       final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="disabled")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_review_loop.py:315: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-S', 'unit_base_commit': '86b86b4b082ed0605828f15ed074c44556abd5da', 'attempt_base_commit': '86b86b4b082ed0605828f15ed074c44556abd5da', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'd4c90a14-2749-9422-bbb1-174790bcbdfa'
+E       During task with name 'execute_unit' and id '75d5f774-fb00-46a8-9356-d7d1396363b2'
+
+blacksmith/unit_graph.py:96: AttributeError
+______________ test_review_never_wired_preserves_prior_behaviour _______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_review_never_wired_preser0')
+
+    def test_review_never_wired_preserves_prior_behaviour(tmp_path):
+        """A graph compiled without a ``review`` config at all (every pre-existing caller)
+        behaves exactly as before: the review node is unreachable regardless of the gate
+        outcome, matching current behaviour prior to this unit."""
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[])
+        gh = _recording_gh("https://github.com/owner/demo/pull/5")
+        gate = FakeGate()
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate)
+    
+>       final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="unwired")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_review_loop.py:336: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/cli.py:439: in drive
+    final = _drive_gates(
+blacksmith/cli.py:329: in _drive_gates
+    result = _step(
+blacksmith/cli.py:247: in _step
+    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'WU-S', 'unit_base_commit': '06b694fc371c56e6e1349f05138f035091b243a9', 'attempt_base_commit': '06b694fc371c56e6e1349f05138f035091b243a9', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '4eb55b7f-4658-dc0e-e075-747378f80a8a'
+E       During task with name 'execute_unit' and id 'a5aa3ed3-4f65-2323-868b-8909aac6dfc9'
+
+blacksmith/unit_graph.py:96: AttributeError
+____________ test_unit_deps_covers_every_injectable_implement_param ____________
+
+    def test_unit_deps_covers_every_injectable_implement_param():
+        """Seam 2 (finding #4): the bundle handed to BOTH implement paths must carry every dep
+        ``implement`` accepts, so a feature can't be live sequentially yet dark on fan-out.
+    
+        Both the sequential ``implement`` node and the fan-out ``build_unit`` worker call
+        ``implement`` via the ONE ``UnitDeps.implement_kwargs()``. So a new keyword-only dep added
+        to ``implement`` MUST also be carried by the bundle — otherwise it is silently dropped on
+        both paths. This pins that invariant against ``implement``'s own signature: forget to thread
+        a new dep through the bundle and this fails, naming the missing param, instead of the feature
+        going dark while every other test stays green (exactly how findings #1/#2 slipped through)."""
+        injectable = {
+            name
+            for name, param in inspect.signature(implement).parameters.items()
+            if param.kind is inspect.Parameter.KEYWORD_ONLY
+        }
+        # A fully-populated bundle; implement_kwargs only emits the sandbox keys when a sandbox is
+        # wired, so a non-None sentinel is enough to exercise the full key set.
+        populated = UnitDeps(
+            executor=object(),
+            gate=object(),
+            fix=object(),
+            index_config=object(),
+            sandbox=object(),
+            sandbox_exec_timeout_s=120,
+        )
+        missing = injectable - set(populated.implement_kwargs())
+>       assert not missing, (
+            f"UnitDeps.implement_kwargs() omits implement()'s injectable param(s) {sorted(missing)}: "
+            "a new dep was added to implement but not threaded through the bundle, so it is DARK on "
+            "both the sequential node and the fan-out worker. Add it to UnitDeps + implement_kwargs()."
+        )
+E       AssertionError: UnitDeps.implement_kwargs() omits implement()'s injectable param(s) ['defer_commit']: a new dep was added to implement but not threaded through the bundle, so it is DARK on both the sequential node and the fan-out worker. Add it to UnitDeps + implement_kwargs().
+E       assert not {'defer_commit'}
+
+tests/test_reviewer_wiring.py:107: AssertionError
+_ test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-sequential] _
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_every_role_gets_exact_pro0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10dab6f00>
+parallel = False, indexed = False
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+            graph.invoke({"prd_path": str(prd_path)}, config)
+            before = graph.get_state(config)
+            assert before.interrupts[0].value["gate"] == "plan"
+>           graph.invoke(Command(resume=True), config)
+
+tests/test_requirements_context.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'U0', 'unit_base_commit': 'f437ccff7c11806bd2b74dd04b4f66edfe9724b1', 'attempt_base_commit': 'f437ccff7c11806bd2b74dd04b4f66edfe9724b1', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id 'd81dc3b6-ba7e-b918-2ede-0e7d3549f44d'
+E       During task with name 'execute_unit' and id 'da2fafc5-92ea-60bf-1479-65a534f2cb2f'
+
+blacksmith/unit_graph.py:96: AttributeError
+_ test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-fanout] _
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_every_role_gets_exact_pro1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d90a7e0>
+parallel = True, indexed = False
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+            graph.invoke({"prd_path": str(prd_path)}, config)
+            before = graph.get_state(config)
+            assert before.interrupts[0].value["gate"] == "plan"
+>           graph.invoke(Command(resume=True), config)
+
+tests/test_requirements_context.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'U0', 'unit_base_commit': 'f437ccff7c11806bd2b74dd04b4f66edfe9724b1', 'attempt_base_commit': 'f437ccff7c11806bd2b74dd04b4f66edfe9724b1', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '27869f61-69dd-b247-9577-88bfd120b37c'
+E       During task with name 'execute_unit' and id '761ffb28-b1d0-04c9-b688-67b966aff48f'
+
+blacksmith/unit_graph.py:96: AttributeError
+_ test_every_role_gets_exact_prose_contract_and_selected_plan[index-sequential] _
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_every_role_gets_exact_pro2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d7ed910>
+parallel = False, indexed = True
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+            graph.invoke({"prd_path": str(prd_path)}, config)
+            before = graph.get_state(config)
+            assert before.interrupts[0].value["gate"] == "plan"
+>           graph.invoke(Command(resume=True), config)
+
+tests/test_requirements_context.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'U0', 'unit_base_commit': '79d19308667fc42356594446ac1ed3137dccd459', 'attempt_base_commit': '79d19308667fc42356594446ac1ed3137dccd459', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '67bdaea8-4829-ac44-4cdc-08a775ffd6a3'
+E       During task with name 'execute_unit' and id 'd55b2a78-f9eb-70d1-5d42-214b8f88b4bb'
+
+blacksmith/unit_graph.py:96: AttributeError
+__ test_every_role_gets_exact_prose_contract_and_selected_plan[index-fanout] ___
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-72/test_every_role_gets_exact_pro3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10da3cce0>
+parallel = True, indexed = True
+
+    @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "fanout"])
+    @pytest.mark.parametrize("indexed", [False, True], ids=["raw-reads", "index"])
+    def test_every_role_gets_exact_prose_contract_and_selected_plan(
+        tmp_path, monkeypatch, parallel, indexed,
+    ):
+        source = tmp_path / "explicit-other-target"
+        source.mkdir()
+        git(source, "init", "-b", "main")
+        git(source, "config", "user.name", "Test")
+        git(source, "config", "user.email", "test@example.invalid")
+        (source / "source-sentinel.txt").write_text("source must stay unchanged")
+        (source / "blacksmith.toml").write_text('test_cmd = "true"\n')
+        git(source, "add", "-A")
+        git(source, "commit", "-m", "initial")
+        base = git(source, "rev-parse", "HEAD")
+        prd_path = prd_file(tmp_path, parallel=parallel)
+        prd = parse_prd(prd_path)
+        executor = RequirementsTransport(monkeypatch)
+        saver = build_checkpointer(tmp_path / "checkpoints.sqlite")
+        try:
+            graph = compile_graph(
+                saver, executor=executor,
+                worktree_manager=CloneManager(source, base_dir=tmp_path / "clones"),
+                gate=run_gate, limits=LimitsConfig(), review=ReviewConfig(),
+                critic=CriticConfig(enabled=True), index=IndexConfig(enabled=indexed),
+                hitl=HitlConfig(),
+            )
+            config = {"configurable": {"thread_id": "requirements"}, "recursion_limit": 200}
+            graph.invoke({"prd_path": str(prd_path)}, config)
+            before = graph.get_state(config)
+            assert before.interrupts[0].value["gate"] == "plan"
+>           graph.invoke(Command(resume=True), config)
+
+tests/test_requirements_context.py:127: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:344: in tick
+    _panic_or_proceed(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:687: in _panic_or_proceed
+    raise exc
+.venv/lib/python3.12/site-packages/langgraph/pregel/_executor.py:80: in done
+    task.result()
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/_base.py:401: in __get_result
+    raise self._exception
+../../.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/concurrent/futures/thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:318: in execute
+    result = unit_graph.invoke(seed, durability="sync")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:3913: in invoke
+    for chunk in self.stream(
+.venv/lib/python3.12/site-packages/langgraph/pregel/main.py:2967: in stream
+    for _ in runner.tick(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_runner.py:207: in tick
+    run_with_retry(
+.venv/lib/python3.12/site-packages/langgraph/pregel/_retry.py:617: in run_with_retry
+    return task.proc.invoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:684: in invoke
+    input = context.run(step.invoke, input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib/python3.12/site-packages/langgraph/_internal/_runnable.py:426: in invoke
+    ret = self.func(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+blacksmith/unit_graph.py:56: in node
+    update = fn(state)
+             ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+state = {'current_unit_id': 'U1', 'unit_base_commit': 'f846b8e6c9c549d2276542a038aecb2be3a042e2', 'attempt_base_commit': 'f846b8e6c9c549d2276542a038aecb2be3a042e2', 'last_passing_commit': None, ...}
+
+    def model(state):
+>       return gm.implement(state, defer_commit=True, **deps.implement_kwargs())
+               ^^^^^^^^^^^^
+E       AttributeError: module 'blacksmith.graph' has no attribute 'implement'
+E       During task with name 'implement' and id '07d7324c-fa3e-649f-8f73-bd9a145e3ef9'
+E       During task with name 'execute_unit' and id 'd93ab28c-0aba-96b0-0c5a-e72fd300efe8'
+
+blacksmith/unit_graph.py:96: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_graph.py::test_graph_compiles - AssertionError: assert {'ap...
+FAILED tests/test_graph.py::test_checkpointer_persists_and_resumes_across_restart
+FAILED tests/test_parallel.py::test_independent_level_builds_in_distinct_clones_to_one_pr
+FAILED tests/test_parallel.py::test_conflicting_level_halts_naming_both_units_and_file
+FAILED tests/test_parallel.py::test_level_gate_failure_halts_with_no_cherry_pick_and_no_pr
+FAILED tests/test_parallel.py::test_dependent_level_builds_from_prior_levels_merged_tip
+FAILED tests/test_parallel.py::test_single_unit_uses_shared_clone_without_fanout
+FAILED tests/test_parallel.py::test_all_size_one_level_chain_stays_on_shared_clone
+FAILED tests/test_parallel.py::test_fanout_build_unit_implement_receives_index_and_sandbox
+FAILED tests/test_parallel.py::test_fanout_units_are_reviewed_and_findings_reach_pr
+FAILED tests/test_parallel.py::test_fanout_node_seam_every_feature_reaches_the_worker
+FAILED tests/test_parallel.py::test_fanout_blocking_review_revises_in_worker_then_lands_clean
+FAILED tests/test_parallel.py::test_fanout_blocking_review_exhausts_revisions_then_surfaces
+FAILED tests/test_unit_state.py::test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[False]
+FAILED tests/test_unit_state.py::test_mixed_sequential_escalated_reviewed_parallel_then_sequential_is_fresh[True]
+FAILED tests/test_unit_state.py::test_real_cli_continuation_keeps_partial_work_and_uses_separate_feedback
+FAILED tests/test_review_loop.py::test_review_clean_first_pass_proceeds_with_one_review_call
+FAILED tests/test_review_loop.py::test_review_blocking_then_clean_revises_once_and_proceeds
+FAILED tests/test_review_loop.py::test_review_revisions_exhausted_proceeds_without_halting
+FAILED tests/test_review_loop.py::test_review_disabled_never_enters_review_node
+FAILED tests/test_review_loop.py::test_review_never_wired_preserves_prior_behaviour
+FAILED tests/test_reviewer_wiring.py::test_unit_deps_covers_every_injectable_implement_param
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-sequential]
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[raw-reads-fanout]
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[index-sequential]
+FAILED tests/test_requirements_context.py::test_every_role_gets_exact_prose_contract_and_selected_plan[index-fanout]
+26 failed, 66 passed in 22.68s

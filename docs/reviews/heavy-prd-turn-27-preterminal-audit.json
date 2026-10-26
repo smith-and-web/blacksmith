@@ -1,0 +1,33 @@
+{
+  "contract_review": "NOT RUN; prepared exact patch is not human review",
+  "current_identity": {
+    "config_matches": true,
+    "distributions_match": true,
+    "extra_matches": true,
+    "implementation_matches": true,
+    "input_matches": true,
+    "python_matches": true,
+    "receipt_environment_matches": true,
+    "source_matches": true,
+    "sqlite_matches": true
+  },
+  "exact_specification_acceptance_rows": 21,
+  "full_command_receipt": "docs/reviews/heavy-prd-turn-26-full-command-01.json",
+  "full_command_receipt_sha256": "4a74bbf8ac010904dc27b970b0a8c3d2ed052121d9636785def76782401c7821",
+  "full_suite_status": "running",
+  "goal_turn": 27,
+  "implementation_revision": "1d68a6492e53898c5011a24b9d14d771bad6275d",
+  "inventory_file": "docs/reviews/heavy-prd-turn-26-final-acceptance-inventory.json",
+  "inventory_sha256_at_audit": "c6586c13d2206913d412043cb52c0ca18906c4976444f5bff29ad49b549f28f7",
+  "local_acceptance": false,
+  "paid_canary": "NOT RUN; prohibited by goal",
+  "real_docker_smoke": "NOT RUN; sandbox remains explicitly disabled",
+  "recorded_at": "2026-10-25T10:58:28.847665-03:00",
+  "requirements": 12,
+  "ruff_log": "docs/reviews/heavy-prd-turn-26-ruff-primary-final-01.log",
+  "ruff_log_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+  "sandbox_and_respond": "Only specification-permitted disabled alternatives accepted; enabled implementations unaccepted",
+  "slices": 19,
+  "source_count": 176,
+  "unique_hashed_production_and_regression_references": 89
+}

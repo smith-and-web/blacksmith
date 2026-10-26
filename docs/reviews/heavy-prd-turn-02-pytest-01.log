@@ -1,0 +1,4 @@
+ImportError while loading conftest '/Users/josh.smith/Code/blacksmith/tests/conftest.py'.
+tests/conftest.py:7: in <module>
+    from claude_agent_sdk._internal.transport.subprocess import SubprocessCLITransport
+E   ModuleNotFoundError: No module named 'claude_agent_sdk._internal.transport.subprocess'

@@ -1,0 +1,4 @@
+brain-lint: 1 notes in /Users/josh.smith/Brain/SecondBrain
+ERROR   Projects/blacksmith.md:91  [possible-secret] possible secret (64-hex secret); remove it and rotate if real
+
+1 error(s), 0 warning(s)

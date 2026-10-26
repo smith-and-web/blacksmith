@@ -1,0 +1,27 @@
+{
+  "missing_claude_regression": "passed with original assertions",
+  "preflight_scope": "26 passed, 1 existing SDK warning in 3.21s",
+  "complete_collection": 1431,
+  "standard_partition": 1422,
+  "scheduling_partition": 9,
+  "overlap": 0,
+  "unassigned": 0,
+  "merge_guard_status_combinations_verified": 16,
+  "production_python_modified": false,
+  "full_revalidation": "new GitHub partition run pending; no new local full suite started",
+  "original_ci": {
+    "run_id": 40385425940,
+    "head": "21806a7dc310860cbee54f17b6bd61217a8bcee5",
+    "test_step_result": "1 failed, 1430 passed, 5 warnings in 3167.14s",
+    "workflow_conclusion": "cancelled",
+    "only_failure": "tests/test_repo_consistency.py::test_main_exits_nonzero_on_mismatch",
+    "diagnostic": "required host tool is unavailable: claude"
+  },
+  "evidence_sha256": {
+    "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/pr117-ci-cancelled.log": "75110bd02f7c61e5a23da4192241ec16e4762f0d9c7cae194b74dfd45c54472b",
+    "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/pr117-ci-mismatch-red.log": "0f2b6fdb21fcd70ba6d2f04a2f419f97f46eaa136693a736077df16e7bb5f13a",
+    "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/pr117-ci-mismatch-green.log": "b263d69c44b612282137de0281bd9556f3ac416582ffd664301063cbd8c10652"
+  },
+  "changed_python_test_sha256": "52e749deef2950dd74689bc529cfb78ed4140d102b4f550244dea2481968cdec",
+  "workflow_sha256": "c39309472b9206871d9e156bb2d1d726808259fe3ba04e7ffc12576ca6b05923"
+}

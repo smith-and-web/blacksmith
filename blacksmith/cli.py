@@ -19,13 +19,15 @@ import os
 import sqlite3
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 
 from langgraph.types import Command
 
 from blacksmith import __version__
+from blacksmith.commands import CommandError, command_scope
 from blacksmith.config import CONFIG_FILENAME, BlacksmithConfig, ConfigError, find_config
-from blacksmith.contract import ContractError, PRDContract, parse_prd
+from blacksmith.contract import ContractError, PRDContract, parse_prd, validate_execution_contract
 from blacksmith.costs import run_costs
 from blacksmith.dashboard import serve as serve_dashboard
 from blacksmith.events import (
@@ -39,14 +41,23 @@ from blacksmith.events import (
     unit_result_payloads,
 )
 from blacksmith.executor import Executor
-from blacksmith.gate import run_fix, run_gate
+from blacksmith.gate import GateError, run_fix, run_gate
 from blacksmith.graph import build_checkpointer, compile_graph
 from blacksmith.issue import IssueError, scaffold_from_issue
 from blacksmith.memory import build_store
 from blacksmith.metrics import build_metrics_store, get_run, list_runs, record_run
 from blacksmith.nodes.pr import Runner, subprocess_runner
+from blacksmith.receipts import ReceiptError
 from blacksmith.render import Renderer
-from blacksmith.respond import RespondError, RespondResult, respond_to_pr
+from blacksmith.respond import RESPOND_UNSUPPORTED, RespondResult
+from blacksmith.run_context import (
+    STATE_VERSION,
+    RunContext,
+    RunContextError,
+    context_from_state,
+    create_run_context,
+    thread_lock,
+)
 from blacksmith.sandbox import SandboxConfig as SandboxSettings
 from blacksmith.sandbox import SandboxManager
 from blacksmith.state import Status
@@ -74,13 +85,14 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
     the self-targeting hazard). A push from the clone still targets the real GitHub remote,
     so opening a PR works exactly as before from the caller's perspective.
     """
+    config.require_supported_execution()
     return compile_graph(
         checkpointer,
         executor=Executor(config),
         worktree_manager=CloneManager(config.resolve_repo_path()),
         gate=run_gate,
         fix=run_fix,
-        store=build_store(config.store.db_path),
+        store=_optional_store(config),
         limits=config.limits,
         # Wire the post-gate adversarial review loop (WU-REVIEW-LOOP) into production. Without
         # this the review node is never seeded/entered — the whole reviewer feature stays dark
@@ -91,11 +103,8 @@ def build_graph_for(config: BlacksmithConfig, checkpointer):
         # on real runs regardless of [index].enabled. IndexConfig.enabled (default False) is the
         # on/off switch.
         index=config.index,
-        # Wire the sandbox self-verify container (WU-SANDBOX-*) into production. build_graph_for is
-        # the ONLY place a live SandboxManager is constructed — bridge blacksmith's own
-        # [sandbox] config into the manager's own SandboxConfig (the two were built separately and
-        # never connected, so the feature was dark on real runs). SandboxConfig.enabled (default
-        # False) is the on/off switch; the manager is inert until prepare_worktree starts it.
+        # S17 keeps the default disabled dependency inert. Enabled runtime and
+        # saved configurations refuse before construction/spend; no tool is granted.
         sandbox=SandboxManager(
             config=SandboxSettings(
                 enabled=config.sandbox.enabled,
@@ -190,15 +199,28 @@ def check_repo_consistency(worktree_manager: WorktreeManager, expected_repo: str
     return actual
 
 
-# The sequential implement->gate loop spends ~3 LangGraph super-steps per unit, so the
-# default recursion_limit of 25 caps a run at roughly 7-8 units before LangGraph raises
-# GraphRecursionError. 150 sits comfortably above ~3 super-steps/unit (~50 units of
-# headroom), letting large multi-unit DAGs run to completion. This only raises the
-# ceiling — it never changes which nodes run or in what order.
-RECURSION_LIMIT = 150
-
-
 def _step(graph, payload, config, *, on_node, on_event=None):
+    from blacksmith.run_clock import cancellation_signals, execution_scope
+    values = payload if isinstance(payload, dict) and payload.get("run_context") else (
+        graph.get_state(config).values)
+    context = context_from_state(values) if values.get("run_context") else None
+    if context is not None:
+        context.execution_config().require_supported_execution()
+        from blacksmith.receipts import validate_model_terminal_policy
+        validate_model_terminal_policy(context.journal())
+    from blacksmith.scheduling import invocation_config, node_execution
+    inputs = values or (payload if isinstance(payload, dict) else {})
+    defaults = (getattr(graph, "config", None) or {}).get("configurable", {})
+    config = {**config, **invocation_config(
+        inputs, fallback_limits=defaults.get("blacksmith_limits"))}
+    from blacksmith.observability import observation_scope
+    with observation_scope(inputs, config):
+        with execution_scope(context) as clock, cancellation_signals(clock):
+            with node_execution(config) as owned:
+                return _execute_step(graph, payload, owned, on_node=on_node, on_event=on_event)
+
+
+def _execute_step(graph, payload, config, *, on_node, on_event=None):
     """Run the graph until it next halts (an interrupt or END), streaming progress.
 
     Streams ``stream_mode=["updates", "debug", "custom"]``. The ``debug`` stream emits a
@@ -210,37 +232,52 @@ def _step(graph, payload, config, *, on_node, on_event=None):
     driver depends on. This only observes the graph — it drives the same nodes in the same
     order as ``invoke``.
 
-    The ``custom`` stream (WU-LIVE-INTRA-NODE) carries whatever a node's executor call
-    wrote via ``get_stream_writer()`` from INSIDE its (possibly long) call — per-turn /
-    tool_use activity, and each review finding as it is produced — so the live view shows
-    progress WITHIN a node, not only at its boundaries. Each chunk is tagged with the
-    currently-running node (tracked from the same ``debug`` "task" events used for
-    ``on_node``) and forwarded to ``on_event`` under its own ``kind`` (the emitter sets
-    ``"kind": "node_activity"``; default to that if a chunk omits it). This is a pure
-    ADDITIVE OBSERVATION channel — a node with no stream writer bound (or with the sink
-    disabled/failing) emits nothing here and the graph's control flow is entirely unaffected.
+    Custom activity carries actual task/unit/attempt identity from its producing child
+    task and immutable model-call context. Only known, validated event shapes reach
+    the sink. Finding previews require a complete validated verdict and successful
+    terminal result; full review receipts remain authoritative. Presentation is bounded.
 
     ``on_event(kind, payload)``, when given, additionally receives ``node_start`` /
     ``node_end`` events for the additive live sink (WU-RUN-EVENTS): ``node_end`` carries
     the node's wall-clock ``duration``. It is a pure OBSERVATION hook — it never alters
-    which nodes run or in what order, and the emitter itself is best-effort (a failed
-    live-sink write is swallowed at the call site, exactly like the metrics sink).
+    which nodes run or in what order. Optional sink/display errors produce a bounded
+    class-only diagnostic and execution continues; critical receipt failures still halt.
 
-    The graph-invocation ``config`` is augmented with ``RECURSION_LIMIT`` so large
-    multi-unit DAGs don't trip LangGraph's default-25 super-step ceiling.
+    The caller derives finite recursion/concurrency bounds from immutable run
+    inputs on every invocation, including recovery and approval resumes.
     """
-    config = {**config, "recursion_limit": RECURSION_LIMIT}
     interrupt = None
-    starts: dict[str, float] = {}
-    current_node: str | None = None
-    for mode, chunk in graph.stream(payload, config, stream_mode=["updates", "debug", "custom"]):
+    from blacksmith.observability import activity_preview, runtime_identity, warning_once
+    starts = {}
+    warn = warning_once("live events")
+    progress_warning = warning_once("progress display")
+
+    def progress(name):
+        if on_node is not None:
+            try:
+                on_node(name)
+            except Exception as exc:
+                progress_warning(exc)
+
+    def emit(kind, data):
+        if on_event is not None:
+            try:
+                on_event(kind, data)
+            except Exception as exc:
+                warn(exc)
+    for mode, chunk in graph.stream(
+        payload, config, stream_mode=["updates", "debug", "custom"], durability="sync",
+    ):
         if mode == "custom":
-            if on_event is not None and isinstance(chunk, dict):
-                kind = chunk.get("kind") or "node_activity"
-                activity = {k: v for k, v in chunk.items() if k != "kind"}
-                if current_node is not None:
-                    activity.setdefault("node", current_node)
-                on_event(kind, activity)
+            try:
+                if not isinstance(chunk, dict):
+                    raise ValueError("invalid custom observation")
+                kind, activity = activity_preview(chunk)
+                if kind == "unit_stage" and on_node:
+                    progress(activity["phase"])
+                emit(kind, activity)
+            except Exception as exc:
+                warn(exc)
             continue
         if mode == "debug":
             if not isinstance(chunk, dict):
@@ -250,18 +287,18 @@ def _step(graph, payload, config, *, on_node, on_event=None):
             name = cpayload.get("name")
             if ctype == "task" and name:
                 task_id = cpayload.get("id")
+                identity = runtime_identity(cpayload.get("input"), task_id=task_id, node=name)
                 if task_id is not None:
-                    starts[task_id] = time.monotonic()
-                current_node = name
+                    starts[task_id] = (time.monotonic(), identity)
                 if on_node is not None:
-                    on_node(name)
-                if on_event is not None:
-                    on_event(NODE_START, {"node": name})
+                    progress(name)
+                emit(NODE_START, identity)
             elif ctype == "task_result" and name:
-                if on_event is not None:
-                    started = starts.pop(cpayload.get("id"), None)
-                    duration = None if started is None else time.monotonic() - started
-                    on_event(NODE_END, {"node": name, "duration": duration})
+                saved = starts.pop(cpayload.get("id"), None)
+                identity = (saved[1] if saved else runtime_identity(
+                    task_id=cpayload.get("id"), node=name))
+                duration = None if saved is None else time.monotonic() - saved[0]
+                emit(NODE_END, {**identity, "duration": duration})
             continue
         # mode == "updates": the only source of the gate's __interrupt__ payload.
         if not isinstance(chunk, dict):
@@ -308,10 +345,27 @@ def _drive_gates(graph, config, *, approver, on_node, result=None, on_wait=None,
         if not snapshot.next:  # reached END
             return snapshot
         payload = _gate_payload(result, snapshot)
-        wait_start = time.monotonic()
-        approved = approver(payload, snapshot.values)
-        if on_wait is not None:
-            on_wait(time.monotonic() - wait_start)
+        if not payload:
+            result = _step(graph, None, config, on_node=on_node, on_event=on_event)
+            continue
+        recorded = None
+        if payload.get("gate") == "pr" and snapshot.values.get("run_context"):
+            from blacksmith.publication_approval import ApprovalError, cached_decision
+            prepared = snapshot.values.get("pr_approval_proposal")
+            if prepared:
+                try:
+                    recorded = cached_decision(snapshot.values, prepared)
+                except ApprovalError:
+                    # An incomplete decision is a policy hold, not evidence of a
+                    # human approval. The node retains it and requests a new round.
+                    recorded = {"approved": False}
+        if recorded is None:
+            wait_start = time.monotonic()
+            approved = approver(payload, snapshot.values)
+            if on_wait is not None:
+                on_wait(time.monotonic() - wait_start)
+        else:
+            approved = recorded["approved"]  # Node revalidates the exact original candidate.
         result = _step(
             graph, Command(resume=approved), config, on_node=on_node, on_event=on_event
         )
@@ -342,8 +396,10 @@ def _isolate_fresh_run(graph, config, thread_id: str) -> None:
             f"would clobber it. Continue it with `blacksmith resume --thread-id "
             f"{thread_id}`, or start the fresh run on a different --thread-id."
         )
-    # The prior run reached a terminal state: drop its checkpoint so this run starts clean.
-    graph.checkpointer.delete_thread(thread_id)
+    raise FreshRunError(
+        f"thread-id {thread_id!r} has a retained run; use a fresh --thread-id or inspect/continue "
+        f"it with `blacksmith resume --thread-id {thread_id}`. No checkpoint was deleted."
+    )
 
 
 def _safe_event_emitter(sink: LiveSink, thread_id: str):
@@ -354,11 +410,14 @@ def _safe_event_emitter(sink: LiveSink, thread_id: str):
     metrics sink. The live channel is purely additive OBSERVATION.
     """
 
+    from blacksmith.observability import warning_once
+    warn = warning_once("live events")
+
     def emit(kind: str, payload: dict) -> None:
         try:
             sink.emit(thread_id, kind, payload)
-        except Exception:
-            pass
+        except Exception as exc:
+            warn(exc)
 
     return emit
 
@@ -367,16 +426,27 @@ def _live_emitter(config: BlacksmithConfig, thread_id: str):
     """Build the best-effort live run-event emitter for ``thread_id``, or ``None``.
 
     Returns ``None`` when the sink is disabled (``[live] enabled=false``) or cannot be
-    opened, so the drive loop emits nothing and the run behaves exactly as today. Opening
-    the sink is itself swallowed (a bad ``db_path`` yields ``None``, never a raised error).
+    opened. Open/write failures produce a bounded class-only diagnostic; the
+    observation channel never substitutes for critical run evidence.
     """
     if not config.live.enabled:
         return None
     try:
         conn = build_live_store(config.live.db_path)
-    except Exception:
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("live store", exc)
         return None
     return _safe_event_emitter(LiveSink(conn), thread_id)
+
+
+def _optional_store(config):
+    from blacksmith.observability import warn_optional
+    try:
+        return build_store(config.store.db_path)
+    except Exception as exc:
+        warn_optional("memory store", exc)
+        return None
 
 
 def _emit_run_summary(on_event, values) -> None:
@@ -388,14 +458,19 @@ def _emit_run_summary(on_event, values) -> None:
     """
     if on_event is None:
         return
-    for payload in unit_result_payloads(values):
-        on_event(UNIT_RESULT, payload)
-    on_event(RUN_STATUS, run_status_payload(values))
+    from blacksmith.observability import warning_once
+    warn = warning_once("live events")
+    for kind, payload in [*((UNIT_RESULT, p) for p in unit_result_payloads(values)),
+                          (RUN_STATUS, run_status_payload(values))]:
+        try:
+            on_event(kind, payload)
+        except Exception as exc:
+            warn(exc)
 
 
 def drive(
     graph, prd_path, *, approver, thread_id: str = "run", on_node=None, issue_number=None,
-    on_wait=None, on_event=None,
+    on_wait=None, on_event=None, run_context: RunContext | None = None,
 ):
     """Run one work unit, pausing at each approval gate to consult ``approver``.
 
@@ -413,6 +488,10 @@ def drive(
     config = {"configurable": {"thread_id": thread_id}}
     _isolate_fresh_run(graph, config, thread_id)
     payload = {"prd_path": str(prd_path)}
+    if run_context is not None:
+        if run_context.thread_id != thread_id:
+            raise FreshRunError("run context thread ID differs from invocation")
+        payload.update(run_context.initial_state())
     if issue_number is not None:
         payload["issue_number"] = issue_number
     result = _step(graph, payload, config, on_node=on_node, on_event=on_event)
@@ -440,6 +519,8 @@ def resume(graph, thread_id: str, *, approver, on_node=None, on_wait=None, on_ev
             f"no checkpoint found for thread-id {thread_id!r}; nothing to resume "
             "(start a run with `blacksmith <prd>` first)"
         )
+    if snapshot.values.get("state_version") != STATE_VERSION:
+        raise ResumeError("legacy_checkpoint_requires_manual_recovery")
     final = _drive_gates(
         graph, config, approver=approver, on_node=on_node, on_wait=on_wait,
         on_event=on_event,
@@ -573,6 +654,9 @@ def _total_cost_line(values) -> str:
     that returned no cost) is excluded from the sum rather than crashing it. If nothing
     reported a cost, the spend is unknown — say so plainly.
     """
+    if values.get("run_context"):
+        from blacksmith.accounting import cost_line, snapshot
+        return cost_line(snapshot(context_from_state(values)))
     known = [c for c in _cost_usds(values) if c is not None]
     if not known:
         return "total cost: cost unavailable"
@@ -613,13 +697,22 @@ def _report(snapshot, renderer: Renderer | None = None) -> None:
     """
     renderer = renderer if renderer is not None else Renderer()
     values = snapshot.values
+    extra = {"pending_qa": values["pending_qa_unit"]} if values.get("pending_qa_unit") else {}
+    if values.get("run_context"):
+        from blacksmith.accounting import clock_line, snapshot
+        extra["clock_line"] = clock_line(snapshot(context_from_state(values)))
     renderer.report(
         status=values.get("status"),
         pr_url=values.get("pr_url"),
         errors=values.get("errors", []),
         cost_line=_total_cost_line(values),
         token_line=_token_line(values),
+        **extra,
     )
+
+
+def _run_exit_code(status):
+    return 0 if status == Status.DONE else 2 if status == Status.AWAITING_QA else 1
 
 
 def _record_metrics(
@@ -654,8 +747,9 @@ def _record_metrics(
             )
         finally:
             store.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("metrics", exc)
 
 
 _NO_RUNS_MESSAGE = "no runs recorded yet"
@@ -862,13 +956,18 @@ def _validate(argv: list[str] | None = None) -> int:
 
     try:
         prd = parse_prd(args.prd_path)
-    except ContractError as exc:
+        from blacksmith.path_policy import compile_path_rules
+        validate_execution_contract(prd.contract)
+        hard_rules = compile_path_rules(prd.contract.untouchables)
+    except (ContractError, ValueError) as exc:
         print(f"validate: {exc}", file=sys.stderr)
         return 1
 
     contract = prd.contract
     count = len(contract.work_units)
     print(f"OK: {contract.component} — {count} work unit(s) — contract valid")
+    print("Hard path rules: " + ", ".join(hard_rules))
+    print("Always protected: Git metadata, MCP/settings, runtime config, blacksmith.toml")
     return 0
 
 
@@ -883,6 +982,23 @@ def _resume(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="blacksmith resume",
         description="Continue an interrupted run from its SQLite checkpoint (by thread-id).",
+    )
+    recovery_modes = parser.add_mutually_exclusive_group()
+    recovery_modes.add_argument(
+        "--retry-stage",
+        action="store_true",
+        help="Explicitly retry the recorded failed deterministic stage.",
+    )
+    recovery_modes.add_argument(
+        "--continue-attempt",
+        action="store_true",
+        help="Acknowledge an interrupted model and use remaining continuation allowance.",
+    )
+    parser.add_argument("--unit-id", help="Recover only this recorded failed unit.")
+    parser.add_argument(
+        "--add-budget-usd",
+        type=float,
+        help="Record a positive finite addition to the saved run budget.",
     )
     parser.add_argument(
         "--thread-id", required=True, help="Thread id of the run to resume."
@@ -922,43 +1038,203 @@ def _resume(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    load_dotenv(Path.cwd() / ".env")
-    config = _load_config(args.config)
-    checkpointer = build_checkpointer(config.checkpointer.db_path)
-    graph = build_graph_for(config, checkpointer)
-    renderer = _build_renderer(args)
-
-    approval_wait = 0.0
-
-    def _track_wait(seconds: float) -> None:
-        nonlocal approval_wait
-        approval_wait += seconds
-
-    started_at = time.time()
     try:
-        final = resume(
-            graph,
-            args.thread_id,
-            approver=_resolve_approver(args, renderer),
-            on_node=_progress_emitter(args.quiet, renderer),
-            on_wait=_track_wait,
-            on_event=_live_emitter(config, args.thread_id),
-        )
-    except ResumeError as exc:
+        load_dotenv(Path.cwd() / ".env")
+        selected = _load_config(args.config)
+        with ExitStack() as stack:
+            stack.enter_context(thread_lock(selected, args.thread_id))
+            checkpointer = build_checkpointer(selected.checkpointer.db_path)
+            stack.callback(checkpointer.conn.close)
+            saved = checkpointer.get_tuple({"configurable": {"thread_id": args.thread_id}})
+            if saved is None:
+                raise ResumeError(f"no checkpoint found for thread-id {args.thread_id!r}")
+            values = saved.checkpoint["channel_values"]
+            context = context_from_state(values)
+            stack.enter_context(context.lock())
+            # Policy/inputs are read-only checks. Refuse legacy metadata before
+            # native observations can append command or active-clock receipts.
+            context.verify_inputs()
+            context.execution_config().require_supported_execution()
+            from blacksmith.receipts import validate_model_terminal_policy
+            validate_model_terminal_policy(context.journal())
+            from blacksmith.budget import BudgetLedger
+            from blacksmith.run_clock import used
+            BudgetLedger(context).balance()
+            used(context)
+            from blacksmith.scheduling import validate_schedule
+            validate_schedule(values)
+            stack.enter_context(command_scope(context, stage="cli"))
+            context.verify(
+                selected_repo=selected.resolve_repo_path(),
+                require_workspace=bool(values.get("worktree_path")),
+            )
+            if values.get("worktree_path") and values.get("unit_graph_version") != 1:
+                raise ResumeError(
+                    "legacy_unit_graph_requires_manual_recovery: execution topology changed; "
+                    "run/checkpoints/artifacts retained for inspection"
+                )
+            if values.get("worktree_path") and values.get("join_graph_version") != 1:
+                raise ResumeError(
+                    "legacy_join_graph_requires_manual_recovery: join/final gate topology changed; "
+                    "run/checkpoints/artifacts/budgets retained"
+                )
+            if values.get("worktree_path") and values.get("review_version") != 1:
+                raise ResumeError(
+                    "legacy_review_requires_manual_recovery: cumulative patch/review receipts "
+                    "absent; checkpoints/artifacts/budgets retained"
+                )
+            if values.get("worktree_path") and values.get("approval_version") != 1:
+                raise ResumeError(
+                    "legacy_approval_requires_manual_recovery: exact-candidate approval "
+                    "metadata absent; checkpoints/artifacts/budgets retained"
+                )
+            from blacksmith.plan_artifacts import validate_plans, verify_approved_plan
+            if values.get("planning_version") == 1:
+                validate_plans(values, complete=bool(values.get("approvals", {}).get("plan")))
+                if values.get("approvals", {}).get("plan"):
+                    verify_approved_plan(values, values.get("selected_unit"))
+            elif values.get("plans") or values.get("worktree_path"):
+                raise ResumeError(
+                    "legacy_planning_requires_manual_recovery: approved plan hashes absent; "
+                    "checkpoints/artifacts/budgets retained"
+                )
+            from blacksmith.recovery import protect_run
+            from blacksmith.recovery import validate as validate_recovery
+            if values.get("recovery_version") != 1:
+                raise ResumeError("legacy_recovery_requires_manual_recovery: no artifact index")
+            validate_recovery(context)
+            from blacksmith.review_receipts import validate_state as validate_reviews
+            validate_reviews(values)
+            from blacksmith.publication_approval import validate_state as validate_approval
+            validate_approval(values)
+            from blacksmith.publication import validate_state as validate_publication
+            validate_publication(values)
+            stack.enter_context(protect_run(context, checkpointer))
+            from blacksmith.recovery_control import prepare as prepare_recovery
+
+            amendment = prepare_recovery(
+                context,
+                checkpointer,
+                saved,
+                retry_stage=args.retry_stage,
+                continue_attempt=args.continue_attempt,
+                unit_id=args.unit_id,
+                add_budget_usd=args.add_budget_usd,
+            )
+            # Saved models, limits and target survive local config changes.
+            config = context.execution_config()
+            graph = build_graph_for(config, checkpointer)
+            if amendment is not None:
+                graph.update_state(
+                    {"configurable": {"thread_id": args.thread_id}},
+                    amendment,
+                    as_node="recovery_prepare",
+                )
+            renderer = _build_renderer(args)
+            approval_wait = 0.0
+
+            def _track_wait(seconds: float) -> None:
+                nonlocal approval_wait
+                approval_wait += seconds
+
+            print(f"Resuming run {context.run_id}, base {context.base_commit}, saved configuration")
+            started_at = time.time()
+            final = resume(
+                graph, args.thread_id, approver=_resolve_approver(args, renderer),
+                on_node=_progress_emitter(args.quiet, renderer), on_wait=_track_wait,
+                on_event=_live_emitter(config, args.thread_id),
+            )
+            ended_at = time.time()
+            _report(final, renderer)
+            _record_metrics(
+                config, final, thread_id=args.thread_id,
+                prd_path=final.values.get("prd_path") or "", started_at=started_at,
+                ended_at=ended_at, approval_wait_s=approval_wait,
+            )
+            return _run_exit_code(final.values.get("status"))
+    except (ResumeError, RunContextError, ConfigError, ContractError, CommandError,
+            GateError, ReceiptError, OSError) as exc:
         print(f"resume: {exc}", file=sys.stderr)
         return 1
-    ended_at = time.time()
-    _report(final, renderer)
-    _record_metrics(
-        config,
-        final,
-        thread_id=args.thread_id,
-        prd_path=final.values.get("prd_path") or "",
-        started_at=started_at,
-        ended_at=ended_at,
-        approval_wait_s=approval_wait,
-    )
-    return 0 if final.values.get("status") == Status.DONE else 1
+
+
+def _recovery(argv=None):
+    """Read-only inspection uses SQLite's read-only connection and never builds an executor."""
+    from urllib.parse import quote
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    from blacksmith.graph import blacksmith_serde
+    from blacksmith.recovery import _read, diagnose
+    from blacksmith.recovery_repair import repair
+
+    parser = argparse.ArgumentParser(prog="blacksmith recovery")
+    parser.add_argument("action", choices=["inspect", "repair"])
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--thread-id")
+    selection.add_argument("--run-dir", type=Path)
+    parser.add_argument("--operation-id")
+    parser.add_argument("--config", default=None)
+    args = parser.parse_args(argv)
+    if args.action == "repair" and not args.operation_id:
+        parser.error("repair requires --operation-id from recovery inspect")
+    try:
+        if args.run_dir:
+            directory = args.run_dir.expanduser().absolute()
+            if directory.resolve() != directory or directory.is_symlink():
+                raise ResumeError("foreign recovery run directory")
+            try:
+                context = RunContext.model_validate(_read(directory / "manifest.json")["context"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ResumeError("missing/corrupt retained run context") from exc
+            if context.directory != directory:
+                raise ResumeError("manifest belongs to a different run directory")
+        else:
+            config = _load_config(args.config)
+            path = config.checkpointer.db_path
+            connection = sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True,
+                                         check_same_thread=False)
+            try:
+                saver = SqliteSaver(connection, serde=blacksmith_serde())
+                saved = saver.get_tuple({"configurable": {"thread_id": args.thread_id}})
+                if saved is None:
+                    raise ResumeError("no checkpoint; inspect retained --run-dir instead")
+                values = saved.checkpoint["channel_values"]
+                legacy_state = values.get("state_version") != STATE_VERSION
+                legacy_recovery = values.get("recovery_version") != 1
+                if legacy_state or legacy_recovery:
+                    if args.action != "inspect":
+                        raise ResumeError("legacy_checkpoint_requires_manual_recovery")
+                    print(json.dumps({"thread_id": args.thread_id, "legacy": True,
+                        "status": values.get("status"), "executable": False,
+                        "diagnostic": ("legacy_checkpoint_requires_manual_recovery" if legacy_state
+                                       else "legacy_recovery_requires_manual_recovery"),
+                        "worktree_path": values.get("worktree_path")}))
+                    return 0
+                context = context_from_state(values)
+            finally:
+                connection.close()
+        context.verify_inputs()
+        context.journal().verify()
+        if args.action == "repair":
+            selected = _load_config(args.config) if args.config else context.execution_config()
+            if selected.resolve_repo_path() != Path(context.repo_path):
+                raise ResumeError("selected repository differs from recorded run")
+            with thread_lock(selected, context.thread_id), context.lock(), command_scope(context):
+                from blacksmith.run_context import git_read, origin_identity
+                origin = git_read(Path(context.repo_path), "remote", "get-url", "origin").strip()
+                if origin_identity(origin) != context.origin:
+                    raise ResumeError("source origin differs from recorded run")
+                repaired = repair(context, args.operation_id)
+                result = {**diagnose(context), "repair": repaired}
+        else:
+            result = diagnose(context)
+        print(json.dumps(result, indent=2))
+        return 0 if result["valid"] else 1
+    except (ReceiptError, ResumeError, RunContextError, ConfigError, OSError, sqlite3.Error) as exc:
+        print(f"recovery: {exc}; original evidence retained; no executor constructed",
+              file=sys.stderr)
+        return 1
 
 
 def _pr_branch(pr_number: int, *, repo: str | None, runner: Runner, cwd: Path | None) -> str:
@@ -1031,63 +1307,16 @@ def run_respond(
     contract: PRDContract | None = None,
     out=print,
 ) -> int:
-    """Drive ``blacksmith respond`` for an already-resolved PR: look up its branch, run
-    the revise flow (WU-RESPOND-FLOW), and render the outcome.
-
-    This is a NEW, additive entry point — it never runs the normal ingest→plan→
-    implement→gate→PR graph and ``respond_to_pr`` never opens a new PR (it only ever
-    appends a commit to the PR's existing branch on a passing revision). Returns 0 when
-    there was nothing to do or the revision was pushed; 1 when the revision never passed
-    the gate, or the PR's branch could not be resolved.
-
-    ``contract``, when given (WU-RESPOND-PRD-CONTRACT), is forwarded to
-    ``respond_to_pr`` so the revision's implementer system-prompt constitution carries
-    the PRD's real untouchables instead of the ``_default_contract`` placeholder. Left
-    as ``None`` (the default), ``respond_to_pr`` behaves byte-for-byte as before.
-    """
-    repo_path = Path(repo_path)
-    try:
-        branch = _pr_branch(pr_number, repo=repo, runner=pr_runner, cwd=repo_path)
-    except RespondCLIError as exc:
-        out(f"respond: {exc}")
-        return 1
-
-    try:
-        result = respond_to_pr(
-            pr_number=pr_number,
-            branch=branch,
-            repo_path=repo_path,
-            config=config,
-            executor=executor,
-            gate=gate,
-            fix=fix,
-            clone_manager=clone_manager,
-            pr_runner=pr_runner,
-            repo=repo,
-            contract=contract,
-        )
-    except RespondError as exc:
-        # A push failure on a PASSING revision surfaces as the same clean "respond: ..."
-        # message as the branch-lookup failure above, not a raw traceback (reviewer nit).
-        out(f"respond: {exc}")
-        return 1
-    _render_respond_result(result, out=out)
-    return 0 if result.reason in ("pushed", "no_comments") else 1
+    """Return the explicit unsupported result before branch/model/native access."""
+    out(f"respond: {RESPOND_UNSUPPORTED}")
+    return 1
 
 
 def _respond(argv: list[str] | None = None) -> int:
-    """``blacksmith respond --pr N``: revise an already-open PR from its review comments.
-
-    ADDITIVE entry point (WU-RESPOND-CLI): loads config + .env, fetches the PR's review
-    comments (WU-PR-COMMENTS), and runs the revise flow (WU-RESPOND-FLOW) against that
-    PR's own branch. It never runs the normal ingest→plan→implement→gate→PR graph and
-    never opens a new PR — only ever appends a commit to the PR's existing branch, and
-    only once the revision passes the authoritative test gate.
-    """
+    """Keep respond/help available with an explicit unsupported execution result."""
     parser = argparse.ArgumentParser(
         prog="blacksmith respond",
-        description="Revise an already-open PR from its human review comments "
-        "(never runs the normal PRD graph; never opens a new PR).",
+        description="Currently unsupported until integrity and recovery are hardened.",
     )
     parser.add_argument(
         "--pr", type=int, required=True, dest="pr_number", metavar="N",
@@ -1099,37 +1328,16 @@ def _respond(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--prd", default=None, dest="prd_path", metavar="PATH",
-        help="Optional contract-conforming PRD markdown file. When given, its contract's "
-        "real untouchables are threaded into the revision's implementer system-prompt "
-        "constitution in place of the placeholder default.",
+        help="Reserved PRD path for the deferred revision workflow.",
     )
     parser.add_argument(
         "--config",
         default=None,
         help="blacksmith config path (default: discovered by walking up to the git root).",
     )
-    args = parser.parse_args(argv)
-
-    load_dotenv(Path.cwd() / ".env")
-    config = _load_config(args.config)
-    repo_path = config.resolve_repo_path()
-
-    contract = None
-    if args.prd_path is not None:
-        try:
-            contract = parse_prd(args.prd_path).contract
-        except ContractError as exc:
-            print(f"respond: {exc}")
-            return 1
-
-    return run_respond(
-        args.pr_number,
-        config=config,
-        repo_path=repo_path,
-        executor=Executor(config),
-        repo=args.repo,
-        contract=contract,
-    )
+    parser.parse_args(argv)
+    print(f"respond: {RESPOND_UNSUPPORTED}", file=sys.stderr)
+    return 1
 
 
 def _costs(argv: list[str] | None = None) -> int:
@@ -1201,6 +1409,8 @@ def main(argv: list[str] | None = None) -> int:
         return _validate(argv[1:])
     if argv and argv[0] == "resume":
         return _resume(argv[1:])
+    if argv and argv[0] == "recovery":
+        return _recovery(argv[1:])
     if argv and argv[0] == "respond":
         return _respond(argv[1:])
     if argv and argv[0] == "costs":
@@ -1235,6 +1445,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--thread-id", default="run", help="Checkpointer thread id for this run.")
     parser.add_argument(
+        "--unlimited-cost", action="store_true",
+        help="Explicitly remove the run cost cap; per-call budget and time bounds still apply.",
+    )
+    parser.add_argument(
         "--auto-approve",
         action="store_true",
         help="Approve every gate non-interactively (headless/CI).",
@@ -1267,66 +1481,58 @@ def main(argv: list[str] | None = None) -> int:
     if args.prd_path is None and args.issue is None:
         parser.error("a PRD path is required (or pass --issue N to scaffold one)")
 
-    load_dotenv(Path.cwd() / ".env")
-    config = _load_config(args.config)
-
-    if args.prd_path is None:
-        return _scaffold_issue(args.issue, config)
-
-    # Preflight (runs before any worktree creation or model spend): a conforming PRD must
-    # target the repo blacksmith is pointed at. A non-conforming PRD is left for the graph's
-    # ingest node to reject with its field-level error (unchanged behaviour).
     try:
-        prd = parse_prd(args.prd_path)
-    except ContractError:
-        prd = None
-    if prd is not None:
-        try:
-            check_repo_consistency(
-                WorktreeManager(config.resolve_repo_path()),
-                prd.contract.primary_target_repo,
+        load_dotenv(Path.cwd() / ".env")
+        config = _load_config(args.config)
+        if args.unlimited_cost:
+            config = config.model_copy(update={"limits": config.limits.model_copy(
+                update={"max_run_cost_usd": None})})
+        if args.prd_path is None:
+            return _scaffold_issue(args.issue, config)
+        with ExitStack() as stack:
+            stack.enter_context(thread_lock(config, args.thread_id))
+            checkpointer = build_checkpointer(config.checkpointer.db_path)
+            stack.callback(checkpointer.conn.close)
+            if checkpointer.get_tuple({"configurable": {"thread_id": args.thread_id}}):
+                raise FreshRunError(
+                    f"thread-id {args.thread_id!r} already has a retained run; use a fresh "
+                    f"--thread-id or `blacksmith resume --thread-id {args.thread_id}`"
+                )
+            prd = parse_prd(args.prd_path)
+            context = create_run_context(config, prd, args.thread_id,
+                                         unlimited_cost=args.unlimited_cost)
+            stack.enter_context(context.lock())
+            stack.enter_context(command_scope(context, stage="cli"))
+            from blacksmith.recovery import protect_run
+            stack.enter_context(protect_run(context, checkpointer))
+            graph = build_graph_for(context.execution_config(), checkpointer)
+            renderer = _build_renderer(args)
+            approval_wait = 0.0
+
+            def _track_wait(seconds: float) -> None:
+                nonlocal approval_wait
+                approval_wait += seconds
+
+            print(f"Run {context.run_id}: selected committed HEAD {context.base_commit}")
+            print(f"Run artifacts: {context.directory}")
+            started_at = time.time()
+            final = drive(
+                graph, args.prd_path, approver=_resolve_approver(args, renderer),
+                thread_id=args.thread_id, on_node=_progress_emitter(args.quiet, renderer),
+                issue_number=args.issue, on_wait=_track_wait,
+                on_event=_live_emitter(config, args.thread_id), run_context=context,
             )
-        except RepoConsistencyError as exc:
-            print(f"blacksmith: {exc}", file=sys.stderr)
-            return 1
-
-    checkpointer = build_checkpointer(config.checkpointer.db_path)
-    graph = build_graph_for(config, checkpointer)
-    renderer = _build_renderer(args)
-
-    approval_wait = 0.0
-
-    def _track_wait(seconds: float) -> None:
-        nonlocal approval_wait
-        approval_wait += seconds
-
-    started_at = time.time()
-    try:
-        final = drive(
-            graph,
-            args.prd_path,
-            approver=_resolve_approver(args, renderer),
-            thread_id=args.thread_id,
-            on_node=_progress_emitter(args.quiet, renderer),
-            issue_number=args.issue,
-            on_wait=_track_wait,
-            on_event=_live_emitter(config, args.thread_id),
-        )
-    except FreshRunError as exc:
+            ended_at = time.time()
+            _report(final, renderer)
+            _record_metrics(
+                config, final, thread_id=args.thread_id, prd_path=args.prd_path,
+                started_at=started_at, ended_at=ended_at, approval_wait_s=approval_wait,
+            )
+            return _run_exit_code(final.values.get("status"))
+    except (FreshRunError, RunContextError, ConfigError, ContractError, CommandError,
+            GateError, ReceiptError, OSError) as exc:
         print(f"blacksmith: {exc}", file=sys.stderr)
         return 1
-    ended_at = time.time()
-    _report(final, renderer)
-    _record_metrics(
-        config,
-        final,
-        thread_id=args.thread_id,
-        prd_path=args.prd_path,
-        started_at=started_at,
-        ended_at=ended_at,
-        approval_wait_s=approval_wait,
-    )
-    return 0 if final.values.get("status") == Status.DONE else 1
 
 
 if __name__ == "__main__":

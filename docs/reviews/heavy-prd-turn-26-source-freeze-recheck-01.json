@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-25T09:12:45.401567-03:00",
+  "checks": {
+    "JS_and_helper": true,
+    "all175_sources": true,
+    "all65_distributions": true,
+    "config": true,
+    "original_inputs": true,
+    "python": true,
+    "sqlite": true
+  },
+  "environment_sha256": "001ff9b4586200c88d485440eef2b1d18ff60dc98634e1e42646d35ef88d95ff",
+  "full": "20455 live; no acceptance claimed; summary correction remains isolated",
+  "goal_turn": 26
+}

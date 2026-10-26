@@ -215,7 +215,7 @@ def test_collect_empty_coverage_cmd_returns_empty_without_running(tmp_path, monk
     def _boom(*args, **kwargs):
         raise AssertionError("subprocess.run must not be called for an empty coverage_cmd")
 
-    monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+    monkeypatch.setattr("blacksmith.sbfl.run_command", _boom)
 
     results = collect_suspicious_locations(
         str(tmp_path), coverage_cmd="", coverage_json="coverage.json", junit_xml="junit.xml"
@@ -228,7 +228,7 @@ def test_collect_blank_coverage_cmd_returns_empty_without_running(tmp_path, monk
     def _boom(*args, **kwargs):
         raise AssertionError("subprocess.run must not be called for a blank coverage_cmd")
 
-    monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+    monkeypatch.setattr("blacksmith.sbfl.run_command", _boom)
 
     results = collect_suspicious_locations(
         str(tmp_path), coverage_cmd="   ", coverage_json="coverage.json", junit_xml="junit.xml"
@@ -267,7 +267,7 @@ def test_collect_raising_subprocess_returns_empty_without_raising(tmp_path, monk
     def _boom(*args, **kwargs):
         raise OSError("no such executable")
 
-    monkeypatch.setattr("blacksmith.sbfl.subprocess.run", _boom)
+    monkeypatch.setattr("blacksmith.sbfl.run_command", _boom)
 
     results = collect_suspicious_locations(
         str(tmp_path),

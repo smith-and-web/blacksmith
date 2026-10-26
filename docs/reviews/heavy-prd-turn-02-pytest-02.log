@@ -1,0 +1,136 @@
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 36%]
+...........F.........F.................................................. [ 46%]
+.......................................................................F [ 55%]
+........................................................................ [ 64%]
+........................................................................ [ 73%]
+........................................................................ [ 83%]
+........................................................................ [ 92%]
+...........................................................              [100%]
+=================================== FAILURES ===================================
+_ test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_unchanged _
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-23/test_implement_sandbox_disable0')
+
+    def test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_unchanged(tmp_path):
+        from blacksmith.nodes.implement import _ALLOWED_TOOLS, _implement_prompt
+    
+        prd = parse_prd(VENDORED_PRD)
+        unit = prd.contract.work_unit_by_id("WU-01")
+    
+        baseline_dir = tmp_path / "baseline"
+        baseline_dir.mkdir()
+        wt_baseline = _scratch_worktree(baseline_dir)
+        fake_baseline = EditingFakeExecutor()
+        implement(
+            {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_baseline.path)},
+            executor=fake_baseline,
+        )
+    
+        disabled_dir = tmp_path / "disabled"
+        disabled_dir.mkdir()
+        wt_disabled = _scratch_worktree(disabled_dir)
+        fake_disabled = EditingFakeExecutor()
+        implement(
+            {"prd": prd, "selected_unit": unit, "worktree_path": str(wt_disabled.path)},
+            executor=fake_disabled,
+            sandbox=FakeSandboxForImplement(enabled=False),
+        )
+    
+        baseline_call = fake_baseline.calls[0]
+        disabled_call = fake_disabled.calls[0]
+        # No sandbox tool, no mcp_servers, and the identical (unqualified) allowed/disallowed
+        # tool lists and prompt/system_prompt text — a disabled (or unwired) sandbox changes
+        # nothing about the call.
+        assert "mcp_servers" not in baseline_call
+        assert "mcp_servers" not in disabled_call
+        assert baseline_call["allowed_tools"] == disabled_call["allowed_tools"] == _ALLOWED_TOOLS
+        assert baseline_call["disallowed_tools"] == disabled_call["disallowed_tools"]
+        assert baseline_call["prompt"] == disabled_call["prompt"]
+        assert baseline_call["system_prompt"] == disabled_call["system_prompt"]
+        # And the prompt is exactly today's no-shell instruction — sandboxed vocabulary never
+        # leaks in when disabled.
+>       assert baseline_call["prompt"] == _implement_prompt(unit)
+E       AssertionError: assert 'Implement th... RECORDS:\n[]' == 'Implement th...ng keys raise'
+E         
+E         Skipping 1260 identical leading characters in diff, use -v to show
+E         -  keys raise
+E         +  keys raise
+E         ?            +
+E         + 
+E         + IMMUTABLE REQUIREMENTS — FULL PRD PROSE (unabridged):...
+E         
+E         ...Full output truncated (392 lines hidden), use '-vv' to show
+
+tests/test_implement.py:565: AssertionError
+_______ test_implement_calls_prompt_with_index_enabled_and_worktree_path _______
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-23/test_implement_calls_prompt_wi0')
+
+    def test_implement_calls_prompt_with_index_enabled_and_worktree_path(tmp_path):
+        # The node itself must thread index_enabled/worktree_path into the user prompt it sends,
+        # not just the system prompt — otherwise the contradiction reappears at the call site.
+        from blacksmith.config import IndexConfig
+        from blacksmith.nodes.implement import _implement_prompt
+    
+        wt = _scratch_worktree(tmp_path)
+        _commit_helper_module(wt)
+        prd = parse_prd(VENDORED_PRD)
+        unit = prd.contract.work_unit_by_id("WU-01")
+        fake = EditingFakeExecutor()
+    
+        implement(
+            {"prd": prd, "selected_unit": unit, "worktree_path": str(wt.path)},
+            executor=fake,
+            index_config=IndexConfig(enabled=True),
+        )
+    
+        expected = _implement_prompt(unit, index_enabled=True, worktree_path=str(wt.path))
+>       assert fake.calls[0]["prompt"] == expected
+E       AssertionError: assert 'Implement th... RECORDS:\n[]' == 'Implement th...ng keys raise'
+E         
+E         Skipping 1473 identical leading characters in diff, use -v to show
+E         -  keys raise
+E         +  keys raise
+E         ?            +
+E         + 
+E         + IMMUTABLE REQUIREMENTS — FULL PRD PROSE (unabridged):...
+E         
+E         ...Full output truncated (392 lines hidden), use '-vv' to show
+
+tests/test_implement.py:807: AssertionError
+_____________ test_empty_store_and_no_store_match_pre_unit_prompt ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-23/test_empty_store_and_no_store_0')
+
+    def test_empty_store_and_no_store_match_pre_unit_prompt(tmp_path):
+        prd = _write_prd(tmp_path)
+        baseline = _system_prompt(_contract(prd))  # the system prompt as it was before this unit
+    
+        empty_store = build_store(tmp_path / "store.sqlite")
+        with_empty = _run_plan_capturing_system_prompt(
+            tmp_path, prd, empty_store, thread_id="empty"
+        )
+        without = _run_plan_capturing_system_prompt(tmp_path, prd, None, thread_id="none")
+    
+>       assert with_empty == baseline  # empty store -> no lessons section
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'You are blac...    }\n  ]\n}' == 'You are blac...e brand files'
+E         
+E         Skipping 218 identical leading characters in diff, use -v to show
+E         - brand files
+E         + brand files
+E         ?            +
+E         + 
+E         + IMMUTABLE REQUIREMENTS — FULL PRD PROSE (unabridged):...
+E         
+E         ...Full output truncated (42 lines hidden), use '-vv' to show
+
+tests/test_memory_lessons.py:274: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_implement.py::test_implement_sandbox_disabled_tool_surface_and_prompt_are_byte_for_byte_unchanged
+FAILED tests/test_implement.py::test_implement_calls_prompt_with_index_enabled_and_worktree_path
+FAILED tests/test_memory_lessons.py::test_empty_store_and_no_store_match_pre_unit_prompt
+3 failed, 776 passed in 108.62s (0:01:48)

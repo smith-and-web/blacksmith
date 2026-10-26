@@ -1,0 +1,19 @@
+{
+  "collection_count": 1325,
+  "completed_progress_symbols": 837,
+  "inferred_failed_cases": [
+    {
+      "position": 694,
+      "node_id": "tests/test_path_policy.py::test_denied_attempt_halts_without_committing_valid_sibling_work"
+    },
+    {
+      "position": 695,
+      "node_id": "tests/test_path_policy.py::test_unmediated_protected_edit_cannot_commit_or_publish"
+    },
+    {
+      "position": 696,
+      "node_id": "tests/test_path_policy.py::test_prd_rules_reach_implement_guard"
+    }
+  ],
+  "status": "progress-line mapping only; target reproduction/terminal traceback required"
+}

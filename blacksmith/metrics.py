@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS run_metrics (
     repo TEXT,
     transcripts TEXT,
     started_at REAL,
-    ended_at REAL
+    ended_at REAL,
+    accounting TEXT
 )
 """
 
@@ -88,6 +89,7 @@ _RUN_COLUMNS: dict[str, str] = {
     "transcripts": "TEXT",
     "started_at": "REAL",
     "ended_at": "REAL",
+    "accounting": "TEXT",
 }
 _UNIT_COLUMNS: dict[str, str] = {
     "title": "TEXT",
@@ -279,11 +281,10 @@ def _transcript_refs(values: dict, transcripts_dir: str | Path | None) -> list[s
     if not transcripts_dir:
         return []
     events = values.get("cost_events") or []
-    session_ids = list(
-        dict.fromkeys(e.get("session_id") for e in events if e.get("session_id"))
-    )
     base = Path(transcripts_dir)
-    return [str(base / f"{session_id}.jsonl") for session_id in session_ids]
+    return list(dict.fromkeys(
+        e["transcript_path"] if e.get("transcript_path") else str(base / f"{e['session_id']}.jsonl")
+        for e in events if e.get("transcript_path") or e.get("session_id")))
 
 
 def _rows(cursor: sqlite3.Cursor) -> list[dict]:
@@ -385,6 +386,15 @@ def record_run(
         "started_at": started_at,
         "ended_at": ended_at,
     }
+    if values.get("run_context"):
+        from blacksmith.accounting import snapshot as accounting_snapshot
+        from blacksmith.run_context import context_from_state
+        accounting = accounting_snapshot(context_from_state(values))
+        run_row.update(accounting=json.dumps(accounting, sort_keys=True),
+            total_cost=None if accounting["accounting_incomplete"] else accounting["reported_usd"],
+            duration_s=accounting["execution_seconds"])
+    else:
+        run_row["accounting"] = None
 
     columns = list(run_row)
     placeholders = ", ".join(":" + c for c in columns)

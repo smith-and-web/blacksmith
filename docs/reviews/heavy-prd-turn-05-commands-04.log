@@ -1,0 +1,90 @@
+...........F
+=================================== FAILURES ===================================
+___________ test_cli_saved_limits_reach_real_gate_and_resume[False] ____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-48/test_cli_saved_lim...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c39d910>
+parallel = False
+
+    @pytest.mark.parametrize("parallel", [False, True])
+    def test_cli_saved_limits_reach_real_gate_and_resume(project, monkeypatch, parallel):
+        root, config, prd, contract = project
+        command = shlex.join(
+            python(
+                "import os,time; "
+                "assert not os.getenv('TEST_MODEL_SECRET'); "
+                "assert not os.getenv('TEST_ADMIN_SECRET'); "
+                "print('START',flush=True); time.sleep(60)"
+            )
+        )
+        (root / "blacksmith.toml").write_text(f"test_cmd = {json.dumps(command)}\n")
+        git(root, "add", "blacksmith.toml")
+        git(root, "commit", "-m", "timeout gate")
+        config.write_text(
+            config.read_text() + "[limits]\ncommand_timeout_s=0.2\nmax_command_output_bytes=2048\n"
+        )
+        if parallel:
+            from test_run_context import write_prd
+    
+            contract["work_units"].append({**contract["work_units"][0], "id": "U2"})
+            write_prd(prd, contract)
+        monkeypatch.setenv("TEST_MODEL_SECRET", "TEST_ONLY_MODEL")
+        monkeypatch.setenv("TEST_ADMIN_SECRET", "TEST_ONLY_ADMIN")
+        calls = []
+        install_transport(monkeypatch, calls)
+        assert (
+            cli.main([str(prd), "--config", str(config), "--thread-id", "bounds", "--approve", "plan"])
+            == 1
+        )
+        paths = list(config.parent.glob(".blacksmith/runs/*/operations.sqlite"))
+        assert len(paths) == 1
+    
+        def outcomes():
+            with sqlite3.connect(paths[0]) as conn:
+                return [
+                    json.loads(row[0])
+                    for row in conn.execute(
+                        "SELECT outcome_json FROM operations WHERE kind LIKE 'command:%' "
+                        "AND outcome_json IS NOT NULL"
+                    )
+                ]
+    
+>       assert any(row["timed_out"] for row in outcomes())
+E       assert False
+E        +  where False = any(<generator object test_cli_saved_limits_reach_real_gate_and_resume.<locals>.<genexpr> at 0x10c078fb0>)
+
+tests/test_commands.py:282: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 720341f4-a3cb-4c64-a918-ad22f9f7fe71: selected committed HEAD c383705993d8d8737aad2fecb7f9f0f4a3f57cc5
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-48/test_cli_saved_limits_reach_re0/.blacksmith/runs/720341f4-a3cb-4c64-a918-ad22f9f7fe71
+[auto] gate 'plan': approved
+
+status: halted
+error [test_gate]: gate failed for unit U1
+error [test_gate]: gate failed for unit U1
+error [test_gate]: gate failed for unit U1
+total cost: $0.04
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: implement
+blacksmith: auto_fix
+blacksmith: test_gate
+blacksmith: fix_retry
+blacksmith: implement
+blacksmith: auto_fix
+blacksmith: test_gate
+blacksmith: escalate
+blacksmith: implement
+blacksmith: auto_fix
+blacksmith: test_gate
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+=========================== short test summary info ============================
+FAILED tests/test_commands.py::test_cli_saved_limits_reach_real_gate_and_resume[False]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 11 passed in 11.01s

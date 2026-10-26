@@ -218,7 +218,8 @@ def test_gate_failure_escalates_then_passes_and_opens_one_pr(tmp_path):
     assert executor.implement_calls == ["WU-A", "WU-B"]
     # ...and the stronger model re-implemented WU-B exactly once (escalation, at most once).
     assert executor.escalate_calls == ["WU-B"]
-    assert gate.calls == 3  # WU-A, WU-B (fail), WU-B re-gate (pass) — no extra escalation
+    assert gate.calls == 4  # three unit checks plus the final union gate
+    assert final.values["final_test_results"]["passed"] is True
 
     # When WU-B re-implemented, the worktree had been reset to just before WU-B's attempt:
     # WU-A's committed file SURVIVED (prior units' work not discarded) and WU-B's failed
@@ -279,7 +280,8 @@ def test_first_attempt_pass_never_escalates(tmp_path):
     # A passing first attempt never invokes the stronger escalate model.
     assert executor.implement_calls == ["WU-S"]
     assert executor.escalate_calls == []
-    assert gate.calls == 1
+    assert gate.calls == 2  # unit gate plus exact final candidate check
+    assert final.values["final_test_results"]["passed"] is True
     assert len(_pr_creates(gh)) == 1
     assert final.values["status"] == Status.DONE
     assert final.values["pr_url"].endswith("/pull/1")

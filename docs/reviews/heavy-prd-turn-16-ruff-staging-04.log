@@ -1,0 +1,10 @@
+E501 Line too long (103 > 100)
+   --> tests/test_publication_integrity.py:152:101
+    |
+152 | def test_failed_create_retries_only_creation_with_original_summary_cost_and_push(project, monkeypatch):
+    |                                                                                                     ^^^
+153 |     calls, remote, payloads = setup(project, monkeypatch, mode="create_failed")
+154 |     assert run(project, "publication") == 1
+    |
+
+Found 1 error.

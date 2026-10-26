@@ -1,0 +1,34 @@
+{
+  "feature_files": [
+    "blacksmith.config.toml",
+    "blacksmith/cli.py",
+    "blacksmith/config.py",
+    "blacksmith/graph.py",
+    "blacksmith/integration.py",
+    "blacksmith/recovery_control.py",
+    "blacksmith/scheduling.py",
+    "blacksmith/state.py",
+    "blacksmith/unit_graph.py",
+    "tests/test_integration_integrity.py",
+    "tests/test_parallel.py",
+    "tests/test_scheduling.py",
+    "tests/test_scheduling_runtime.py"
+  ],
+  "git_apply_check": "exit0 on frozen primary",
+  "goal_turn": 22,
+  "patch": "/private/tmp/blacksmith-heavy-prd-turn-22-s16-transfer.diff",
+  "patch_sha256": "fcdd90ad1c7823cce72d2727c1cd3e9960f95a153ffbd1c8f70b8bf99bf2eff4",
+  "preserve_primary_s15_files": {
+    "blacksmith/executor.py": "17059e6e7be9eb7c7d6e42c2bafbda147e2db5a5ad717b6b940757cb891f90ea",
+    "tests/test_executor_admission.py": "5e1fdc20aff025b87bae38f1b1e3b4699c9f48277f4f7fece2f6e9f0058a14f9",
+    "tests/test_path_policy.py": "dc40a6d706b0a69c6c9cb61a0705b4e28826457d2dc34818a8acf42111b3460c",
+    "tests/test_receipt_wiring.py": "b28b138253b6bb33423219c8169bad4a5f03c0087fc8c633ed20bac251712add",
+    "tests/test_receipts.py": "0da531287786ff613a44c0516b784c0250279064bbd8e6147cfe445442081927",
+    "tests/test_requirements_context.py": "e3fb078c13d106cbc568dfb13b1d7b909a5bd12e03a94400de80d2ccac2b389a"
+  },
+  "recorded_at": "2026-10-25T03:12:06.540928-03:00",
+  "required_before_apply": "S15 full terminal pass/source/ruff/implementation acceptance; S16 adjacent regression terminal pass",
+  "staging_base": "c4c18cd104c7871056fe22fd4a8e4a9ec23ec422",
+  "staging_head": "a9ff632b263358a00d5ebb7f9344492d6876bde8",
+  "status": "read-only checked feature delta; not applied; primary full03 remains frozen"
+}

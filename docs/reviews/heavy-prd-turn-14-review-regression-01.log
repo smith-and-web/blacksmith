@@ -1,0 +1,78 @@
+...................................F.................F..........         [100%]
+=================================== FAILURES ===================================
+________ test_review_revisions_exhausted_halts_and_preserves_candidate _________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-154/test_review_revisions_exhauste0')
+
+    def test_review_revisions_exhausted_halts_and_preserves_candidate(tmp_path):
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT])
+        gh = _recording_gh("https://github.com/owner/demo/pull/3")
+        gate = FakeGate()
+        graph, saver = _wire(
+            tmp_path, repo, executor=executor, gh=gh, gate=gate,
+            # No revisions allowed at all: the first blocking finding is immediately exhausted.
+            limits=LimitsConfig(max_review_revisions=0), review=ReviewConfig(enabled=True),
+        )
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="exhausted")
+    
+        assert executor.implement_calls == ["WU-S"]  # no revision attempt
+        assert executor.review_calls == ["WU-S"]  # reviewed exactly once
+        assert gate.calls == 1
+    
+        # The settled strict policy halts before final verification/publication.
+        assert final.values["status"] == Status.HALTED
+        assert _pr_creates(gh) == []
+        assert not any(c[:2] == ["git", "push"] for c in gh.calls)
+        assert final.values["unit_outcomes"]["WU-S"]["review_receipt"].status == "blocking"
+        from pathlib import Path
+        assert Path(final.values["worktree_path"]).is_dir()
+    
+        unresolved = final.values.get("unresolved_review_findings") or []
+        assert len(unresolved) == 1
+        assert unresolved[0]["severity"] == "blocking"
+        assert unresolved[0]["file"] == "wu-s.txt"
+        assert "off-by-one" in unresolved[0]["detail"]
+        saver.conn.close()
+    
+    
+    # --- (d) config.review.enabled false: the review node is never entered --------------
+    
+>       assert final.values["final_test_results"]["passed"] is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'final_test_results'
+
+tests/test_review_loop.py:312: KeyError
+____ test_standalone_legacy_runner_and_failed_optional_writer_do_not_block _____
+
+    def test_standalone_legacy_runner_and_failed_optional_writer_do_not_block():
+        from blacksmith.contract import WorkUnit
+        from blacksmith.graph import UnitDeps
+    
+        unit = WorkUnit(
+            id="legacy",
+            title="legacy",
+            layers=["python"],
+            target_modules=["x"],
+            test_contract="preseeded compatibility state",
+        )
+        seed = {
+            "selected_unit": unit,
+            "test_results": {"passed": True, "output": "ok", "command": "injected"},
+        }
+        child = unit_graph.build_unit_graph(UnitDeps())
+    
+        def broken_writer(payload):
+            raise OSError("observation sink unavailable")
+    
+        token = unit_graph._parent_writer.set(broken_writer)
+        try:
+>           assert child.invoke(seed)["unit_outcome"]["ok"]
+E           assert False
+
+tests/test_unit_subgraph.py:390: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_review_loop.py::test_review_revisions_exhausted_halts_and_preserves_candidate
+FAILED tests/test_unit_subgraph.py::test_standalone_legacy_runner_and_failed_optional_writer_do_not_block
+2 failed, 62 passed in 104.07s (0:01:44)

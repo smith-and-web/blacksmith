@@ -1,26 +1,28 @@
 """PR node — open a pull request on the target repo (PRD §4 node 8, §5).
 
-Pushes the unit's branch and runs ``gh pr create`` with a generated summary,
-recording the PR URL in state. PRs are **never auto-merged** (§5) — this node only
-opens them.
+Versioned runs use exact remote observations and critical content/effect/result
+receipts to reconcile the run's combined normal/draft PR. PRs are never auto-merged.
 
 Shelling out is routed through an injectable ``Runner`` so tests can mock ``gh`` (and
-run git for real against a scratch repo). The graph node reads the runner from the
-LangGraph config (``configurable.pr_runner``), defaulting to a real subprocess runner.
+run Git for real against a scratch repo). The graph binds its runner and executor
+at construction; the default runner uses the bounded native command service.
 """
 
 from __future__ import annotations
 
 import json
 import re
-import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from blacksmith.commands import run_command
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import WorkUnit
 from blacksmith.nodes.plan import cost_event
+from blacksmith.path_policy import PolicyViolation, policy_for_state
+from blacksmith.receipts import ReceiptError, call_context_for, merge_events
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import branch_for
 
@@ -52,9 +54,10 @@ class PullRequest:
 
 
 def subprocess_runner(argv: Sequence[str], cwd: Path | None = None) -> CommandResult:
-    proc = subprocess.run(
+    proc = run_command(
         list(argv), cwd=str(cwd) if cwd else None, capture_output=True, text=True
     )
+    proc.require_complete_output()
     return CommandResult(proc.returncode, proc.stdout, proc.stderr)
 
 
@@ -68,6 +71,8 @@ def open_pull_request(
     remote: str = "origin",
     draft: bool = False,
     runner: Runner = subprocess_runner,
+    candidate_commit: str | None = None,
+    before_effect: Callable[[], Any] | None = None,
 ) -> PullRequest:
     """Push ``branch`` to ``remote`` and open a PR via ``gh``; return its URL.
 
@@ -76,7 +81,13 @@ def open_pull_request(
     """
     worktree = Path(worktree_path)
 
-    push = runner(["git", "push", "-u", remote, branch], worktree)
+    if candidate_commit is not None and not re.fullmatch(
+            r"[0-9a-f]{40}|[0-9a-f]{64}", candidate_commit):
+        raise PRError("invalid exact publication candidate")
+    if before_effect:
+        before_effect()
+    refspec = candidate_commit + ":refs/heads/" + branch if candidate_commit else branch
+    push = runner(["git", "push", "-u", remote, refspec], worktree)
     if push.returncode != 0:
         raise PRError(f"git push failed: {push.stderr.strip() or push.stdout.strip()}")
 
@@ -85,6 +96,8 @@ def open_pull_request(
         argv += ["--base", base]
     if draft:
         argv += ["--draft"]
+    if before_effect:
+        before_effect()
     created = runner(argv, worktree)
     if created.returncode != 0:
         raise PRError(f"gh pr create failed: {created.stderr.strip() or created.stdout.strip()}")
@@ -132,6 +145,8 @@ def _open_pr(
     node: str,
     executor: Any = None,
 ) -> dict:
+    if state.get("status") == Status.HALTED:
+        return {"status": Status.HALTED}
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
     if unit is None or not worktree_path:
@@ -139,6 +154,34 @@ def _open_pr(
             "status": Status.HALTED,
             "errors": [{"node": node, "message": "missing selected_unit or worktree_path"}],
         }
+    from blacksmith.contract import ContractError
+    from blacksmith.gate import GateError
+    from blacksmith.publication_approval import ApprovalError, hold
+    from blacksmith.publication_approval import verify as verify_approval
+    from blacksmith.run_context import RunContextError
+    try:
+        approved = verify_approval(state, draft=draft)
+    except (ApprovalError, GateError, ContractError, RunContextError) as exc:
+        return hold(state, exc, node=node)
+    if state.get("run_context") or state.get("state_version") is not None:
+        from blacksmith.integration import verify_final_gate
+        verify_final_gate(state)
+    elif state.get("review_enabled"):
+        from blacksmith.review_receipts import summary as review_summary
+        if review_summary(state) != "clean":
+            return {"status": Status.HALTED,
+                    "errors": [{"node": node, "message": "review unavailable or blocking"}]}
+    if state.get("prd") is not None:
+        try:
+            policy_for_state(state).audit(
+                state.get("pr_base_ref") or state.get("pre_implement_ref") or "HEAD"
+            )
+        except PolicyViolation as exc:
+            return {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
+    if state.get("run_context"):
+        from blacksmith.publication import publish
+        return publish({**state, "publication_draft": draft}, runner=runner,
+                       prepare_content=lambda: _publication_content(state, executor))
     units = _built_units(state)
     title = _pr_title(units)
     summary: str | None = None
@@ -171,23 +214,43 @@ def _open_pr(
             base=state.get("default_branch"),
             draft=draft,
             runner=runner,
+            candidate_commit=approved["candidate_commit"] if approved else None,
+            before_effect=lambda: verify_approval(state, draft=draft),
         )
+    except (ApprovalError, GateError, ContractError, RunContextError) as exc:
+        out = hold(state, exc, node=node)
+        if cost_events:
+            out["cost_events"] = cost_events
+        return out
     except PRError as exc:
         out: dict = {"status": Status.HALTED, "errors": [{"node": node, "message": str(exc)}]}
         if cost_events:
             out["cost_events"] = cost_events
         return out
-    out = {"pr_url": pr.url, "status": done}
+    out = {"pr_url": pr.url, "status": done,
+           "pending_qa_unit": approved["pending_qa_unit"] if approved else None}
     if cost_events:
         out["cost_events"] = cost_events
     return out
 
 
+def _publication_content(state, executor):
+    units = _built_units(state)
+    title, summary, event = None, None, None
+    if executor is not None:
+        title, summary, event = _synthesize_summary(executor, state, units)
+    body_state = {**state, "cost_events": merge_events(state.get("cost_events") or [],
+                                                     [event] if event else [])}
+    return {"title": title or _pr_title(units),
+            "body": _pr_body(body_state, units, summary=summary),
+            "cost_events": [event] if event is not None else []}
+
+
 def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
-    """Context for the PR title/summary synthesis call: the PRD's purpose (its prose body)
-    plus each built unit's title, files touched, and diff summary."""
-    prd = state.get("prd")
-    purpose = (getattr(prd, "body", "") or "").strip() or "(no PRD body available)"
+    """Full frozen requirements plus the completed units' observed build facts."""
+    prd = requirements_prd(state)
+    requirements = (render_context(state) if prd is not None
+                    else "PRD purpose:\n(no PRD body available)")
     if len(units) == 1:
         impl = state.get("implementation") or {}
         by_id = {units[0].id: impl}
@@ -204,9 +267,12 @@ def _summary_prompt(state: BlacksmithState, units: Sequence[WorkUnit]) -> str:
     ]
     units_block = "\n".join(unit_lines) or "(no units)"
     return (
-        "Write a concise pull request title and summary for the following completed work.\n\n"
-        f"PRD purpose:\n{purpose}\n\n"
-        f"Units built this run:\n{units_block}\n\n"
+        "Write a concise pull request title and summary for the following recorded work.\n\n"
+        f"{requirements}\n\n"
+        f"Units included in this publication:\n{units_block}\n\n"
+        "Human-gated units are pending manual QA; do not describe them as completed checks.\n\n"
+        f"Recorded review status: {_review_status(state)}. Disabled review is not clean; "
+        "do not invent review approval or equate revision attempts with resolved findings.\n\n"
         "Respond with EXACTLY ONE fenced JSON code block and nothing else:\n"
         "```json\n"
         '{"title": "<concise PR title, no unit ids required>", '
@@ -247,14 +313,23 @@ def _synthesize_summary(
     ``cost_event`` reflects the call's real spend whenever one was actually made (even a
     failed/unparseable call still cost money) and is ``None`` only if the executor itself
     raised before returning a result."""
-    unit_id = units[-1].id if units else ""
+    unit_id = "__run__" if state.get("run_context") else units[-1].id if units else ""
     try:
         # _summary_prompt is INSIDE the fail-open try too: any error building the prompt
         # (e.g. a malformed PRD/state field) must fall back exactly like a model/parse
-        # error, never propagate out of the PR node — the summary is additive and can
-        # never block or crash opening the PR.
+        # error. Critical storage/admission/budget/deadline failures below propagate
+        # so an optional narration path can never bypass a run policy halt.
         prompt = _summary_prompt(state, units)
-        result = executor.run_summary(prompt, raise_on_error=False)
+        kwargs = {"raise_on_error": False}
+        if state.get("run_context"):
+            from blacksmith.run_context import git_read
+            candidate = git_read(Path(state["worktree_path"]), "rev-parse", "HEAD").strip()
+            kwargs["call_context"] = call_context_for(
+                state, unit_id="__run__", attempt_id=f"summary:{candidate}",
+            )
+        result = executor.run_summary(prompt, **kwargs)
+    except ReceiptError:
+        raise
     except Exception:
         return None, None, None
     event = cost_event("summary", unit_id, result)
@@ -394,34 +469,47 @@ def _reviewer_notes_lines(state: BlacksmithState) -> list[str]:
     needs no plumbing through the gate payload. Surfaces BOTH the unresolved BLOCKING findings
     the post-gate review loop gave up on AND the reviewer's ADVISORY findings — non-blocking
     notes that never enter ``unresolved_review_findings`` (so they were silently dropped from
-    the PR before) but are still worth a reviewer's eyes. Only a review with neither collapses
-    to a single "Reviewer: clean" line."""
-    unresolved = state.get("unresolved_review_findings") or []
+    the PR before) but are still worth a reviewer's eyes. The status comes from current
+    typed unit receipts; missing/disabled evidence can never be labeled clean."""
+    from blacksmith.review_receipts import current_blockers
+    unresolved = current_blockers(state)
     advisory = _dedup_findings(
         f for f in (state.get("review_findings") or []) if f.get("severity") == "advisory"
     )
-    lines = ["", "**Reviewer notes:**"]
+    from blacksmith.review_receipts import summary as review_summary
+    review_status = review_summary(state)
+    lines = ["", "**Reviewer notes:**", "Reviewer: " + review_status]
     if not unresolved and not advisory:
-        lines.append("Reviewer: clean")
         return lines
-    # Prefer the run-wide reducer total (counts fan-out workers' revisions, which can't write
-    # the last-write-wins ``review_revisions``); fall back to the per-unit field for states
-    # without it (a sequential-only run predating the total, or an old checkpoint).
-    revisions = state.get("review_revisions_total") or state.get("review_revisions", 0)
+    # Current keyed outcomes prevent recovery-history or legacy-reducer double counts.
+    from blacksmith.observability import (
+        display_text,
+        omitted_rows,
+        preview_rows,
+        review_revision_count,
+    )
+    revisions = review_revision_count(state)
     # A one-line severity-count header so a reviewer can triage before reading every finding.
-    lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revisions} revisions")
+    revision_label = (f"{revisions} revisions" if revisions is not None
+                      else "revision count unavailable")
+    lines.append(f"{len(advisory)} advisory · {len(unresolved)} blocking · {revision_label}")
     if revisions:
-        lines.append(f"- resolved via revision: {revisions}")
-    for finding in unresolved:
+        lines.append(f"- revision attempts: {revisions}")
+    shown, omitted = preview_rows([*(('unresolved (blocking)', f) for f in unresolved),
+                                  *(('advisory', f) for f in advisory)])
+    for label, finding in shown:
         lines.append(
-            f"- unresolved (blocking): {finding.get('file', '(unknown file)')}: "
-            f"{finding.get('detail', '')}"
+            f"- {label}: {display_text(finding.get('file', '(unknown file)'), 512)}: "
+            f"{display_text(finding.get('detail', ''))}"
         )
-    for finding in advisory:
-        lines.append(
-            f"- advisory: {finding.get('file', '(unknown file)')}: {finding.get('detail', '')}"
-        )
+    if omitted:
+        lines.append(omitted_rows(omitted, "findings"))
     return lines
+
+
+def _review_status(state):
+    from blacksmith.review_receipts import summary
+    return summary(state)
 
 
 def _build_metadata_lines(state: BlacksmithState) -> list[str]:
@@ -439,6 +527,12 @@ def _build_metadata_lines(state: BlacksmithState) -> list[str]:
             if node and model and node not in models_by_node:
                 models_by_node[node] = model
         body_lines = [f"- Total cost: ${total_cost:.4f}"]
+        if state.get("run_context"):
+            from blacksmith.accounting import clock_line, cost_line, snapshot
+            from blacksmith.run_context import context_from_state
+            accounting = snapshot(context_from_state(state))
+            body_lines = ["- " + cost_line(accounting),
+                          "- At publication preparation: " + clock_line(accounting)]
         body_lines.extend(f"- {node}={model}" for node, model in models_by_node.items())
         return [
             "",
@@ -449,6 +543,8 @@ def _build_metadata_lines(state: BlacksmithState) -> list[str]:
             "",
             "</details>",
         ]
+    except ReceiptError:
+        raise
     except Exception:
         return []
 

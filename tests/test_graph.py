@@ -17,6 +17,7 @@ from blacksmith.graph import (
     build_graph,
     compile_graph,
     route_after_implement,
+    route_after_plan,
     route_after_test_gate,
 )
 from blacksmith.state import BlacksmithState, Status
@@ -29,6 +30,7 @@ def _serde_warnings(caplog):
         r for r in caplog.records if "unregistered" in r.message or "will be blocked" in r.message
     ]
 
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VENDORED_PRD = REPO_ROOT / "blacksmith-v0-prd.md"
 
@@ -37,10 +39,9 @@ EXPECTED_NODES = {
     "plan",
     "approve_plan",
     "prepare_worktree",
-    "implement",
-    "auto_fix",
-    "test_gate",
+    "execute_unit",
     "approve_pr",
+    "prepare_pr_approval",
     "open_pr",
     "human_halt",
 }
@@ -57,7 +58,29 @@ def test_graph_compiles(tmp_path):
     compiled = compile_graph(saver)
     node_ids = set(compiled.get_graph().nodes)
     assert EXPECTED_NODES <= node_ids
+    assert {"recovery_prepare", "recovery_dispatch"} <= node_ids
+    children = dict(compiled.get_subgraphs())
+    assert "execute_unit" in children
+    assert {
+        "prepare_attempt",
+        "implement",
+        "audit_commit",
+        "auto_fix",
+        "test_gate",
+        "review",
+        "recovery_decision",
+        "finalize_unit",
+    } <= set(children["execute_unit"].get_graph().nodes)
     saver.conn.close()
+
+
+def test_planning_topology_reenters_one_unit_at_a_time_and_halt_wins():
+    assert route_after_plan({"planning_complete": False}) == "plan"
+    assert route_after_plan({"planning_complete": True}) == "approve_plan"
+    assert route_after_plan({"planning_complete": True, "status": Status.HALTED}) == "human_halt"
+    assert route_after_plan({"planning_complete": False, "status": Status.HALTED}) == "human_halt"
+    graph = build_graph().compile().get_graph()
+    assert ("plan", "plan") in {(edge.source, edge.target) for edge in graph.edges}
 
 
 def _with_test_results(passed: bool) -> BlacksmithState:
@@ -127,12 +150,10 @@ def test_route_after_implement_uses_layer_gate():
     assert route_after_implement({"prd": prd, "selected_unit": auto_unit}) == "auto_fix"
     # A human-gated unit that implemented successfully opens a DRAFT PR for QA (WU-QA-WIRING),
     # rather than discarding its work via human_halt.
-    assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "open_draft_pr"
+    assert route_after_implement({"prd": prd, "selected_unit": human_unit}) == "final_gate"
     # ...but a FAILED implement (status HALTED) still discards the work via human_halt.
     assert (
-        route_after_implement(
-            {"prd": prd, "selected_unit": human_unit, "status": Status.HALTED}
-        )
+        route_after_implement({"prd": prd, "selected_unit": human_unit, "status": Status.HALTED})
         == "human_halt"
     )
     assert route_after_implement({}) == "auto_fix"  # nothing selected -> default auto path

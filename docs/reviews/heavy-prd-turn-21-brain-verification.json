@@ -1,0 +1,33 @@
+{
+  "feedback": {
+    "recorded": true
+  },
+  "goal_turn": 21,
+  "index": {
+    "chunks": 964,
+    "collection": "secondbrain",
+    "dim": 1024,
+    "documents": 141,
+    "embedModel": "bge-m3:567m",
+    "invalidFrontmatter": {
+      "count": 0,
+      "notes": []
+    },
+    "lagSeconds": 24,
+    "lastRun": {
+      "changed": 1,
+      "errorText": null,
+      "errors": 0,
+      "finishedAt": "2026-10-25T06:08:12.668Z",
+      "id": 16277,
+      "removed": 0,
+      "seen": 144,
+      "startedAt": "2026-10-25T06:08:03.237Z"
+    },
+    "schemaVersion": "1"
+  },
+  "path": "Projects/blacksmith.md",
+  "requestId": "368e239d-03a8-4fde-876b-368f31f48186",
+  "validation": "targeted lint0 errors/0 warnings; index errors0/invalidFrontmatter0 after >=70s; fresh semantic retrieval and exact full-note readback matched every byte; one positive feedback",
+  "write_age_seconds": 99.534
+}

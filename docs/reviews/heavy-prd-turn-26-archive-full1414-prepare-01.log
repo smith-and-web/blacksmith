@@ -1,0 +1,4 @@
+Scanning closed, completed full1414 regression-baseline tree; .env/special entries remain unread.
+Creating archive: 935878 entries; 1762288473 logical payload bytes.
+Verifying every archived regular file byte hash, mode and symlink.
+{"archive_verified": true, "archive_bytes": 346740898, "entries": 935878, "protected_retained": 0, "cleanup_status": "not_started"}

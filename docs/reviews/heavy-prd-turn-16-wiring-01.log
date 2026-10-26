@@ -1,0 +1,197 @@
+....FFF
+=================================== FAILURES ===================================
+_ test_both_approved_publications_push_only_approved_sha_and_report_qa_exit[False-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1099bbd40>
+parallel = False, qa = False
+capsys = <_pytest.capture.CaptureFixture object at 0x1099bb9e0>
+
+    @pytest.mark.parametrize("qa", [False, True])
+    def test_both_approved_publications_push_only_approved_sha_and_report_qa_exit(
+        project, monkeypatch, parallel, qa, capsys,
+    ):
+        configure(project, sequential=not parallel, qa=qa)
+        calls, remote, payloads = install(monkeypatch)
+        assert run(project, "approved") == (2 if qa else 0)
+>       state = saved_values(project[1], "approved")
+E       AssertionError: assert 1 == 0
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'approved')
+
+tests/test_publication_approval.py:125: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run c9a1d07a-bb72-437f-a075-175a4293aedc: selected committed HEAD 8d9ef75b62d1a379ff2039d2495af08eff1c6d22
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication0/.blacksmith/runs/c9a1d07a-bb72-437f-a075-175a4293aedc
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: next_unit
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication0/.blacksmith/runs/c9a1d07a-bb72-437f-a075-175a4293aedc/recovery/d4f586aa-fba3-4ed0-bcbf-16bdd217778d/manifest.json
+Next action: blacksmith recovery inspect --thread-id approved --config /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication0/runtime.toml
+blacksmith: publication content cost differs from critical accounting
+_ test_both_approved_publications_push_only_approved_sha_and_report_qa_exit[False-True] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication1/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1099a1220>
+parallel = True, qa = False
+capsys = <_pytest.capture.CaptureFixture object at 0x1099a06e0>
+
+    @pytest.mark.parametrize("qa", [False, True])
+    def test_both_approved_publications_push_only_approved_sha_and_report_qa_exit(
+        project, monkeypatch, parallel, qa, capsys,
+    ):
+        configure(project, sequential=not parallel, qa=qa)
+        calls, remote, payloads = install(monkeypatch)
+        assert run(project, "approved") == (2 if qa else 0)
+>       state = saved_values(project[1], "approved")
+E       AssertionError: assert 1 == 0
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication1/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'approved')
+
+tests/test_publication_approval.py:125: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 73e66dc8-c5aa-479e-abb6-79e2e6a5df6b: selected committed HEAD 5db5fa510ad786f11eb3f21f809fa4e4e89f599d
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication1/.blacksmith/runs/73e66dc8-c5aa-479e-abb6-79e2e6a5df6b
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: finalize_unit
+blacksmith: join_level
+blacksmith: join_level
+blacksmith: integration_gate
+blacksmith: advance_joined_level
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication1/.blacksmith/runs/73e66dc8-c5aa-479e-abb6-79e2e6a5df6b/recovery/33b44cb8-fdf7-4148-9231-1c771f82138f/manifest.json
+Next action: blacksmith recovery inspect --thread-id approved --config /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication1/runtime.toml
+blacksmith: publication content cost differs from critical accounting
+_ test_both_approved_publications_push_only_approved_sha_and_report_qa_exit[True-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication2/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109c94d70>
+parallel = False, qa = True
+capsys = <_pytest.capture.CaptureFixture object at 0x109c95c70>
+
+    @pytest.mark.parametrize("qa", [False, True])
+    def test_both_approved_publications_push_only_approved_sha_and_report_qa_exit(
+        project, monkeypatch, parallel, qa, capsys,
+    ):
+        configure(project, sequential=not parallel, qa=qa)
+        calls, remote, payloads = install(monkeypatch)
+        assert run(project, "approved") == (2 if qa else 0)
+>       state = saved_values(project[1], "approved")
+E       AssertionError: assert 1 == 2
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication2/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'approved')
+
+tests/test_publication_approval.py:125: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 797fc80c-2ab7-443b-ab5a-c2378bf6b8f2: selected committed HEAD d7b896a3d7f8ca6b4b4a9fc9c5b75ba5ee058bfc
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication2/.blacksmith/runs/797fc80c-2ab7-443b-ab5a-c2378bf6b8f2
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: next_unit
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: next_unit
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_draft_pr
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication2/.blacksmith/runs/797fc80c-2ab7-443b-ab5a-c2378bf6b8f2/recovery/e0708b99-8d23-4853-ab47-5d157e0424eb/manifest.json
+Next action: blacksmith recovery inspect --thread-id approved --config /private/tmp/blacksmith-heavy-prd-t16-publication-wiring-01/test_both_approved_publication2/runtime.toml
+blacksmith: publication content cost differs from critical accounting
+=========================== short test summary info ============================
+FAILED tests/test_publication_approval.py::test_both_approved_publications_push_only_approved_sha_and_report_qa_exit[False-False]
+FAILED tests/test_publication_approval.py::test_both_approved_publications_push_only_approved_sha_and_report_qa_exit[False-True]
+FAILED tests/test_publication_approval.py::test_both_approved_publications_push_only_approved_sha_and_report_qa_exit[True-False]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/threading.py:355: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+3 failed, 4 passed in 204.88s (0:03:24)

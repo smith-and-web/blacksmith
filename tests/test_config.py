@@ -39,13 +39,13 @@ def _git_init(path: Path) -> None:
 
 def test_valid_config_parses():
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
-    assert cfg.target.repo_path == Path("/tmp/kindling")
+    assert cfg.target.repo_path == Path("/tmp/kindling").resolve()
     assert cfg.target.default_branch == "main"
     # An explicit [models].implement still works — it just sets the first-attempt model.
     assert cfg.models.implement == "claude-opus-4-8"
     assert cfg.models.implement_escalate == "claude-opus-4-8"  # default escalation model
     assert cfg.models.plan == "claude-sonnet-4-6"
-    assert cfg.checkpointer.db_path == Path(".blacksmith/checkpoints.sqlite")
+    assert cfg.checkpointer.db_path == (FIXTURES / ".blacksmith/checkpoints.sqlite").resolve()
     assert cfg.api.key_env_var == "BLACKSMITH_ANTHROPIC_API_KEY"
 
 
@@ -61,7 +61,9 @@ def test_defaults_applied_when_optional_sections_omitted():
     # Only [target] is provided; everything else must default.
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config_minimal.toml")
     assert cfg.models == ModelTiers()
-    assert cfg.checkpointer == CheckpointerConfig()
+    assert cfg.checkpointer == CheckpointerConfig(
+        db_path=(FIXTURES / ".blacksmith/checkpoints.sqlite").resolve()
+    )
     assert cfg.api == ApiConfig()
     assert cfg.target.default_branch == "main"  # field default within [target]
 
@@ -182,7 +184,7 @@ def test_sandbox_defaults_when_optional_sections_omitted():
     assert cfg.sandbox == SandboxConfig()
 
 
-def test_explicit_sandbox_config_loads(tmp_path):
+def test_historical_sandbox_settings_parse_but_enabled_execution_load_refuses(tmp_path):
     cfg_file = tmp_path / "blacksmith.config.toml"
     cfg_file.write_text(
         "[target]\n"
@@ -194,12 +196,17 @@ def test_explicit_sandbox_config_loads(tmp_path):
         'setup_cmd = "pip install -e ."\n'
         "exec_timeout_s = 30\n"
     )
-    cfg = BlacksmithConfig.load(cfg_file)
+    import tomllib
+
+    cfg = BlacksmithConfig.model_validate(tomllib.loads(cfg_file.read_text()))
     assert cfg.sandbox.enabled is True
     assert cfg.sandbox.image == "kindling-sandbox:latest"
     assert cfg.sandbox.setup_cmd == "pip install -e ."
     assert cfg.sandbox.exec_timeout_s == 30
 
+
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        BlacksmithConfig.load(cfg_file)
 
 def test_index_section_defaults():
     # WU-INDEX-CONFIG: [index] is off by default, with sane defaults for the other
@@ -511,8 +518,8 @@ def test_omitted_target_section_entirely_loads(tmp_path, monkeypatch):
 def test_explicit_repo_path_used_unchanged():
     # (2) An explicit [target].repo_path still loads and is used unchanged.
     cfg = BlacksmithConfig.load(FIXTURES / "valid_config.toml")
-    assert cfg.target.repo_path == Path("/tmp/kindling")
-    assert cfg.resolve_repo_path() == Path("/tmp/kindling")
+    assert cfg.target.repo_path == Path("/tmp/kindling").resolve()
+    assert cfg.resolve_repo_path() == Path("/tmp/kindling").resolve()
 
 
 def test_resolve_repo_path_raises_outside_git_repo(tmp_path, monkeypatch):

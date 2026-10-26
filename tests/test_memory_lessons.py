@@ -263,7 +263,11 @@ def test_plan_surfaces_stored_lesson(tmp_path):
 
 def test_empty_store_and_no_store_match_pre_unit_prompt(tmp_path):
     prd = _write_prd(tmp_path)
-    baseline = _system_prompt(_contract(prd))  # the system prompt as it was before this unit
+    from blacksmith.context import render_context
+    from blacksmith.contract import parse_prd
+
+    # Empty memory changes nothing about the full R02 requirements prompt.
+    baseline = _system_prompt(_contract(prd)) + render_context({"prd": parse_prd(prd)})
 
     empty_store = build_store(tmp_path / "store.sqlite")
     with_empty = _run_plan_capturing_system_prompt(

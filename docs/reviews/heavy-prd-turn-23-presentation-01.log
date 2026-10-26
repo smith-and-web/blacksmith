@@ -1,0 +1,37 @@
+FF...................................................................... [ 80%]
+.................                                                        [100%]
+=================================== FAILURES ===================================
+__ test_error_display_is_bounded_without_rewriting_the_retained_ledger[False] __
+
+rendered = False
+
+    @pytest.mark.parametrize("rendered", [False, True])
+    def test_error_display_is_bounded_without_rewriting_the_retained_ledger(rendered):
+        out = _TTYStringIO() if rendered else io.StringIO()
+        renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+        errors = [{"node": "worker", "message": f"entry-{i}: " + "D" * 5000 + "\x1b[2J\x9b2J"}
+                  for i in range(45)]
+        original = deepcopy(errors)
+>       renderer.report(Status.HALTED, None, errors, "total cost: $0.00", "tokens: unknown")
+E       TypeError: Renderer.report() takes 1 positional argument but 6 were given
+
+tests/test_presentation_integrity.py:23: TypeError
+__ test_error_display_is_bounded_without_rewriting_the_retained_ledger[True] ___
+
+rendered = True
+
+    @pytest.mark.parametrize("rendered", [False, True])
+    def test_error_display_is_bounded_without_rewriting_the_retained_ledger(rendered):
+        out = _TTYStringIO() if rendered else io.StringIO()
+        renderer = Renderer(out_stream=out, err_stream=io.StringIO())
+        errors = [{"node": "worker", "message": f"entry-{i}: " + "D" * 5000 + "\x1b[2J\x9b2J"}
+                  for i in range(45)]
+        original = deepcopy(errors)
+>       renderer.report(Status.HALTED, None, errors, "total cost: $0.00", "tokens: unknown")
+E       TypeError: Renderer.report() takes 1 positional argument but 6 were given
+
+tests/test_presentation_integrity.py:23: TypeError
+=========================== short test summary info ============================
+FAILED tests/test_presentation_integrity.py::test_error_display_is_bounded_without_rewriting_the_retained_ledger[False]
+FAILED tests/test_presentation_integrity.py::test_error_display_is_bounded_without_rewriting_the_retained_ledger[True]
+2 failed, 87 passed in 17.24s

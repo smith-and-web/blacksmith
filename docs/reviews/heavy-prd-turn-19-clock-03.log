@@ -1,0 +1,132 @@
+..F.......                                                               [100%]
+=================================== FAILURES ===================================
+____________ test_deadline_is_persistent_and_cannot_reset_on_resume ____________
+
+context = RunContext(state_version=2, run_id='1534268e-f1fa-4e18-b154-e05bc0679018', thread_id='run', repo_path='/private/tmp/bl...acksmith-heavy-prd-t19-clock-03/test_deadline_is_persistent_an0/.blacksmith/runs/1534268e-f1fa-4e18-b154-e05bc0679018')
+
+    def used(context):
+        """Validate original policy and all measured/conservatively charged slices."""
+        journal = context.journal()
+        policy = journal.get(_policy(context))
+        expected = {"version": 1,
+            "max_run_seconds": context.execution_config().limits.max_run_seconds,
+            "quantum_seconds": QUANTUM_SECONDS,
+            "cleanup_allowance_seconds": CLEANUP_ALLOWANCE_SECONDS}
+        if (not policy or policy.status != "completed" or policy.intent != expected
+                or policy.outcome != {"sha256": digest(encoded(expected))}):
+            raise ReceiptError("legacy_clock_requires_manual_recovery: missing/corrupt active clock")
+        charged, incomplete = 0.0, False
+        for row in journal.operations():
+            if row.key.kind != "clock.slice":
+                continue
+            data = row.intent
+            try:
+                reserve = data['reserved_seconds']
+                if (set(data) != {'owner', 'sequence', 'reserved_seconds', 'policy_id'}
+                        or type(data['sequence']) is not int or data['sequence'] < 0
+                        or row.key != OperationKey(context.run_id, '__run__',
+                            f"{data['owner']}:{data['sequence']}", 'clock.slice')
+                        or data['policy_id'] != policy.key.id
+                        or type(reserve) not in {int, float} or not math.isfinite(reserve)
+                        or not 0 < reserve <= min(QUANTUM_SECONDS, expected['max_run_seconds'])):
+                    raise ValueError('foreign clock slice')
+                if row.status == 'intent':
+                    active = _owners.get(str(context.directory))
+                    if active is not None and active.open_slice and active.key == row.key:
+                        charged += time.monotonic() - active.slice_started
+                    else:
+                        # The failed owner cannot record its stop/cleanup time. Charge
+                        # its full slice plus the bounded TERM grace, without inventing
+                        # a timestamp or counting the intervening offline pause.
+                        charged += reserve + CLEANUP_ALLOWANCE_SECONDS
+                        incomplete = True
+                else:
+                    elapsed = row.outcome['elapsed_seconds']
+                    if (row.status != 'completed' or set(row.outcome) != {'elapsed_seconds'}
+                            or type(elapsed) not in {int, float} or not math.isfinite(elapsed)
+                            or elapsed < 0):
+>                       raise ValueError('invalid elapsed execution')
+E                       ValueError: invalid elapsed execution
+
+blacksmith/run_clock.py:85: ValueError
+
+The above exception was the direct cause of the following exception:
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t19-clock-03/test_deadline_is_persistent_an0/target'), PosixPath('/priva...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_deadline_is_persistent_and_cannot_reset_on_resume(project):
+        context = setup(project, 5)
+        policy = next(r for r in context.journal().operations() if r.key.kind == 'clock.policy')
+        key = OperationKey(context.run_id, '__run__', 'previous:0', 'clock.slice')
+        context.journal().intent(key, {'owner': 'previous', 'sequence': 0,
+            'reserved_seconds': 5.0, 'policy_id': policy.key.id})
+        context.journal().finish(key, 'completed', {'elapsed_seconds': 4.85 - used(context)[0] + 5})
+>       with execution_scope(context) as clock:
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_run_clock.py:71: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+blacksmith/run_clock.py:189: in execution_scope
+    owner = _owners[identity] = _Clock(context)
+                                ^^^^^^^^^^^^^^^
+blacksmith/run_clock.py:95: in __init__
+    elapsed, self.incomplete = used(context)
+                               ^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+context = RunContext(state_version=2, run_id='1534268e-f1fa-4e18-b154-e05bc0679018', thread_id='run', repo_path='/private/tmp/bl...acksmith-heavy-prd-t19-clock-03/test_deadline_is_persistent_an0/.blacksmith/runs/1534268e-f1fa-4e18-b154-e05bc0679018')
+
+    def used(context):
+        """Validate original policy and all measured/conservatively charged slices."""
+        journal = context.journal()
+        policy = journal.get(_policy(context))
+        expected = {"version": 1,
+            "max_run_seconds": context.execution_config().limits.max_run_seconds,
+            "quantum_seconds": QUANTUM_SECONDS,
+            "cleanup_allowance_seconds": CLEANUP_ALLOWANCE_SECONDS}
+        if (not policy or policy.status != "completed" or policy.intent != expected
+                or policy.outcome != {"sha256": digest(encoded(expected))}):
+            raise ReceiptError("legacy_clock_requires_manual_recovery: missing/corrupt active clock")
+        charged, incomplete = 0.0, False
+        for row in journal.operations():
+            if row.key.kind != "clock.slice":
+                continue
+            data = row.intent
+            try:
+                reserve = data['reserved_seconds']
+                if (set(data) != {'owner', 'sequence', 'reserved_seconds', 'policy_id'}
+                        or type(data['sequence']) is not int or data['sequence'] < 0
+                        or row.key != OperationKey(context.run_id, '__run__',
+                            f"{data['owner']}:{data['sequence']}", 'clock.slice')
+                        or data['policy_id'] != policy.key.id
+                        or type(reserve) not in {int, float} or not math.isfinite(reserve)
+                        or not 0 < reserve <= min(QUANTUM_SECONDS, expected['max_run_seconds'])):
+                    raise ValueError('foreign clock slice')
+                if row.status == 'intent':
+                    active = _owners.get(str(context.directory))
+                    if active is not None and active.open_slice and active.key == row.key:
+                        charged += time.monotonic() - active.slice_started
+                    else:
+                        # The failed owner cannot record its stop/cleanup time. Charge
+                        # its full slice plus the bounded TERM grace, without inventing
+                        # a timestamp or counting the intervening offline pause.
+                        charged += reserve + CLEANUP_ALLOWANCE_SECONDS
+                        incomplete = True
+                else:
+                    elapsed = row.outcome['elapsed_seconds']
+                    if (row.status != 'completed' or set(row.outcome) != {'elapsed_seconds'}
+                            or type(elapsed) not in {int, float} or not math.isfinite(elapsed)
+                            or elapsed < 0):
+                        raise ValueError('invalid elapsed execution')
+                    charged += elapsed
+            except (ValueError, TypeError, KeyError) as exc:
+>               raise ReceiptError('corrupt active execution clock slice') from exc
+E               blacksmith.receipts.ReceiptError: corrupt active execution clock slice
+
+blacksmith/run_clock.py:88: ReceiptError
+=========================== short test summary info ============================
+FAILED tests/test_run_clock.py::test_deadline_is_persistent_and_cannot_reset_on_resume
+1 failed, 9 passed in 21.25s

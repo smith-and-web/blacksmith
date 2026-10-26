@@ -1,0 +1,17 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_planning_topology_reenters_one_unit_at_a_time_and_halt_wins _______
+
+    def test_planning_topology_reenters_one_unit_at_a_time_and_halt_wins():
+        assert route_after_plan({"planning_complete": False}) == "plan"
+        assert route_after_plan({"planning_complete": True}) == "approve_plan"
+        assert route_after_plan({"planning_complete": True, "status": Status.HALTED}) == "human_halt"
+        assert route_after_plan({"planning_complete": False, "status": Status.HALTED}) == "human_halt"
+        graph = build_graph().compile().get_graph()
+>       assert ("plan", "plan") in {(edge.source, edge.target) for edge in graph.edges}
+E       AssertionError: assert ('plan', 'plan') in {('__start__', 'ingest_prd'), ('ingest_prd', '__end__')}
+
+tests/test_graph.py:81: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_graph.py::test_planning_topology_reenters_one_unit_at_a_time_and_halt_wins
+1 failed in 0.32s

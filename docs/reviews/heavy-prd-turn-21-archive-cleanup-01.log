@@ -1,0 +1,3 @@
+Verified full byte archive and manifest; making only owned directories writable for scratch removal.
+Removing only archived completed S14 scratch root; owned directories: 148578
+Completed. Verified archive and restoration manifest retained; live/failed roots untouched.

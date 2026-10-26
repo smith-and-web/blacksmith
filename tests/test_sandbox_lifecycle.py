@@ -1,18 +1,7 @@
-"""Tests for the run-level sandbox lifecycle wiring (WU-SANDBOX-LIFECYCLE).
+"""S17 rejects enabled sandbox execution before clone/container effects.
 
-Test contract: when ``config.sandbox.enabled``, ``prepare_worktree`` starts the run's
-ONE sandbox over the run's freshly-created clone (reused across every unit built on it)
-and ``cleanup_worktree`` stops it, best-effort, on every terminal path -- including
-after a halt. Disabled (or simply unwired, ``sandbox=None``) leaves both nodes
-byte-for-byte unchanged from today. A start failure never halts the run: the sandbox
-is an additive, opt-in self-verify channel, and ``blacksmith/gate.py`` remains the
-sole authoritative pass/fail backstop regardless.
-
-Exercised entirely against a FAKE sandbox manager mirroring the public surface of
-``blacksmith.sandbox.SandboxManager`` (``config.enabled``, ``start(path)``, ``stop()``)
--- the real docker CLI is never invoked, here or transitively (``prepare_worktree``/
-``cleanup_worktree`` only ever touch git, via a real scratch repo, exactly as the
-existing worktree tests do).
+Disabled/unwired lifecycle behavior remains covered. Low-level Docker primitives
+are separately tested with fake transport; those tests are not enablement proof.
 """
 
 from __future__ import annotations
@@ -21,6 +10,9 @@ import subprocess
 import types
 from pathlib import Path
 
+import pytest
+
+from blacksmith.config import ConfigError
 from blacksmith.graph import cleanup_worktree, prepare_worktree
 from blacksmith.sandbox import SandboxError
 from blacksmith.state import Status
@@ -79,43 +71,47 @@ class FailingStopSandbox(FakeSandbox):
         raise SandboxError("docker rm failed (exit 1): boom")
 
 
-# --- (a) enabled: start on prepare, stop on cleanup --------------------------------
+# --- enabled execution refuses before effects --------------------------------
 
 
-def test_enabled_starts_sandbox_on_prepare_over_the_new_clone(tmp_path):
+def test_enabled_rejects_prepare_before_clone_or_container(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     mgr = WorktreeManager(repo, base_dir=tmp_path / "wt")
     sandbox = FakeSandbox(enabled=True)
-    state = {"selected_unit": types.SimpleNamespace(id="WU-01")}
+    before = _git(repo, "worktree", "list", "--porcelain")
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        prepare_worktree({"selected_unit": types.SimpleNamespace(id="WU-01")},
+                         worktree_manager=mgr, sandbox=sandbox)
+    assert sandbox.start_calls == [] and sandbox.stop_calls == 0
+    assert _git(repo, "worktree", "list", "--porcelain") == before
+    assert not (tmp_path / "wt").exists()
 
-    update = prepare_worktree(state, worktree_manager=mgr, sandbox=sandbox)
 
-    assert sandbox.start_calls == [update["worktree_path"]]
-    assert sandbox.stop_calls == 0  # not stopped yet
-
-
-def test_enabled_starts_once_per_run_reused_across_units(tmp_path):
-    """prepare_worktree is the run's single entry point -- one start, not one per unit."""
+def test_repeated_enabled_prepare_never_starts_or_creates_a_workspace(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     mgr = WorktreeManager(repo, base_dir=tmp_path / "wt")
     sandbox = FakeSandbox(enabled=True)
-    state = {"selected_unit": types.SimpleNamespace(id="WU-02")}
+    for unit_id in ["WU-02", "WU-03"]:
+        with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+            prepare_worktree({"selected_unit": types.SimpleNamespace(id=unit_id)},
+                             worktree_manager=mgr, sandbox=sandbox)
+    assert sandbox.start_calls == [] and sandbox.stop_calls == 0
+    assert not (tmp_path / "wt").exists()
 
-    prepare_worktree(state, worktree_manager=mgr, sandbox=sandbox)
 
-    assert len(sandbox.start_calls) == 1
-
-
-def test_enabled_stops_sandbox_on_cleanup(tmp_path):
+def test_enabled_cleanup_preserves_existing_workspace_without_container_effects(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     mgr = WorktreeManager(repo, base_dir=tmp_path / "wt")
+    wt = mgr.create("WU-03")
     sandbox = FakeSandbox(enabled=True)
-    state = {"selected_unit": types.SimpleNamespace(id="WU-03")}
-
-    update = prepare_worktree(state, worktree_manager=mgr, sandbox=sandbox)
-    cleanup_worktree({**state, **update}, worktree_manager=mgr, sandbox=sandbox)
-
-    assert sandbox.stop_calls == 1
+    before = _git(repo, "worktree", "list", "--porcelain")
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        cleanup_worktree({"worktree_path": str(wt.path),
+                          "selected_unit": types.SimpleNamespace(id="WU-03")},
+                         worktree_manager=mgr, sandbox=sandbox)
+    assert sandbox.start_calls == [] and sandbox.stop_calls == 0
+    assert wt.path.is_dir() and (wt.path / "README.md").read_text() == "scratch\n"
+    assert _git(repo, "worktree", "list", "--porcelain") == before
 
 
 # --- (b) disabled: no container calls, unchanged behaviour --------------------------
@@ -170,67 +166,56 @@ def test_unwired_sandbox_is_a_pure_noop(tmp_path):
     assert result == {}  # cleanup still runs its normal job, no sandbox involved
 
 
-# --- (c) a start failure never halts the run -----------------------------------------
+# --- failed/legacy lifecycle must not start or delete unsupported containers ---
 
 
-def test_start_failure_does_not_halt_and_worktree_still_created(tmp_path):
+def test_enabled_start_failure_is_never_attempted_and_no_workspace_created(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     mgr = WorktreeManager(repo, base_dir=tmp_path / "wt")
     sandbox = FakeSandbox(enabled=True, fail_start=True)
-    state = {"selected_unit": types.SimpleNamespace(id="WU-08")}
-
-    update = prepare_worktree(state, worktree_manager=mgr, sandbox=sandbox)
-
-    assert len(sandbox.start_calls) == 1  # the start WAS attempted
-    assert update.get("status") != Status.HALTED
-    assert "errors" not in update
-    # The run's normal worktree/clone setup is entirely unaffected by the sandbox failure.
-    assert update["worktree_path"]
-    assert Path(update["worktree_path"]).is_dir()
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        prepare_worktree({"selected_unit": types.SimpleNamespace(id="WU-08")},
+                         worktree_manager=mgr, sandbox=sandbox)
+    assert sandbox.start_calls == [] and sandbox.stop_calls == 0
+    assert not (tmp_path / "wt").exists()
 
 
-# --- stop is always attempted on cleanup, even after a halt --------------------------
+# --- historical enabled cleanup refuses and retains work ----------------------
 
 
-def test_cleanup_stops_sandbox_even_after_a_halt(tmp_path):
+def test_enabled_cleanup_after_halt_preserves_work_and_never_stops_container(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     mgr = WorktreeManager(repo, base_dir=tmp_path / "wt")
     wt = mgr.create("WU-09")
     sandbox = FakeSandbox(enabled=True)
-    state = {
-        "worktree_path": str(wt.path),
-        "selected_unit": types.SimpleNamespace(id="WU-09"),
-        "status": Status.HALTED,
-    }
-
-    cleanup_worktree(state, worktree_manager=mgr, sandbox=sandbox)
-
-    assert sandbox.stop_calls == 1
+    state = {"worktree_path": str(wt.path), "selected_unit": types.SimpleNamespace(id="WU-09"),
+             "status": Status.HALTED}
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        cleanup_worktree(state, worktree_manager=mgr, sandbox=sandbox)
+    assert sandbox.stop_calls == 0 and sandbox.start_calls == []
+    assert wt.path.is_dir()
 
 
-def test_cleanup_stops_sandbox_even_when_worktree_state_is_missing():
-    """Stop is unconditional -- even when there is nothing else for cleanup to do."""
+def test_enabled_cleanup_with_missing_state_has_no_container_effects():
     sandbox = FakeSandbox(enabled=True)
-
-    result = cleanup_worktree({}, worktree_manager=object(), sandbox=sandbox)
-
-    assert sandbox.stop_calls == 1
-    assert result == {}
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        cleanup_worktree({}, worktree_manager=object(), sandbox=sandbox)
+    assert sandbox.stop_calls == 0 and sandbox.start_calls == []
 
 
-def test_cleanup_swallows_a_failing_sandbox_stop(tmp_path):
+def test_enabled_cleanup_rejects_before_an_unowned_failing_container_stop(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     mgr = WorktreeManager(repo, base_dir=tmp_path / "wt")
     wt = mgr.create("WU-10")
     sandbox = FailingStopSandbox(enabled=True)
-    state = {"worktree_path": str(wt.path), "selected_unit": types.SimpleNamespace(id="WU-10")}
+    with pytest.raises(ConfigError, match="sandbox_unsupported_until_hardened"):
+        cleanup_worktree({"worktree_path": str(wt.path),
+                          "selected_unit": types.SimpleNamespace(id="WU-10")},
+                         worktree_manager=mgr, sandbox=sandbox)
+    assert sandbox.stop_calls == 0 and wt.path.is_dir()
 
-    cleanup_worktree(state, worktree_manager=mgr, sandbox=sandbox)  # must not raise
 
-    assert sandbox.stop_calls == 1
-
-
-def test_build_graph_wires_the_sandbox_into_the_implement_node(monkeypatch):
+def test_build_graph_keeps_disabled_sandbox_dependency_inert_and_forwarded(monkeypatch):
     # Gap that hid for a whole feature: prepare_worktree/cleanup got the sandbox but the IMPLEMENT
     # node's add_node omitted it, so the run_command tool was never granted even with a sandbox
     # wired in. Spy on _node_with to assert the implement node is injected with the sandbox (and
@@ -249,7 +234,7 @@ def test_build_graph_wires_the_sandbox_into_the_implement_node(monkeypatch):
 
     monkeypatch.setattr(graph_mod, "_node_with", spy)
 
-    sandbox = SandboxManager(config=SandboxConfig(enabled=True, exec_timeout_s=42))  # inert
+    sandbox = SandboxManager(config=SandboxConfig(enabled=False, exec_timeout_s=42))  # inert
     graph_mod.build_graph(executor=object(), sandbox=sandbox)
 
     impl_injected = next(inj for fn, inj in calls if fn is implement_fn)

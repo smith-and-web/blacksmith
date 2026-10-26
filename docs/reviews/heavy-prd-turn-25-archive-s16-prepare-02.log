@@ -1,0 +1,4 @@
+Scanning closed, completed S16 adjacent synthetic tree; .env/special entries remain unread.
+Creating archive: 209207 entries; 272333073 logical payload bytes.
+Verifying every archived regular file byte hash, mode and symlink.
+{"archive_verified": true, "archive_bytes": 57095657, "entries": 209207, "protected_retained": 0, "cleanup_status": "not_started"}

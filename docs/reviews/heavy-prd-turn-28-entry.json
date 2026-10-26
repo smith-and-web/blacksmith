@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-25T14:37:25.691510-03:00",
+  "previous_goal_turn": 27,
+  "goal_turn": 28,
+  "incremented_exactly_once": true,
+  "previous_progress_sha256": "ac8b1588c679c39d15c9d2ef6f3f197b0acf7db3f63e93cb7f02d8ccd3f9a09e",
+  "classification": "progress",
+  "full_receipt": "heavy-prd-turn-26-full-command-01.json",
+  "terminal_summary": "1419 passed, 7 warnings in 5207.92s (1:26:47)",
+  "required_next": "exact current identity/matrix audit; acceptance/docs/brain/local commit closeout; live gates remain unrun"
+}

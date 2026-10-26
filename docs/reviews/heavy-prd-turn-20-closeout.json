@@ -1,0 +1,46 @@
+{
+  "docs_revision": "02a00f0b339a6c7773348d9baf3b2a9b425b0a20",
+  "goal_status": "active; S01-S14 accepted; S15-S19 incomplete",
+  "goal_turn": 20,
+  "historical_exception": "Turn13 failed external push attempt retained in heavy-prd-turn-13-unexpected-push.json; no successful publication",
+  "live_handles_last_polled": [
+    3281,
+    65567
+  ],
+  "new_external_push_merge_publication_paid_canary_docker": false,
+  "original_inputs_unchanged": true,
+  "read_only_hundred_chain_receipt_progress": [
+    [
+      "model.implement",
+      "completed",
+      60
+    ],
+    [
+      "model.plan",
+      "completed",
+      100
+    ],
+    [
+      "model.review",
+      "completed",
+      59
+    ]
+  ],
+  "recorded_at": "2026-10-25T01:51:32.521960-03:00",
+  "source_checks": [
+    {
+      "config_hashes_unchanged": true,
+      "record": "heavy-prd-turn-20-environment-02.json",
+      "source_count": 165,
+      "source_set_and_hashes_unchanged": true
+    },
+    {
+      "config_hashes_unchanged": true,
+      "record": "heavy-prd-turn-20-scheduling-source-02.json",
+      "source_count": 168,
+      "source_set_and_hashes_unchanged": true
+    }
+  ],
+  "temporary_fixture_current_symlinks_deduplicated": true,
+  "verification": "progress only; neither live suite has a terminal pass"
+}

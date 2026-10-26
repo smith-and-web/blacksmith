@@ -1,0 +1,12 @@
+E501 Line too long (106 > 100)
+   --> tests/test_publication_approval.py:225:101
+    |
+223 |     payload = payloads[-1]
+224 |     assert payload["gate"] == "pr" and "…(diff truncated at 256 bytes)…" in payload["diff_text"]
+225 |     assert len(payload["diff_text"].encode()) <= 256 + len("\n…(diff truncated at 256 bytes)…\n".encode())
+    |                                                                                                     ^^^^^^
+226 |     assert payload["diff_manifest"]["bytes"] > 1048576 and remote == []
+227 |     assert not any(c[0] == "summary" for c in calls)
+    |
+
+Found 5 errors (4 fixed, 1 remaining).

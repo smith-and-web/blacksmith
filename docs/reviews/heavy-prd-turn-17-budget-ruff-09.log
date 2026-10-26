@@ -1,0 +1,27 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_executor_admission.py:3:1
+   |
+ 1 |   """Every actual Executor paid-role entry uses critical grants and real SDK options."""
+ 2 |
+ 3 | / import sqlite3
+ 4 | |
+ 5 | | import pytest
+ 6 | | from test_integration_integrity import configure
+ 7 | | from test_publication_approval import run
+ 8 | | from test_publication_integrity import setup as install_pipeline
+ 9 | | from test_run_context import create
+10 | | from test_run_context import saved_values
+11 | | from test_run_context import project as project
+12 | |
+13 | | from blacksmith.budget import AdmissionDenied, BudgetLedger
+14 | | from blacksmith.executor import Executor, ExecutorResult
+15 | | from blacksmith.receipts import ReceiptError, call_context_for
+16 | | from blacksmith.run_context import context_from_state
+   | |_____________________________________________________^
+17 |
+18 |   ROLES = ["run_plan", "run_plan_critique", "run_implement", "run_implement_escalate",
+   |
+help: Organize imports
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

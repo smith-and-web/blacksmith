@@ -36,7 +36,7 @@ BASE_CONTRACT = {
         {
             "id": "WU-02",
             "title": "thing",
-            "layers": ["py-logic", "integration"],
+            "layers": ["integration"],
             "target_modules": ["x.py"],
             "test_contract": "pytest: works",
             "depends_on": ["WU-01"],

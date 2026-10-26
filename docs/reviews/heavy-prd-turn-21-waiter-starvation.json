@@ -1,0 +1,8 @@
+{
+  "langgraph": "1.2.9",
+  "max_concurrency": 2,
+  "actual_node_threads_can_start_before_timeout": 2,
+  "result": "BrokenBarrierError",
+  "cause_source": "custom-stream waiter submitted to same bounded BackgroundExecutor before node tasks",
+  "paid_or_external_effects": false
+}

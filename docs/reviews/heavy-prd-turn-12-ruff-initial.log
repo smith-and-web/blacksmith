@@ -1,0 +1,151 @@
+E501 Line too long (114 > 100)
+   --> blacksmith/cli.py:919:101
+    |
+917 |                                 help="Explicitly retry the recorded failed deterministic stage.")
+918 |     recovery_modes.add_argument("--continue-attempt", action="store_true",
+919 |                                 help="Acknowledge an interrupted model and use remaining continuation allowance.")
+    |                                                                                                     ^^^^^^^^^^^^^^
+920 |     parser.add_argument("--unit-id", help="Recover only this recorded failed unit.")
+921 |     parser.add_argument("--add-budget-usd", type=float,
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/recovery_control.py:7:1
+   |
+ 5 |   """
+ 6 |
+ 7 | / from __future__ import annotations
+ 8 | |
+ 9 | | import base64
+10 | | import math
+11 | | import os
+12 | | from copy import deepcopy
+13 | | from pathlib import Path
+14 | |
+15 | | from blacksmith.receipts import OperationKey, attempt_identity, digest, encoded, merge_events
+16 | | from blacksmith.recovery import (
+17 | |     RecoveryError, _directory, _dump_state, _git, _read, capture, file_hash,
+18 | |     latest_checkpoints, owned_file, validate,
+19 | | )
+20 | | from blacksmith.run_context import context_from_state
+21 | | from blacksmith.state import Status
+22 | | from blacksmith.unit_state import next_attempt
+   | |______________________________________________^
+23 |
+24 |   UNIT_STAGES = frozenset({
+   |
+help: Organize imports
+
+F401 [*] `blacksmith.run_context.context_from_state` imported but unused
+  --> blacksmith/recovery_control.py:20:36
+   |
+18 |     latest_checkpoints, owned_file, validate,
+19 | )
+20 | from blacksmith.run_context import context_from_state
+   |                                    ^^^^^^^^^^^^^^^^^^
+21 | from blacksmith.state import Status
+22 | from blacksmith.unit_state import next_attempt
+   |
+help: Remove unused import: `blacksmith.run_context.context_from_state`
+
+E501 Line too long (101 > 100)
+   --> blacksmith/recovery_control.py:184:101
+    |
+182 |             raise RecoveryError("uncertain planner/critic requires --continue-attempt")
+183 |         for operation in uncertain:
+184 |             identity = encoded([operation.key.unit_id, operation.key.attempt_id, operation.key.kind])
+    |                                                                                                     ^
+185 |             count = counts.get(identity, 0)
+186 |             if count >= limits["max_implement_continuations"]:
+    |
+
+E501 Line too long (104 > 100)
+   --> blacksmith/recovery_control.py:232:101
+    |
+230 |                     if stage != "implement":
+231 |                         raise RecoveryError("--continue-attempt requires an interrupted implement")
+232 |                     if state.get("implement_continuations", 0) >= limits["max_implement_continuations"]:
+    |                                                                                                     ^^^^
+233 |                         raise RecoveryError("implementation continuation allowance exhausted")
+234 |                     expected_head = state.get("pre_implement_ref") or state.get("attempt_base_commit")
+    |
+
+E501 Line too long (102 > 100)
+   --> blacksmith/recovery_control.py:234:101
+    |
+232 |                     if state.get("implement_continuations", 0) >= limits["max_implement_continuations"]:
+233 |                         raise RecoveryError("implementation continuation allowance exhausted")
+234 |                     expected_head = state.get("pre_implement_ref") or state.get("attempt_base_commit")
+    |                                                                                                     ^^
+235 |                     if actual["head"] != expected_head:
+236 |                         raise RecoveryError("unknown commit after interrupted model; inspect before continuing")
+    |
+
+E501 Line too long (112 > 100)
+   --> blacksmith/recovery_control.py:236:101
+    |
+234 |                     expected_head = state.get("pre_implement_ref") or state.get("attempt_base_commit")
+235 |                     if actual["head"] != expected_head:
+236 |                         raise RecoveryError("unknown commit after interrupted model; inspect before continuing")
+    |                                                                                                     ^^^^^^^^^^^^
+237 |                     state.update(next_attempt(state, "continuation"))
+238 |                     state["continuation_feedback"] = (
+    |
+
+E501 Line too long (106 > 100)
+   --> blacksmith/recovery_control.py:240:101
+    |
+238 |                     state["continuation_feedback"] = (
+239 |                         "The operator explicitly acknowledged an interrupted attempt. Preserve its "
+240 |                         "partial files and finish the original approved unit. Prior usage may be unknown."
+    |                                                                                                     ^^^^^^
+241 |                     )
+242 |                     stage = "implement"
+    |
+
+E501 Line too long (108 > 100)
+   --> blacksmith/recovery_control.py:247:101
+    |
+245 |                 else:
+246 |                     expected_head = (state.get("implementation") or {}).get("candidate_commit")
+247 |                     if expected_head and actual["head"] != expected_head and stage != "normalize_candidate":
+    |                                                                                                     ^^^^^^^^
+248 |                         raise RecoveryError("candidate HEAD changed since failure; inspect before retry")
+249 |                 generation = (previous or state).get("recovery_generation", 0) + 1
+    |
+
+E501 Line too long (105 > 100)
+   --> blacksmith/recovery_control.py:248:101
+    |
+246 |                     expected_head = (state.get("implementation") or {}).get("candidate_commit")
+247 |                     if expected_head and actual["head"] != expected_head and stage != "normalize_candidate":
+248 |                         raise RecoveryError("candidate HEAD changed since failure; inspect before retry")
+    |                                                                                                     ^^^^^
+249 |                 generation = (previous or state).get("recovery_generation", 0) + 1
+250 |                 old_attempt = attempt_identity(state)
+    |
+
+E501 Line too long (104 > 100)
+   --> blacksmith/recovery_control.py:254:101
+    |
+252 |                              recovery_previous_outcome=previous, unit_initialized=True,
+253 |                              unit_failed_stage="", status=Status.IMPLEMENTING,
+254 |                              limits=limits, recovery_call_overrides=root.get("recovery_call_overrides"))
+    |                                                                                                     ^^^^
+255 |                 state["implementation_attempt_id"] = state.get("implementation_attempt_id") or old_attempt
+256 |                 state["attempt_id"] = old_attempt + f":recovery:{generation}"
+    |
+
+E501 Line too long (106 > 100)
+   --> blacksmith/recovery_control.py:255:101
+    |
+253 |                              unit_failed_stage="", status=Status.IMPLEMENTING,
+254 |                              limits=limits, recovery_call_overrides=root.get("recovery_call_overrides"))
+255 |                 state["implementation_attempt_id"] = state.get("implementation_attempt_id") or old_attempt
+    |                                                                                                     ^^^^^^
+256 |                 state["attempt_id"] = old_attempt + f":recovery:{generation}"
+257 |                 if add_budget_usd and stage == "test_gate":
+    |
+
+Found 12 errors.
+[*] 2 fixable with the `--fix` option.

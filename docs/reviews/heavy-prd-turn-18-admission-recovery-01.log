@@ -1,0 +1,291 @@
+FFF.F                                                                    [100%]
+=================================== FAILURES ===================================
+_ test_budget_only_resume_retries_denied_call_without_continuation_or_replay[critic-0.01-1-True] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie0/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c170b00>
+role = 'critic', cap = 0.01, panel = 1, critic = True
+
+    @pytest.mark.parametrize("role,cap,panel,critic", [
+        ("critic", .01, 1, True), ("implement", .01, 1, False),
+        ("review", .03, 3, False), ("summary", .03, 1, False),
+    ])
+    def test_budget_only_resume_retries_denied_call_without_continuation_or_replay(
+        project, monkeypatch, role, cap, panel, critic,
+    ):
+        project[1].write_text(project[1].read_text() + f"[limits]\nmax_run_cost_usd={cap}\n"
+            f"max_implement_continuations=0\n[review]\npanel_size={panel}\n"
+            f"[critic]\nenabled={str(critic).lower()}\n")
+        calls, remote, _ = install(project, monkeypatch)
+        # The strict base fake normally handles plan/implement/review/summary. Add
+        # just the critic response, still through actual options/reservation/receipts.
+        if critic:
+            from blacksmith.executor import Executor, ExecutorResult
+            collect = Executor._collect
+    
+            async def critic_transport(self, prompt, options, *, emit_findings=False):
+                if prompt.startswith("Critique") or "Respond with" in prompt and "approved" in prompt:
+                    calls.append(("critic", "U1", prompt, options))
+                    return ExecutorResult('{"approved":true,"critique":""}', options.model,
+                                          False, 1, .01, {}, "offline")
+                return await collect(self, prompt, options, emit_findings=emit_findings)
+            monkeypatch.setattr(Executor, "_collect", critic_transport)
+        assert run(project, "publication") == 1
+        before = saved_values(project[1], "publication")
+        context = context_from_state(before)
+        journal = context.journal()
+        denials = [r for r in journal.operations() if r.key.kind == "admission.denied"]
+        assert len(denials) == 1 and denials[0].intent['model_key']['kind'] == 'model.' + role
+        denied_call = denials[0].intent['call_id']
+        assert journal.get_by_id(denied_call) is None
+        original = [r for r in journal.operations() if r.key.kind.startswith('model.')]
+>       assert remote.effects() == []
+               ^^^^^^^^^^^^^^^^
+
+tests/test_admission_recovery.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_publication_integrity.py:43: in effects
+    return [c for c in self.calls() if c[:2] == ["git", "push"]
+                       ^^^^^^^^^^^^
+tests/test_publication_integrity.py:40: in calls
+    return [json.loads(line) for line in self.log.read_text().splitlines()]
+                                         ^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie0/remote-calls.jsonl')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie0/remote-calls.jsonl'
+
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pathlib.py:1013: FileNotFoundError
+----------------------------- Captured stdout call -----------------------------
+Run 217e4897-5060-45e8-b0a8-c863a56c464e: selected committed HEAD 5928da5f0bb455d5a3001cd050f6cce060760a0c
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie0/.blacksmith/runs/217e4897-5060-45e8-b0a8-c863a56c464e
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie0/.blacksmith/runs/217e4897-5060-45e8-b0a8-c863a56c464e/recovery/8d2f09a2-c175-4428-869e-c9c001142bb7/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie0/runtime.toml
+blacksmith: model admission denied before start: run_budget
+_ test_budget_only_resume_retries_denied_call_without_continuation_or_replay[implement-0.01-1-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie1/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c170cb0>
+role = 'implement', cap = 0.01, panel = 1, critic = False
+
+    @pytest.mark.parametrize("role,cap,panel,critic", [
+        ("critic", .01, 1, True), ("implement", .01, 1, False),
+        ("review", .03, 3, False), ("summary", .03, 1, False),
+    ])
+    def test_budget_only_resume_retries_denied_call_without_continuation_or_replay(
+        project, monkeypatch, role, cap, panel, critic,
+    ):
+        project[1].write_text(project[1].read_text() + f"[limits]\nmax_run_cost_usd={cap}\n"
+            f"max_implement_continuations=0\n[review]\npanel_size={panel}\n"
+            f"[critic]\nenabled={str(critic).lower()}\n")
+        calls, remote, _ = install(project, monkeypatch)
+        # The strict base fake normally handles plan/implement/review/summary. Add
+        # just the critic response, still through actual options/reservation/receipts.
+        if critic:
+            from blacksmith.executor import Executor, ExecutorResult
+            collect = Executor._collect
+    
+            async def critic_transport(self, prompt, options, *, emit_findings=False):
+                if prompt.startswith("Critique") or "Respond with" in prompt and "approved" in prompt:
+                    calls.append(("critic", "U1", prompt, options))
+                    return ExecutorResult('{"approved":true,"critique":""}', options.model,
+                                          False, 1, .01, {}, "offline")
+                return await collect(self, prompt, options, emit_findings=emit_findings)
+            monkeypatch.setattr(Executor, "_collect", critic_transport)
+        assert run(project, "publication") == 1
+        before = saved_values(project[1], "publication")
+        context = context_from_state(before)
+        journal = context.journal()
+        denials = [r for r in journal.operations() if r.key.kind == "admission.denied"]
+        assert len(denials) == 1 and denials[0].intent['model_key']['kind'] == 'model.' + role
+        denied_call = denials[0].intent['call_id']
+        assert journal.get_by_id(denied_call) is None
+        original = [r for r in journal.operations() if r.key.kind.startswith('model.')]
+>       assert remote.effects() == []
+               ^^^^^^^^^^^^^^^^
+
+tests/test_admission_recovery.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_publication_integrity.py:43: in effects
+    return [c for c in self.calls() if c[:2] == ["git", "push"]
+                       ^^^^^^^^^^^^
+tests/test_publication_integrity.py:40: in calls
+    return [json.loads(line) for line in self.log.read_text().splitlines()]
+                                         ^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie1/remote-calls.jsonl')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie1/remote-calls.jsonl'
+
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pathlib.py:1013: FileNotFoundError
+----------------------------- Captured stdout call -----------------------------
+Run 1f973312-f1e1-45c8-ac74-0592928e7201: selected committed HEAD a4e7879870b92cc4f5321b79b0949ddbd29ef28a
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie1/.blacksmith/runs/1f973312-f1e1-45c8-ac74-0592928e7201
+[auto] gate 'plan': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie1/.blacksmith/runs/1f973312-f1e1-45c8-ac74-0592928e7201/recovery/aa7c4c75-c5a1-4aad-bebe-a34f6bb18297/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie1/runtime.toml
+blacksmith: model admission denied before start: run_budget
+_ test_budget_only_resume_retries_denied_call_without_continuation_or_replay[review-0.03-3-False] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie2/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c170ce0>
+role = 'review', cap = 0.03, panel = 3, critic = False
+
+    @pytest.mark.parametrize("role,cap,panel,critic", [
+        ("critic", .01, 1, True), ("implement", .01, 1, False),
+        ("review", .03, 3, False), ("summary", .03, 1, False),
+    ])
+    def test_budget_only_resume_retries_denied_call_without_continuation_or_replay(
+        project, monkeypatch, role, cap, panel, critic,
+    ):
+        project[1].write_text(project[1].read_text() + f"[limits]\nmax_run_cost_usd={cap}\n"
+            f"max_implement_continuations=0\n[review]\npanel_size={panel}\n"
+            f"[critic]\nenabled={str(critic).lower()}\n")
+        calls, remote, _ = install(project, monkeypatch)
+        # The strict base fake normally handles plan/implement/review/summary. Add
+        # just the critic response, still through actual options/reservation/receipts.
+        if critic:
+            from blacksmith.executor import Executor, ExecutorResult
+            collect = Executor._collect
+    
+            async def critic_transport(self, prompt, options, *, emit_findings=False):
+                if prompt.startswith("Critique") or "Respond with" in prompt and "approved" in prompt:
+                    calls.append(("critic", "U1", prompt, options))
+                    return ExecutorResult('{"approved":true,"critique":""}', options.model,
+                                          False, 1, .01, {}, "offline")
+                return await collect(self, prompt, options, emit_findings=emit_findings)
+            monkeypatch.setattr(Executor, "_collect", critic_transport)
+        assert run(project, "publication") == 1
+        before = saved_values(project[1], "publication")
+        context = context_from_state(before)
+        journal = context.journal()
+        denials = [r for r in journal.operations() if r.key.kind == "admission.denied"]
+        assert len(denials) == 1 and denials[0].intent['model_key']['kind'] == 'model.' + role
+        denied_call = denials[0].intent['call_id']
+        assert journal.get_by_id(denied_call) is None
+        original = [r for r in journal.operations() if r.key.kind.startswith('model.')]
+>       assert remote.effects() == []
+               ^^^^^^^^^^^^^^^^
+
+tests/test_admission_recovery.py:53: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_publication_integrity.py:43: in effects
+    return [c for c in self.calls() if c[:2] == ["git", "push"]
+                       ^^^^^^^^^^^^
+tests/test_publication_integrity.py:40: in calls
+    return [json.loads(line) for line in self.log.read_text().splitlines()]
+                                         ^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pathlib.py:1027: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie2/remote-calls.jsonl')
+mode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie2/remote-calls.jsonl'
+
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/pathlib.py:1013: FileNotFoundError
+----------------------------- Captured stdout call -----------------------------
+Run 57bf589e-b08a-46b3-93d8-ba24551a7cbe: selected committed HEAD 75a856fc5629c1338aae2fefe139bea9402cabe1
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie2/.blacksmith/runs/57bf589e-b08a-46b3-93d8-ba24551a7cbe
+[auto] gate 'plan': approved
+
+status: halted
+error [review]: review unavailable: model admission denied before start: run_budget
+total cost: $0.03
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie2/.blacksmith/runs/57bf589e-b08a-46b3-93d8-ba24551a7cbe/recovery/1613d354-bbac-4105-996f-3cc75c3ee5c1/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_budget_only_resume_retrie2/runtime.toml
+________ test_unlimited_cost_is_explicit_and_frozen_in_real_cli_policy _________
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_unlimited_cost_is_explici0/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c421df0>
+
+    def test_unlimited_cost_is_explicit_and_frozen_in_real_cli_policy(project, monkeypatch):
+        project[1].write_text(project[1].read_text() + '[limits]\nmax_run_cost_usd=.01\n')
+        calls, remote, _ = install(project, monkeypatch)
+>       assert run(project, 'publication', '--unlimited-cost') == 0
+E       AssertionError: assert 1 == 0
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_unlimited_cost_is_explici0/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'publication', '--unlimited-cost')
+
+tests/test_admission_recovery.py:86: AssertionError
+----------------------------- Captured stderr call -----------------------------
+blacksmith: invalid TOML in /private/tmp/blacksmith-heavy-prd-t18-recovery-01/test_unlimited_cost_is_explici0/runtime.toml: Invalid value (at line 4, column 18)
+=========================== short test summary info ============================
+FAILED tests/test_admission_recovery.py::test_budget_only_resume_retries_denied_call_without_continuation_or_replay[critic-0.01-1-True]
+FAILED tests/test_admission_recovery.py::test_budget_only_resume_retries_denied_call_without_continuation_or_replay[implement-0.01-1-False]
+FAILED tests/test_admission_recovery.py::test_budget_only_resume_retries_denied_call_without_continuation_or_replay[review-0.03-3-False]
+FAILED tests/test_admission_recovery.py::test_unlimited_cost_is_explicit_and_frozen_in_real_cli_policy
+4 failed, 1 passed in 42.68s

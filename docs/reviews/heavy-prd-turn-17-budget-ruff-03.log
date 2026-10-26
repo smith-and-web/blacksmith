@@ -1,0 +1,25 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_budget_admission.py:3:1
+   |
+ 1 |   """Atomic critical budget ledger; SDK outcomes below are explicit offline receipts."""
+ 2 |
+ 3 | / import json
+ 4 | | import sqlite3
+ 5 | | from concurrent.futures import ThreadPoolExecutor
+ 6 | | from threading import Barrier
+ 7 | |
+ 8 | | import pytest
+ 9 | | from test_run_context import create
+10 | | from test_run_context import project as project
+11 | |
+12 | | from blacksmith.budget import AdmissionDenied, BudgetLedger, initialize
+13 | | from blacksmith.config import BlacksmithConfig, LimitsConfig
+14 | | from blacksmith.ingest import parse_prd
+15 | | from blacksmith.receipts import OperationKey, ReceiptError, digest, encoded
+16 | | from blacksmith.run_context import create_run_context
+   | |_____________________________________________________^
+   |
+help: Organize imports
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

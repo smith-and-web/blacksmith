@@ -1,43 +1,8 @@
-"""Plan node — plan every auto-gated work unit up front (PRD §4 node 2).
+"""One auto unit per checkpointed planning invocation, then one shared approval.
 
-Produces an implementation plan for EACH auto-gated unit (WU-PLAN-ALL-UNITS), so a
-multi-unit PRD surfaces a plan for ALL of its units behind the single ``approve_plan``
-gate — not just the first (the prior behaviour, which left units 2..N building with no
-plan and no approval, undercutting the plan gate for multi-unit PRDs). Human-gated units
-are skipped: they get manual QA via a draft PR, so no implementation plan is needed (this
-mirrors ``route_after_implement``). Each plan call uses the executor's plan model tier
-(PRD §8) with the untouchables in the system prompt as the static constitution context;
-that prompt is built ONCE and reused across the per-unit calls so it caches (AC-8).
-
-``select_unit`` remains the DAG cycle/unsatisfiable guard (and is reused by the planner).
-
-When ``config.index.enabled`` (WU-PLAN-REPO-MAP), the SAME shared system prompt also gets
-a repo map of the target repo (``blacksmith.index.build_repo_map``, reused verbatim from
-the codebase-indexing PRD) built ONCE — not once per unit — and injected as static
-context, so it caches across the per-unit calls exactly like the constitution/lessons
-sections above. Off by default; disabled the system prompt is byte-for-byte unchanged.
-
-The SAME ``config.index.enabled`` switch (WU-PLAN-SEARCH-TOOL) also grants the plan tier
-the ``search_code`` tool (the same in-process MCP tool built over ``index.search_code``
-for the implementer) alongside its existing read-only Read/Glob/Grep, so a plan session
-can find symbols/usages in one indexed call instead of many greps. No separate toggle,
-no new write/shell tool, and the tool is only wired when a target ``repo_path`` is given
-(no worktree exists yet at plan time). Disabled, the plan tool surface is byte-for-byte
-unchanged.
-
-When ``config.critic.enabled`` (WU-PLAN-CRITIC-LOOP), after each auto-gated unit's plan is
-produced the SAME plan-tier critique from WU-PLAN-CRITIC-CORE (``executor.run_plan_critique``)
-judges it; while the verdict disapproves and re-plans remain (``config.critic.
-max_plan_revisions``), the unit is RE-PLANNED with the critique fed back into the plan prompt
-(appended, exactly like a fix-retry feeds gate output back to the implementer) and
-re-critiqued. On exhausting the budget it PROCEEDS with the latest plan — the critic is
-advisory and can only trigger a bounded re-plan; it never halts and never touches the
-``approve_plan`` gate. Off by default (``critic=None`` or ``enabled=False``), the plan node
-makes ZERO critic calls and its output is byte-for-byte unchanged.
-
-Without an executor wired (skeleton/tests), the node is a pass-through that only advances
-``status`` — the real decomposition runs only when an executor is injected at graph-build
-time. This keeps the deterministic graph tests independent of any model call.
+Production loops through the parent graph with a durable keyed plan prefix. The
+legacy direct-node API may still plan all units in one call. Bounded advisory
+critic revisions reuse the operation journal after interrupted node execution.
 """
 
 from __future__ import annotations
@@ -45,10 +10,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from blacksmith.config import CriticConfig, IndexConfig
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -59,6 +26,10 @@ from blacksmith.index import (
     index_tools_prompt_section,
 )
 from blacksmith.memory import current_store, recent_lessons, repo_namespace
+from blacksmith.path_policy import PolicyViolation, compile_path_rules
+from blacksmith.plan_artifacts import PlanIntegrityError, prd_hash, record_plan, validate_plans
+from blacksmith.receipts import ReceiptError, call_context_for
+from blacksmith.run_context import sha256
 from blacksmith.state import BlacksmithState, Status
 
 # How many prior gate-failure lessons to surface to the planner (most recent first).
@@ -98,7 +69,7 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
     it lets a run later locate the call's ``<transcripts_dir>/<session_id>.jsonl`` file
     (WU-TRANSCRIPT-CAPTURE). ``None`` when the call reported no session id.
     """
-    return {
+    event = {
         "node": node,
         "unit_id": unit_id,
         "model": result.model,
@@ -107,6 +78,25 @@ def cost_event(node: str, unit_id: str, result: Any) -> dict:
         "usage": usage_breakdown(result.usage),
         "session_id": result.session_id,
     }
+    if getattr(result, "call_id", None):
+        event["event_id"] = result.call_id + ":cost"
+        event["call_id"] = result.call_id
+    if getattr(result, "transcript_path", None):
+        event["transcript_path"] = result.transcript_path
+    return event
+
+
+def journal_cost_event(event):
+    """One canonical graph spelling for a critical paid-call cost observation."""
+    payload = event["payload"]
+    node = payload["node"].removeprefix("model.")
+    result = {**{k: payload[k] for k in (
+        "call_id", "unit_id", "model", "cost_usd", "num_turns", "session_id")},
+        "node": "plan_critic" if node == "critic" else node,
+        "usage": usage_breakdown(payload.get("usage")), "event_id": event["event_id"]}
+    if payload.get("transcript_path"):
+        result["transcript_path"] = payload["transcript_path"]
+    return result
 
 # Planning is read-only reasoning: give it a turn budget (the agentic SDK rarely
 # finishes in one) but block all writes — at plan time there is no worktree yet, so
@@ -158,15 +148,30 @@ def plan(
     index_config: IndexConfig | None = None,
     repo_path: str | Path | None = None,
     critic: CriticConfig | None = None,
+    max_prd_bytes: int = 262144,
+    checkpointed: bool = False,
 ) -> dict:
     if executor is None:
         return {"status": Status.AWAITING_PLAN_APPROVAL}  # skeleton pass-through
 
-    prd = state.get("prd")
+    prd = requirements_prd(state)
     if prd is None:
         return {"status": Status.HALTED, "errors": [{"node": "plan", "message": "no prd in state"}]}
 
     contract = prd.contract
+    input_bytes = len((prd.text or (contract.model_dump_json() + prd.body)).encode("utf-8"))
+    if input_bytes > max_prd_bytes:
+        return {
+            "status": Status.HALTED,
+            "errors": [{"node": "plan", "message": (
+                f"PRD is {input_bytes} bytes; exceeds max_prd_bytes={max_prd_bytes}; "
+                "split the PRD before running"
+            )}],
+        }
+    try:
+        compile_path_rules(contract.untouchables)
+    except PolicyViolation as exc:
+        return {"status": Status.HALTED, "errors": [{"node": "plan", "message": str(exc)}]}
     # Cycle / unsatisfiable-DAG guard (preserved from the single-unit selector): if no unit is
     # ever buildable, halt here rather than producing plans for an unexecutable PRD.
     if select_unit(contract) is None:
@@ -175,22 +180,41 @@ def plan(
             "errors": [{"node": "plan", "message": "no work unit with satisfied dependencies"}],
         }
 
-    # Plan EVERY auto-gated unit, in declaration (topological) order. Human-gated units are
-    # skipped — they build for manual QA behind a draft PR, no implementation plan needed.
+    # Plan the declaration-order prefix one unit per graph invocation. Human QA
+    # has no implementation plan; its layout was checked during preflight.
     auto_units = [u for u in contract.work_units if contract.gate_for(u) != "human"]
-    # Index tool wiring (WU-PLAN-SEARCH-TOOL / WU-STRUCT-WIRE): built ONCE and reused across the
-    # per-unit calls below, exactly like system_prompt -- not once per unit. Computed BEFORE the
-    # system prompt so the prompt can advertise the tools whenever they're wired (index_enabled),
-    # never merely when a repo map happened to build.
-    index_enabled = bool(index_config is not None and index_config.enabled and repo_path)
+    checkpointed = checkpointed or bool(state.get("run_context"))
+    prefix = {}
+    if checkpointed:
+        if state.get("plans") and state.get("planning_version") != 1:
+            raise PlanIntegrityError("legacy_planning_requires_manual_recovery")
+        digest = prd_hash(state)
+        if state.get("planning_version") is None:
+            state = {**state, "planning_version": 1, "planning_prd_sha256": digest,
+                     "plans_by_unit_id": {}, "plans": [], "plan_cursor": 0}
+        prefix = validate_plans(state, complete=False)
+        pending = auto_units[len(prefix):len(prefix) + 1]
+    else:
+        pending = auto_units
+    # The static map/prompt is checkpointed once; each invocation binds its
+    # read-only tool server to the immutable planning snapshot.
+    # Production supplies the immutable planning checkout. Always pass cwd even
+    # without indexing so SDK reads never depend on the caller's ambient directory.
+    repo_path = state.get("planning_path") or repo_path or Path.cwd()
+    repo_path = str(Path(repo_path).resolve())
+    index_enabled = bool(index_config is not None and index_config.enabled)
     # Built ONCE and reused across the per-unit calls so the static constitution/lessons/repo-map
     # context caches across them (AC-8) instead of being re-sent (or rebuilt) for each unit.
-    system_prompt = _system_prompt(
-        contract,
-        _prior_lessons(contract),
-        _build_repo_map(repo_path, index_config),
-        index_enabled=index_enabled,
-    )
+    static_prompt = state.get("planning_system_prompt") if checkpointed else None
+    if static_prompt is not None:
+        if sha256(static_prompt) != state.get("planning_prompt_sha256"):
+            raise PlanIntegrityError("changed planning prompt hash")
+    else:
+        static_prompt = _system_prompt(
+            contract, _prior_lessons(contract), _build_repo_map(repo_path, index_config),
+            index_enabled=index_enabled,
+        )
+    system_prompt = static_prompt + render_context(state)
     allowed_tools = list(_PLAN_READ_ONLY)
     mcp_servers: dict = {}
     if index_enabled:
@@ -205,18 +229,23 @@ def plan(
     critic_enabled = bool(critic is not None and critic.enabled)
     max_plan_revisions = critic.max_plan_revisions if critic is not None else 0
 
-    plans: list[dict] = []
+    plans: list[dict] = list(state.get("plans") or []) if checkpointed else []
     cost_events: list[dict] = []
-    for unit in auto_units:
+    for unit in pending:
         call_kwargs: dict = {
             "system_prompt": system_prompt,
+            "cwd": repo_path,
             "allowed_tools": allowed_tools,
+            "tools": list(_PLAN_READ_ONLY),
             "disallowed_tools": _PLAN_BLOCKED,
             "max_turns": _PLAN_MAX_TURNS,
             "raise_on_error": False,  # surface failures (e.g. max-turns) into state, don't crash
         }
         if mcp_servers:
             call_kwargs["mcp_servers"] = mcp_servers
+        context = call_context_for(state, unit_id=unit.id, attempt_id="plan:0")
+        if context is not None:
+            call_kwargs["call_context"] = context
         result = executor.run_plan(_plan_prompt(unit), **call_kwargs)
         # Ledger this attempt's spend on EVERY return (including the halt below), so a plan that
         # fails partway still counts the calls it made.
@@ -249,25 +278,35 @@ def plan(
                         }
                     ],
                 }
-        plans.append(
-            {
-                "unit_id": unit.id,
-                "title": unit.title,
-                "layers": list(unit.layers),
-                "target_modules": list(unit.target_modules),
-                "test_contract": unit.test_contract,
-                "steps": result.text,
-                "cost_usd": result.cost_usd,
-                "usage": usage_breakdown(result.usage),
-            }
-        )
+        row = {
+            "unit_id": unit.id,
+            "title": unit.title,
+            "layers": list(unit.layers),
+            "target_modules": list(unit.target_modules),
+            "test_contract": unit.test_contract,
+            "steps": result.text,
+            "cost_usd": result.cost_usd,
+            "usage": usage_breakdown(result.usage),
+        }
+        plans.append(record_plan(state, row) if checkpointed else row)
+    planning_update = {}
+    if checkpointed:
+        planning_update = {
+            "planning_version": 1, "planning_prd_sha256": prd_hash(state),
+            "plans_by_unit_id": {row["unit_id"]: row for row in plans},
+            "plan_cursor": len(plans), "planning_complete": len(plans) == len(auto_units),
+            "planning_system_prompt": static_prompt,
+            "planning_prompt_sha256": sha256(static_prompt),
+        }
     return {
+        **planning_update,
         "work_units": list(contract.work_units),
         # Representative selection (prepare_worktree recomputes the real one from the level plan).
         "selected_unit": auto_units[0] if auto_units else select_unit(contract),
         "plans": plans,
         "cost_events": cost_events,
-        "status": Status.AWAITING_PLAN_APPROVAL,
+        "status": (Status.PENDING if checkpointed and len(plans) < len(auto_units)
+                   else Status.AWAITING_PLAN_APPROVAL),
     }
 
 
@@ -301,10 +340,15 @@ def _prior_lessons(contract: PRDContract) -> list[dict]:
     empty Store, this returns ``[]`` and the system prompt is byte-for-byte what it was
     before this unit existed.
     """
-    store = current_store()
-    if store is None:
+    try:
+        store = current_store()
+        if store is None:
+            return []
+        return recent_lessons(store, repo_namespace(contract), _LESSONS_LIMIT)
+    except Exception as exc:
+        from blacksmith.observability import warn_optional
+        warn_optional("memory lookup", exc)
         return []
-    return recent_lessons(store, repo_namespace(contract), _LESSONS_LIMIT)
 
 
 def _render_lesson(lesson: dict) -> str:
@@ -466,18 +510,29 @@ def _critic_loop(
     Each critique call is ledgered as its own ``cost_event`` (node ``"plan_critic"``); each
     re-plan call is ledgered exactly like the original plan call (node ``"plan"``). Returns
     the FINAL (post-critique) ``ExecutorResult`` -- either the original plan (approved, or
-    the budget was zero) or the latest re-plan once the budget is exhausted. Never raises:
+    the revision allowance was zero) or the latest re-plan once it is exhausted.
     a critique call that errors or returns garbage is parsed fail-open (``_parse_critique``)
     as approved, so a broken critic can only ever shorten this loop, never stall it. If a
+    Critical storage/admission/budget/deadline errors always propagate. If a
     RE-PLAN call itself errors, that errored result is returned so the caller halts exactly
     as it would have on the original plan call failing.
     """
     revisions_used = 0
     while True:
-        critique = _run_critique(executor, unit, result.text, cost_events)
+        if context := call_kwargs.get("call_context"):
+            call_kwargs = {**call_kwargs, "call_context": replace(
+                context, attempt_id=f"plan:{revisions_used}",
+            )}
+        critique = _run_critique(
+            executor, unit, result.text, cost_events, call_kwargs=call_kwargs,
+        )
         if critique["approved"] or revisions_used >= max_revisions:
             return result
         revisions_used += 1
+        if context := call_kwargs.get("call_context"):
+            call_kwargs = {**call_kwargs, "call_context": replace(
+                context, attempt_id=f"plan:{revisions_used}",
+            )}
         result = executor.run_plan(_plan_prompt(unit, critique["critique"]), **call_kwargs)
         cost_events.append(cost_event("plan", unit.id, result))
         if result.is_error:
@@ -485,18 +540,20 @@ def _critic_loop(
 
 
 def _run_critique(
-    executor: Executor, unit: WorkUnit, plan_text: str, cost_events: list[dict]
+    executor: Executor, unit: WorkUnit, plan_text: str, cost_events: list[dict],
+    *, call_kwargs: dict | None = None,
 ) -> dict:
     """One fail-open critique call: ``{"approved": bool, "critique": str}``.
 
-    Any exception raised by the call itself (not just an ``is_error`` result) is treated as
-    approved with no critique -- the critic can never stall or halt planning, matching the
-    fail-open contract of ``_parse_critique`` for a malformed/absent verdict.
+    Ordinary advisory exceptions/malformed verdicts fall back to no critique.
+    Critical storage, admission, SDK budget stops and deadlines halt planning.
     """
     try:
         critique_result = executor.run_plan_critique(
-            _plan_critique_prompt(unit, plan_text), raise_on_error=False
+            _plan_critique_prompt(unit, plan_text), **(call_kwargs or {"raise_on_error": False})
         )
+    except ReceiptError:
+        raise
     except Exception:
         return {"approved": True, "critique": ""}
     cost_events.append(cost_event("plan_critic", unit.id, critique_result))

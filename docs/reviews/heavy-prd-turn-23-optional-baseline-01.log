@@ -1,0 +1,75 @@
+F
+=================================== FAILURES ===================================
+_ test_optional_outages_are_visible_without_changing_run_effects[memory_lookup] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t23-optional-baseline-01/test_optional_outages_are_visi0/target'), Posix...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10d963e60>
+capsys = <_pytest.capture.CaptureFixture object at 0x10d99c440>
+fault = 'memory_lookup'
+
+    @pytest.mark.parametrize("fault", [
+        "memory_store", "memory_lookup", "live_store", "live_events",
+        "metrics_open", "metrics_write", "progress_display",
+    ])
+    def test_optional_outages_are_visible_without_changing_run_effects(
+        project, monkeypatch, capsys, fault,
+    ):
+        calls, remote, _ = install_pipeline(project, monkeypatch)
+    
+        def fail_open(db_path):
+            raise OSError(PRIVATE_DETAIL)
+    
+        def fail_event(self, thread_id, kind, payload=None, *, ts=None):
+            raise OSError(PRIVATE_DETAIL)
+    
+        def fail_record(store, snapshot, *, thread_id, prd_path=None, started_at=None,
+                        ended_at=None, transcripts_dir=None, approval_wait_s=0.0):
+            raise OSError(PRIVATE_DETAIL)
+    
+        def fail_progress(self, node):
+            raise OSError(PRIVATE_DETAIL)
+    
+        if fault == "memory_store":
+            monkeypatch.setattr(cli, "build_store", fail_open)
+        elif fault == "memory_lookup":
+            original = SqliteStore.batch
+    
+            def fail_search(self, ops):
+                ops = tuple(ops)
+                if any(isinstance(op, SearchOp) for op in ops):
+                    raise OSError(PRIVATE_DETAIL)
+                return original(self, ops)
+            monkeypatch.setattr(SqliteStore, "batch", fail_search)
+        elif fault == "live_store":
+            monkeypatch.setattr(cli, "build_live_store", fail_open)
+        elif fault == "live_events":
+            monkeypatch.setattr(cli.LiveSink, "emit", fail_event)
+        elif fault == "metrics_open":
+            monkeypatch.setattr(cli, "build_metrics_store", fail_open)
+        elif fault == "metrics_write":
+            monkeypatch.setattr(cli, "record_run", fail_record)
+        else:
+            monkeypatch.setattr(cli.Renderer, "progress", fail_progress)
+    
+>       assert cli.main([str(project[2]), "--config", str(project[1]), "--thread-id", "publication",
+                         "--approve", "plan,pr"]) == 0
+E       AssertionError: assert 1 == 0
+E        +  where 1 = <function main at 0x10d95ede0>(['/private/tmp/blacksmith-heavy-prd-t23-optional-baseline-01/test_optional_outages_are_visi0/task.md', '--config', '/p...t23-optional-baseline-01/test_optional_outages_are_visi0/runtime.toml', '--thread-id', 'publication', '--approve', ...])
+E        +    where <function main at 0x10d95ede0> = cli.main
+
+/Users/josh.smith/Code/blacksmith/tests/test_optional_observability.py:62: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 1add9a7c-c737-4055-9632-777175f9544c: selected committed HEAD 97c3a0a828bdf5b30430eebb3920ce3a108a3fbe
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t23-optional-baseline-01/test_optional_outages_are_visi0/.blacksmith/runs/1add9a7c-c737-4055-9632-777175f9544c
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+total cost: $0.00; run cap $50.00, remaining $50.00
+execution time: 0.23s / 21600.00s; remaining 21599.77s
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t23-optional-baseline-01/test_optional_outages_are_visi0/.blacksmith/runs/1add9a7c-c737-4055-9632-777175f9544c/recovery/cc2bb455-bc6d-46f0-9b7b-e7baf94c050a/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t23-optional-baseline-01/test_optional_outages_are_visi0/runtime.toml
+blacksmith: PRIVATE_OPTIONAL_DETAIL
+=========================== short test summary info ============================
+FAILED ../../../Users/josh.smith/Code/blacksmith/tests/test_optional_observability.py::test_optional_outages_are_visible_without_changing_run_effects[memory_lookup]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 1.22s

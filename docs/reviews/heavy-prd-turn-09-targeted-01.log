@@ -1,0 +1,34 @@
+................................................................F....... [ 63%]
+.........................................                                [100%]
+=================================== FAILURES ===================================
+_________ test_custom_runtime_config_inside_source_is_a_hard_path_rule _________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-86/test_custom_runtim...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c389d60>
+
+    def test_custom_runtime_config_inside_source_is_a_hard_path_rule(project, monkeypatch):
+        root, config, _, _ = project
+        config_inside = root / "custom-runtime.toml"
+        config_inside.write_text('[target]\nrepo_path = "."\n')
+        project = (root, config_inside, project[2], project[3])
+        context = create(project)
+        clone = RunCloneManager(context).create("U1")
+        state = {**context.initial_state(), "worktree_path": str(clone.path)}
+        assert policy_for_state(state).violation("custom-runtime.toml") == "untouchable"
+        from blacksmith.nodes.hitl import approve_plan
+        payloads = []
+    
+        def deny(payload):
+            payloads.append(payload)
+            return False
+    
+        monkeypatch.setattr("blacksmith.nodes.hitl._decide", deny)
+        assert approve_plan(state)["status"] == Status.HALTED
+>       assert "custom-runtime.toml" in payloads[0]["hard_path_rules"]
+                                        ^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests/test_run_context.py:203: IndexError
+=========================== short test summary info ============================
+FAILED tests/test_run_context.py::test_custom_runtime_config_inside_source_is_a_hard_path_rule
+1 failed, 112 passed in 49.80s

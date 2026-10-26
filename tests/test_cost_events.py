@@ -8,7 +8,6 @@ usage} — and points the report's cost/token lines at that ledger, so a multi-u
 ALL units' (and all escalation attempts') spend.
 """
 
-import operator
 import subprocess
 from functools import reduce
 from pathlib import Path
@@ -20,6 +19,7 @@ from blacksmith.contract import parse_prd
 from blacksmith.executor import ExecutorResult
 from blacksmith.nodes.implement import implement
 from blacksmith.nodes.plan import plan
+from blacksmith.receipts import merge_events
 from blacksmith.state import BlacksmithState, Status
 from blacksmith.worktree import WorktreeManager
 
@@ -50,9 +50,9 @@ def _snapshot(values):
 
 
 def _accumulate(*updates):
-    """Apply the ``cost_events`` reducer (operator.add) across node updates, the way the
+    """Apply the actual keyed ``cost_events`` reducer across node updates, the way the
     graph does, so a multi-node run's ledger can be assembled in a unit test."""
-    return reduce(operator.add, (u.get("cost_events", []) for u in updates), [])
+    return reduce(merge_events, (u.get("cost_events", []) for u in updates), [])
 
 
 class PlanFakeExecutor:
@@ -98,9 +98,14 @@ def _scratch_worktree(tmp_path):
 # --- state shape -------------------------------------------------------------
 
 
-def test_state_has_appendonly_cost_events_field():
+def test_state_has_keyed_cost_events_field_without_rebilling_replayed_updates():
     hints = get_type_hints(BlacksmithState, include_extras=True)
-    assert hints["cost_events"] == Annotated[list[dict], operator.add]
+    assert hints["cost_events"] == Annotated[list[dict], merge_events]
+    first = {"event_id": "one", "cost_usd": 0.2}
+    second = {"event_id": "two", "cost_usd": 0.2}
+    total = _accumulate({"cost_events": [first]}, {"cost_events": [first, second]})
+    assert total == [first, second]
+    assert _total_cost_line({"cost_events": total}) == "total cost: $0.40"
 
 
 # --- node recording ----------------------------------------------------------

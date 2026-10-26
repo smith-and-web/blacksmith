@@ -24,12 +24,13 @@ from __future__ import annotations
 import ast
 import fnmatch
 import re
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, SdkMcpTool, create_sdk_mcp_server, tool
+
+from blacksmith.commands import CommandError, run_command
 
 # Which "family" of symbol patterns applies to a given file extension.
 _EXT_FAMILY = {
@@ -544,17 +545,16 @@ def _matches_path(rel_path: str, pattern: str) -> bool:
 
 def _git(repo_path: Path, *args: str) -> str | None:
     try:
-        result = subprocess.run(
+        result = run_command(
             ["git", "-C", str(repo_path), *args],
             capture_output=True,
             text=True,
-            timeout=30,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, CommandError):
         return None
     if result.returncode != 0:
         return None
-    return result.stdout
+    return result.require_complete_output().stdout
 
 
 # --- reference graph + PageRank (WU-DEP-GRAPH) --------------------------------------

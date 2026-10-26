@@ -1,0 +1,15 @@
+{
+  "checkpoint": "S02 reopened for summary full context; primary full20455 remains frozen/live; isolated72 passes and final25 pending at note capture",
+  "feedback": "positive once",
+  "goal_turn": 26,
+  "index_wait_seconds_at_least": 70,
+  "invalid_frontmatter_count": 0,
+  "last_run_errors": 0,
+  "lint_sha256": "933cb517d6843f652c47c4d305c52e7bc30e39b3ebf8d92f49c9fe53c0e67621",
+  "new_checkpoint_rank": 1,
+  "path": "Projects/blacksmith.md",
+  "recorded_at": "2026-10-25T08:51:05.038640-03:00",
+  "semantic_request_id": "42cf55b2-438b-448e-8b23-14ef49ac222f",
+  "targeted_lint": "0 errors/0 warnings; terminal0",
+  "whole_note_equality": true
+}

@@ -222,7 +222,7 @@ def test_review_clean_first_pass_proceeds_with_one_review_call(tmp_path):
 
     assert executor.implement_calls == ["WU-S"]  # no revision attempt
     assert executor.review_calls == ["WU-S"]  # exactly one review call
-    assert gate.calls == 1
+    assert gate.calls == 2
     assert final.values["status"] == Status.DONE
     assert final.values.get("unresolved_review_findings", []) == []
     assert len(_pr_creates(gh)) == 1
@@ -230,6 +230,8 @@ def test_review_clean_first_pass_proceeds_with_one_review_call(tmp_path):
 
 
 # --- (b) blocking-then-clean: revises once, re-gates, re-reviews clean, proceeds -----
+
+    assert final.values["final_test_results"]["passed"] is True
 
 
 def test_review_blocking_then_clean_revises_once_and_proceeds(tmp_path):
@@ -251,7 +253,7 @@ def test_review_blocking_then_clean_revises_once_and_proceeds(tmp_path):
     assert "REVIEWER flagged" not in executor.implement_prompts[0]  # first attempt ran blind
     # Reviewed twice: once flags blocking, the re-review after the revision is clean.
     assert executor.review_calls == ["WU-S", "WU-S"]
-    assert gate.calls == 2  # base gate pass + re-gate pass after the revision
+    assert gate.calls == 3  # base gate pass + re-gate pass after the revision
 
     assert final.values["status"] == Status.DONE
     assert final.values.get("unresolved_review_findings", []) == []
@@ -269,8 +271,10 @@ def test_review_blocking_then_clean_revises_once_and_proceeds(tmp_path):
 
 # --- (c) revisions exhausted: proceeds to approve_pr, carrying unresolved findings ---
 
+    assert final.values["final_test_results"]["passed"] is True
 
-def test_review_revisions_exhausted_proceeds_without_halting(tmp_path):
+
+def test_review_revisions_exhausted_halts_and_preserves_candidate(tmp_path):
     repo = _target_repo(tmp_path)
     executor = FakeExecutor(review_verdicts=[NEEDS_CHANGES_VERDICT])
     gh = _recording_gh("https://github.com/owner/demo/pull/3")
@@ -287,9 +291,13 @@ def test_review_revisions_exhausted_proceeds_without_halting(tmp_path):
     assert executor.review_calls == ["WU-S"]  # reviewed exactly once
     assert gate.calls == 1
 
-    # Proceeds all the way through -- never halts on an exhausted review loop.
-    assert final.values["status"] == Status.DONE
-    assert len(_pr_creates(gh)) == 1
+    # The settled strict policy halts before final verification/publication.
+    assert final.values["status"] == Status.HALTED
+    assert _pr_creates(gh) == []
+    assert not any(c[:2] == ["git", "push"] for c in gh.calls)
+    assert final.values["unit_outcomes"]["WU-S"]["review_receipt"].status == "blocking"
+    from pathlib import Path
+    assert Path(final.values["worktree_path"]).is_dir()
 
     unresolved = final.values.get("unresolved_review_findings") or []
     assert len(unresolved) == 1
@@ -300,6 +308,8 @@ def test_review_revisions_exhausted_proceeds_without_halting(tmp_path):
 
 
 # --- (d) config.review.enabled false: the review node is never entered --------------
+
+    assert not final.values.get("final_gate_receipt")
 
 
 def test_review_disabled_never_enters_review_node(tmp_path):
@@ -316,11 +326,13 @@ def test_review_disabled_never_enters_review_node(tmp_path):
 
     assert executor.review_calls == []  # review is never entered
     assert executor.implement_calls == ["WU-S"]
-    assert gate.calls == 1
+    assert gate.calls == 2
     assert final.values["status"] == Status.DONE
     assert final.values.get("unresolved_review_findings", []) == []
     assert len(_pr_creates(gh)) == 1
     saver.conn.close()
+
+    assert final.values["final_test_results"]["passed"] is True
 
 
 def test_review_never_wired_preserves_prior_behaviour(tmp_path):

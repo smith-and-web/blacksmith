@@ -1,0 +1,34 @@
+{
+  "recorded_at": "2026-10-25T21:14:13.180411-03:00",
+  "status": "approved",
+  "reviewer": "repository owner, explicit conversation approval",
+  "approval_text": "diff looks good, approved.",
+  "reviewed_base": "dcc3bb56940c3907b2e0fcaf13c254e1c55f9767",
+  "reviewed_head": "36885ee0658bb32555caf0a1a72909a2822aa21b",
+  "reviewed_scope": "Complete committed heavy-PRD feature diff, including blacksmith/contract.py; follows source-diff walkthrough",
+  "implementation_revision": "1d68a6492e53898c5011a24b9d14d771bad6275d",
+  "contract_sha256": "420eed454195da5827d120a96995ca64dfbdfe088eef8f0fd77c94f903134795",
+  "human_contract_review_gate": "satisfied for reviewed source",
+  "tested_python_sources_unchanged": 176,
+  "configuration_and_original_inputs_unchanged": true,
+  "existing_verification": "1419 passed,7 retained SDK advisories/5207.92s; Ruff passed on identical source",
+  "authorizes_paid_canary": false,
+  "authorizes_repository_creation_push_merge_or_publication": false,
+  "canary_plan_status": "proposed; not run",
+  "historical_evidence": "Prior receipts/audits retain their original pre-approval NOT RUN status; this record supersedes only the current human review gate",
+  "proposed_canary_dry_validation": {
+    "configuration_overlay_valid": true,
+    "contract_execution_semantics_valid": true,
+    "dependency_frontiers": [
+      [
+        "U01",
+        "U02"
+      ],
+      [
+        "QA"
+      ]
+    ],
+    "target_identity_placeholder": "example/blacksmith-readiness-canary; no target selected/created",
+    "scope": "Pure parsing and semantic validation; no executor, native target operation or paid call"
+  }
+}

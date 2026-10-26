@@ -1,0 +1,17 @@
+evalmachine.<anonymous>:122
+    Array.from(entry.units.values()).slice(0, DISPLAY_UNITS).map((u) =>
+                                              ^
+
+ReferenceError: DISPLAY_UNITS is not defined
+    at renderThread (evalmachine.<anonymous>:122:47)
+    at handleEvent (evalmachine.<anonymous>:111:3)
+    at frame (evalmachine.<anonymous>:6:3)
+    at evalmachine.<anonymous>:8:1
+    at Script.runInContext (node:vm:150:12)
+    at Object.runInContext (node:vm:302:6)
+    at file:///Users/josh.smith/Code/blacksmith/tests/dashboard_activity_probe.mjs:29:4
+    at #evaluateSync (node:internal/modules/esm/module_job:702:24)
+    at ModuleJobSync.runSync (node:internal/modules/esm/module_job:717:43)
+    at node:internal/modules/esm/loader:383:11
+
+Node.js v26.12.0

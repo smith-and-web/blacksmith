@@ -1,0 +1,40 @@
+{
+  "goal_turn": 25,
+  "paid_transport": "replaced with exact-signature local async ResultMessage generator",
+  "rows": [
+    {
+      "error_kind": null,
+      "executor_is_error": false,
+      "permits_clean_review_by_current_terminal_predicate": true,
+      "sdk_is_error": false,
+      "subtype": "success",
+      "terminal_received": true
+    },
+    {
+      "error_kind": null,
+      "executor_is_error": false,
+      "permits_clean_review_by_current_terminal_predicate": true,
+      "sdk_is_error": false,
+      "subtype": "error_max_turns",
+      "terminal_received": true
+    },
+    {
+      "error_kind": null,
+      "executor_is_error": false,
+      "permits_clean_review_by_current_terminal_predicate": true,
+      "sdk_is_error": false,
+      "subtype": "error_during_execution",
+      "terminal_received": true
+    },
+    {
+      "error_kind": null,
+      "executor_is_error": false,
+      "permits_clean_review_by_current_terminal_predicate": true,
+      "sdk_is_error": false,
+      "subtype": "unrecognized_terminal",
+      "terminal_received": true
+    }
+  ],
+  "source_modified": false,
+  "source_revision": "539508be01b498749f6cb49c33c80b9d35047a04"
+}

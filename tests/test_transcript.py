@@ -126,7 +126,7 @@ def test_events_for_message_covers_text_tool_use_and_result():
 # --- the executor captures a call to <dir>/<session_id>.jsonl ----------------
 
 
-def test_capture_writes_jsonl_with_event_types_keyed_by_session_id(monkeypatch, tmp_path):
+def test_capture_writes_jsonl_with_event_types_keyed_by_call_id(monkeypatch, tmp_path):
     out = tmp_path / "transcripts"
     cfg = _config(monkeypatch, transcripts_dir=out)
     stream = [
@@ -136,7 +136,8 @@ def test_capture_writes_jsonl_with_event_types_keyed_by_session_id(monkeypatch, 
     ]
     result = Executor(cfg, query_fn=FakeQuery(stream)).run("p", model="claude-opus-4-8")
 
-    path = out / "sess-42.jsonl"  # keyed by the call's session_id
+    path = Path(result.transcript_path)
+    assert path.parent == out and path.name != "sess-42.jsonl"
     assert path.is_file()
     events = _read_events(path)
     types = [e["type"] for e in events]
@@ -188,7 +189,7 @@ def test_sdk_error_stream_still_writes_partial_transcript(monkeypatch, tmp_path)
     )
 
     assert result.is_error is True  # error path still produces a structured result
-    path = out / "sess-err.jsonl"
+    path = Path(result.transcript_path)
     assert path.is_file()  # the PARTIAL transcript is still written
     types = [e["type"] for e in _read_events(path)]
     assert "assistant_text" in types
@@ -212,7 +213,7 @@ def test_sdk_error_carries_session_id_so_partial_transcript_links(monkeypatch, t
     # The is_error result carries the session_id captured from the stream, so the failed
     # call's cost_event links the PARTIAL transcript already on disk (instead of None).
     assert result.session_id == "sess-err"
-    assert (out / "sess-err.jsonl").is_file()
+    assert Path(result.transcript_path).is_file()
     event = cost_event("implement", "WU-01", result)
     assert event["session_id"] == "sess-err"
 
@@ -227,6 +228,22 @@ def test_sdk_error_without_surfaced_session_id_degrades_cleanly(monkeypatch, tmp
 
     assert result.is_error is True  # no crash
     assert result.session_id is None  # nothing surfaced -> degrades cleanly
+
+
+def test_two_calls_without_provider_sessions_keep_distinct_partial_transcripts(
+    monkeypatch, tmp_path,
+):
+    cfg = _config(monkeypatch, transcripts_dir=tmp_path)
+    executor = Executor(cfg, query_fn=RaisingAfterQuery([
+        _assistant(text="partial work without a session", session_id=None)]))
+    first = executor.run_plan("one", raise_on_error=False)
+    second = executor.run_plan("two", raise_on_error=False)
+    assert first.session_id is second.session_id is None
+    assert first.transcript_path != second.transcript_path
+    assert Path(first.transcript_path).is_file() and Path(second.transcript_path).is_file()
+    assert len(list(tmp_path.glob('*.jsonl'))) == 2
+    assert not (tmp_path / 'unknown-session.jsonl').exists()
+    assert 'partial work without a session' in Path(first.transcript_path).read_text()
 
 
 # --- the ref lives in cost_events; transcript content never enters state -----
@@ -256,7 +273,8 @@ def test_transcript_content_never_appears_in_returned_state(monkeypatch, tmp_pat
     out_state = plan({"prd": parse_prd(VENDORED_PRD)}, executor=executor)
 
     # The tool-input sentinel is captured to the transcript file on disk...
-    transcript_text = (out / "sess-plan.jsonl").read_text(encoding="utf-8")
+    transcript_path = Path(out_state["cost_events"][0]["transcript_path"])
+    transcript_text = transcript_path.read_text(encoding="utf-8")
     assert sentinel in transcript_text
     # ...but never leaks into the returned graph state (transcripts are file-based only).
     assert sentinel not in repr(out_state)

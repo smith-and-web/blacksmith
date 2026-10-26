@@ -1,0 +1,56 @@
+{
+  "prepared_at": "2026-10-26T15:32:56.827008-03:00",
+  "thread_id": "heavy-prd-fixed-20261026T182630Z-9da0dc6e",
+  "paid_canary_executed": false,
+  "remote_mutation_performed": false,
+  "goal_counter_unchanged": "28/30",
+  "checks": [
+    "python_syntax",
+    "unchanged_successful_1431_tested_application_source",
+    "fresh_thread_has_no_checkpoint",
+    "plan_wrapper_syntax_and_dry_run",
+    "publish_wrapper_syntax_and_dry_run",
+    "check_wrapper_syntax_and_dry_run",
+    "frozen_config_same_fresh_thread_no_extra_approvals_or_budget",
+    "02-publish-draft.sh_refuses_before_step1",
+    "03-check.sh_refuses_before_step1",
+    "pause_guard_accepts_expected_denial_and_rejects_other_states",
+    "one_shot_marker_refuses_relaunch_before_checkpoint_or_provider",
+    "known_usage_accepted_unknown_or_incomplete_usage_refused",
+    "no_real_launch_markers_or_new_checkpoint_created",
+    "repaired_source_frozen_runtime_private_remote_preflight_passed",
+    "repository_ruff_passed",
+    "helper_ruff_passed",
+    "brain_targeted_lint_zero_errors_zero_warnings",
+    "six_prepared_files_hashes_match",
+    "shell_scripts_owner_only_executable"
+  ],
+  "free_gib": 12.25,
+  "sha256": {
+    "01-run-plan.sh": "3be2b1c3251ac81ca13deb88341201073858c56e9c11c5657e7c8826b9c27daa",
+    "02-publish-draft.sh": "478da9f8ab923fa5ea8b1c11e858933ad29b7c1467a664ebd703934f26c635ce",
+    "03-check.sh": "18acfa0a24e00a4e8574cc39f406b746b239a9420b7d97c4cbc2ba86db53e561",
+    "README.md": "41e7a02fc5fd81af4b9ff6edd57a6d3eac022fb7382e7086b9cf385493989c1d",
+    "canary.py": "145bc0f03ced082ada266cb2e376360ac127da1bccf1fbe23cee635046030707",
+    "session.json": "8e8bc12fc9b19ab08e0d70c1cebfdb134e09e103d05c3685ed61908ee6902e2c"
+  },
+  "live_release_gates": [
+    "Fresh paid canary",
+    "Human QA and draft diff review",
+    "Measured concurrency and complete live evidence report",
+    "Provider billing reconciliation",
+    "Real Docker lifecycle and crash recovery"
+  ],
+  "verified_at": "2026-10-26T15:34:34.178656-03:00",
+  "no_repeat_full_pytest_needed": "No application/test source edits; all 178 Python files still match the passing full02 1431-test receipt.",
+  "brain_verification": {
+    "path": "Projects/blacksmith.md",
+    "targeted_lint_errors": 0,
+    "targeted_lint_warnings": 0,
+    "index_errors": 0,
+    "invalid_frontmatter": 0,
+    "fresh_section_retrieved": true,
+    "exact_readback_matched": true,
+    "search_request_id": "a87b3129-f6b2-4ec7-8949-4590242a5320"
+  }
+}

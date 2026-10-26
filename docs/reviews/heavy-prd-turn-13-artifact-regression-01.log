@@ -1,0 +1,73 @@
+...........................FF.......                                     [100%]
+=================================== FAILURES ===================================
+________ test_bootstrap_intent_failure_prevents_planning_clone_and_sdk _________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_bootstrap_in...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e0be750>
+capsys = <_pytest.capture.CaptureFixture object at 0x10e1d53d0>
+
+    def test_bootstrap_intent_failure_prevents_planning_clone_and_sdk(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_bootstrap BEFORE INSERT ON operations "
+            "WHEN NEW.kind='git.planning_snapshot' BEGIN "
+            "SELECT RAISE(ABORT,'critical write unavailable'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config)]) == 1
+        path = database(project)
+>       assert operations(path) == [("recovery.initialize", "completed")]
+E       AssertionError: assert [('recovery.i... 'completed')] == [('recovery.i... 'completed')]
+E         
+E         Left contains 2 more items, first extra item: ('recovery.capture', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:51: AssertionError
+----------------------------- Captured stderr call -----------------------------
+blacksmith: preflight snapshot failed; retained artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_bootstrap_intent_failure_0/.blacksmith/runs/c24afb54-7a95-4f70-9737-4f156247d175
+_____________ test_sdk_intent_failure_prevents_first_provider_call _____________
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_sdk_intent_f...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e1d6330>
+capsys = <_pytest.capture.CaptureFixture object at 0x10e15d040>
+
+    def test_sdk_intent_failure_prevents_first_provider_call(project, monkeypatch, capsys):
+        _, config, prd, _ = project
+        calls = []
+        install_transport(monkeypatch, calls)
+        inject_trigger(
+            monkeypatch,
+            "CREATE TRIGGER fail_sdk BEFORE INSERT ON operations "
+            "WHEN NEW.kind LIKE 'model.%' BEGIN SELECT RAISE(ABORT,'no receipt'); END",
+        )
+        assert cli.main([str(prd), "--config", str(config), "--auto-approve"]) == 1
+        assert calls == []
+        path = database(project)
+        rows = operations(path)
+        assert rows[:10] == [
+            ("recovery.initialize", "completed"), ("git.planning_snapshot", "completed"),
+        ] + [(f"command:{i}:bootstrap:git", "completed") for i in range(1, 9)]
+>       assert rows[10:] == [("recovery.capture", "completed")] + [
+            (f"command:{i}:recovery_capture:git", "completed") for i in range(1, 9)
+        ]
+E       AssertionError: assert [('recovery.c...pleted'), ...] == [('recovery.c...pleted'), ...]
+E         
+E         Left contains one more item: ('recovery.capture.seal', 'completed')
+E         Use -v to get more diff
+
+tests/test_receipt_wiring.py:74: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 5b4fb31f-bd27-4b94-b2f8-fc23fff8a019: selected committed HEAD 3d4bc2e044b67f08ecf94789b18c47dbabfd645c
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_sdk_intent_failure_preven0/.blacksmith/runs/5b4fb31f-bd27-4b94-b2f8-fc23fff8a019
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_sdk_intent_failure_preven0/.blacksmith/runs/5b4fb31f-bd27-4b94-b2f8-fc23fff8a019/recovery/bcc3173c-b712-44e6-9ecd-9163998202b2/manifest.json
+Next action: blacksmith recovery inspect --thread-id run --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_sdk_intent_failure_preven0/runtime.toml
+blacksmith: critical journal read/write failed: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-134/test_sdk_intent_failure_preven0/.blacksmith/runs/5b4fb31f-bd27-4b94-b2f8-fc23fff8a019/operations.sqlite
+=========================== short test summary info ============================
+FAILED tests/test_receipt_wiring.py::test_bootstrap_intent_failure_prevents_planning_clone_and_sdk
+FAILED tests/test_receipt_wiring.py::test_sdk_intent_failure_prevents_first_provider_call
+2 failed, 34 passed in 48.29s

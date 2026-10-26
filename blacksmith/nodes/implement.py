@@ -16,14 +16,14 @@ wired (skeleton/tests), it is a status-only pass-through.
 
 from __future__ import annotations
 
-import fnmatch
-import subprocess
 from collections.abc import Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
+from blacksmith.commands import run_command
 from blacksmith.config import IndexConfig
+from blacksmith.context import render_context, requirements_prd
 from blacksmith.contract import PRDContract, WorkUnit
 from blacksmith.executor import Executor
 from blacksmith.index import (
@@ -34,36 +34,46 @@ from blacksmith.index import (
     index_tools_prompt_section,
 )
 from blacksmith.nodes.plan import cost_event, usage_breakdown
-from blacksmith.sandbox import RUN_COMMAND_TOOL_NAME, SandboxManager, create_sandbox_mcp_server
+from blacksmith.path_policy import (
+    DEFAULT_PROTECTED_GLOBS,
+    READ_TOOLS,
+    WRITE_TARGETS,
+    PathPolicy,
+    PolicyViolation,
+    policy_for_state,
+)
+from blacksmith.path_policy import (
+    is_protected as is_protected,  # re-export the legacy helper
+)
+from blacksmith.plan_artifacts import PlanIntegrityError, verify_approved_plan
+from blacksmith.receipts import CallContext, ReceiptError, call_context_for
+from blacksmith.sandbox import SandboxManager
 from blacksmith.state import BlacksmithState, Status
 
 # Tools whose target file the guard gates. Bash is disallowed for the implementer.
 _WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 _ALLOWED_TOOLS = ["Read", "Glob", "Grep"]  # auto-allowed read-only tools
 # The implementer writes code; it must not reach for a shell or escape its tool surface.
-# The can_use_tool guard only gates Write/Edit and allows everything else, so any tool that
-# could run commands or spawn a shell-capable helper is denied here explicitly: Bash (+ its
+# The guard allows only known file tools and explicitly wired MCP tools. Tools that
+# could run commands or spawn a shell-capable helper are also denied here explicitly: Bash (+ its
 # helpers), sub-agent spawning (Agent/Task), tool discovery (ToolSearch — it was observed
 # searching for a Bash tool), and web tools. A run that exhausts its turns hunting for a way
 # to run tests is exactly the failure this prevents — the test gate runs the suite, not the agent.
 _DISALLOWED_TOOLS = [
-    "Bash", "BashOutput", "KillShell", "Agent", "Task", "ToolSearch", "WebSearch", "WebFetch",
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "Agent",
+    "Task",
+    "ToolSearch",
+    "WebSearch",
+    "WebFetch",
 ]
 _IMPLEMENT_MAX_TURNS = 40
 
-# Sandbox self-verify tool (WU-SANDBOX-IMPLEMENT): ADDITIVE and off by default. When a
-# started, enabled ``SandboxManager`` is passed in, the implementer is granted the
-# ``run_command`` tool (WU-SANDBOX-TOOL) via an in-process MCP server bound to it -- every
-# command it runs still executes ONLY inside the sandbox container over the mounted clone,
-# never on the host, and raw Bash stays in ``_DISALLOWED_TOOLS`` regardless. With no sandbox
-# (or ``sandbox.config.enabled`` False, the default), none of this is wired in and the call
-# is byte-for-byte identical to today.
-_SANDBOX_SERVER_NAME = "blacksmith-sandbox"  # must match blacksmith.sandbox's server name
-_SANDBOX_TOOL_NAME = f"mcp__{_SANDBOX_SERVER_NAME}__{RUN_COMMAND_TOOL_NAME}"
-# The SandboxManager this node receives carries only start/exec/stop settings (its own
-# ``blacksmith.sandbox.SandboxConfig``), not the exec timeout -- that lives on blacksmith's
-# own ``blacksmith.config.SandboxConfig`` ([sandbox].exec_timeout_s, default 120). Graph
-# wiring may pass the configured value through explicitly; this is the fallback.
+# S17: sandbox execution is disabled pending workspace ownership and real Docker
+# timeout/restart evidence. Keep the injection signature for disabled callers;
+# enabled managers reject before model/native work and never grant a tool.
 _DEFAULT_SANDBOX_EXEC_TIMEOUT_S = 120
 
 # Index tools (WU-SEARCH-TOOL / WU-STRUCT-WIRE): ADDITIVE and off by default, mirroring the
@@ -101,6 +111,7 @@ def conventional_commit_message(unit: WorkUnit, *, commit_type: str = _COMMIT_TY
     header = f"{commit_type}({scope}): {subject}"
     return header[:_HEADER_MAX_LEN].rstrip() if len(header) > _HEADER_MAX_LEN else header
 
+
 # The target repo's CLAUDE.md (if committed) is injected into the implementer's system
 # prompt as project context, so a repo with no claude.ai Project still carries its own
 # conventions into the run. See _read_project_context for why we read it ourselves
@@ -116,56 +127,34 @@ _PROJECT_CONTEXT_FILE = "CLAUDE.md"
 # ``index_config`` (or ``enabled=False``, the default), none of this runs and the system
 # prompt is byte-for-byte unchanged from before this unit.
 
-# Path-like untouchables (PRD §7). Matched against the file's POSIX path with fnmatch
-# (so `*` spans separators). The behavioral untouchables are NOT path-matchable.
-DEFAULT_PROTECTED_GLOBS: tuple[str, ...] = (
-    "*Cargo.lock",
-    "*.kindling.yaml",
-    "*/migrations/*",
-    "*blacksmith/contract.py",
-)
-
-
-def is_protected(path: str, protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS) -> bool:
-    """True if a (relative or absolute) path matches an untouchable glob."""
-    posix = PurePosixPath(path).as_posix()
-    return any(fnmatch.fnmatch(posix, glob) for glob in protected_globs)
-
 
 def make_pre_edit_guard(
     protected_globs: Sequence[str] = DEFAULT_PROTECTED_GLOBS,
     *,
     worktree_root: str | Path | None = None,
+    allowed_mcp_tools: Sequence[str] = (),
 ):
-    """Build a ``can_use_tool`` callback that denies dangerous writes.
-
-    It blocks two things and records each in ``.blocked`` (so the node can surface them
-    for human sign-off, AC-7): (1) writes whose path is outside ``worktree_root`` — the
-    isolation boundary (§4/§5), so the agent can never edit the real checkout; and
-    (2) writes to untouchable paths (§7).
-    """
+    """Gate every write target; permit only known reads and explicitly wired MCP tools."""
     blocked: list[dict] = []
-    root = Path(worktree_root).resolve() if worktree_root is not None else None
+    policy = PathPolicy(Path(worktree_root or Path.cwd()), tuple(protected_globs))
+    reads = READ_TOOLS | frozenset(allowed_mcp_tools)
 
     async def can_use_tool(tool_name, tool_input, context):
-        if tool_name in _WRITE_TOOLS:
-            path = tool_input.get("file_path") or tool_input.get("path") or ""
-            if path and root is not None and not _within_worktree(root, path):
-                blocked.append({"tool": tool_name, "path": path, "reason": "outside_worktree"})
-                return PermissionResultDeny(
-                    message=(
-                        f"BLOCKED: {path} is outside the worktree ({root}). Every edit must "
-                        "stay inside the worktree — use a path within it."
-                    )
-                )
-            if path and is_protected(path, protected_globs):
-                blocked.append({"tool": tool_name, "path": path, "reason": "untouchable"})
-                return PermissionResultDeny(
-                    message=(
-                        f"BLOCKED: {path} is an untouchable path (PRD §7). "
-                        "It may not be edited without explicit human sign-off."
-                    )
-                )
+        if tool_name in reads:
+            return PermissionResultAllow()
+        fields = WRITE_TARGETS.get(tool_name)
+        path = None
+        if fields is None:
+            reason = "unknown_tool"
+        elif not isinstance(tool_input, dict):
+            reason = "missing_or_malformed_target"
+        else:
+            values = [tool_input[f] for f in fields if f in tool_input]
+            path = values[0] if len(values) == 1 else None
+            reason = policy.violation(path)
+        if reason:
+            blocked.append({"tool": tool_name, "path": path, "reason": reason})
+            return PermissionResultDeny(message=f"BLOCKED: {reason}: {path!r}")
         return PermissionResultAllow()
 
     can_use_tool.blocked = blocked
@@ -173,15 +162,14 @@ def make_pre_edit_guard(
 
 
 def _within_worktree(root: Path, path: str) -> bool:
-    """A relative path resolves against the agent's cwd (the worktree); an absolute path
-    must resolve to somewhere under the worktree root."""
-    candidate = Path(path)
-    if not candidate.is_absolute():
-        return True
+    """Compatibility helper; relative candidates also resolve against the clone root."""
     try:
-        candidate.resolve().relative_to(root)
+        candidate = Path(path)
+        (candidate if candidate.is_absolute() else root / candidate).resolve().relative_to(
+            root.resolve()
+        )
         return True
-    except ValueError:
+    except (ValueError, OSError, RuntimeError):
         return False
 
 
@@ -192,11 +180,14 @@ def implement(
     sandbox: SandboxManager | None = None,
     sandbox_exec_timeout_s: int = _DEFAULT_SANDBOX_EXEC_TIMEOUT_S,
     index_config: IndexConfig | None = None,
+    defer_commit: bool = False,
 ) -> dict:
+    from blacksmith.config import reject_enabled_sandbox
+    reject_enabled_sandbox(sandbox is not None and sandbox.config.enabled)
     if executor is None:
         return {"status": Status.IMPLEMENTING}  # skeleton pass-through
 
-    prd = state.get("prd")
+    prd = requirements_prd(state)
     unit = state.get("selected_unit")
     worktree_path = state.get("worktree_path")
     if prd is None or unit is None or not worktree_path:
@@ -204,6 +195,12 @@ def implement(
             "status": Status.HALTED,
             "errors": [{"node": "implement", "message": "missing prd/selected_unit/worktree_path"}],
         }
+
+    try:
+        verify_approved_plan(state, unit)
+    except PlanIntegrityError as exc:
+        return {"status": Status.HALTED, "implement_error_kind": "plan_integrity",
+                "errors": [{"node": "implement", "message": str(exc)}]}
 
     # A human-gated unit is verified by a human on the draft PR — not by the executor and not
     # by the automated gate (PRD §4 human-gated routing). It has nothing to implement: a
@@ -225,7 +222,14 @@ def implement(
             "status": Status.IMPLEMENTING,
         }
 
-    guard = make_pre_edit_guard(worktree_root=worktree_path)
+    try:
+        policy = policy_for_state(state)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
+            "errors": [{"node": "implement", "message": str(exc)}],
+        }
     # Escalation (WU-ESCALATE-ON-FAIL): the first attempt runs the cheaper first-attempt
     # model (config.models.implement, default Sonnet). After a gate failure the run resets the
     # worktree and re-enters here with ``escalated`` set, so this attempt instead uses the
@@ -244,21 +248,20 @@ def implement(
     # A continuation (resume_partial_implement) keeps the prior capped attempt's partial work in
     # the worktree and asks the agent to FINISH it, rather than re-implementing from scratch.
     resuming = bool(state.get("resume_partial_implement"))
-    # Sandbox self-verify (WU-SANDBOX-IMPLEMENT): ADDITIVE and off by default. Only when an
-    # enabled, started sandbox is injected does the tool surface or prompt change at all --
-    # mirroring the same ``sandbox is not None and sandbox.config.enabled`` check used by the
-    # run-level lifecycle wiring (WU-SANDBOX-LIFECYCLE) in graph.py.
-    sandbox_enabled = bool(sandbox is not None and sandbox.config.enabled)
+    sandbox_enabled = False  # S17: no sandbox tool is advertised until ownership is hardened.
     # Index tools (WU-SEARCH-TOOL / WU-STRUCT-WIRE): same additive gating as the sandbox tool
     # above -- only an explicitly enabled IndexConfig wires the server, grants the tools, and
     # advertises them. The grant, the server, and the prompt advertisement all key off this one
     # ``index_enabled`` flag so they can never diverge.
     index_enabled = bool(index_config is not None and index_config.enabled)
     allowed_tools = list(_ALLOWED_TOOLS)
-    if sandbox_enabled:
-        allowed_tools.append(_SANDBOX_TOOL_NAME)
     if index_enabled:
         allowed_tools.extend(QUALIFIED_INDEX_TOOL_NAMES)
+    guard = make_pre_edit_guard(
+        policy.rules,
+        worktree_root=worktree_path,
+        allowed_mcp_tools=[t for t in allowed_tools if t.startswith("mcp__")],
+    )
     repo_map = _build_repo_map(worktree_path, index_config)
     call_kwargs: dict = {
         "system_prompt": _system_prompt(
@@ -273,6 +276,7 @@ def implement(
         # "default" permission mode they evaluate to "ask" and route through the
         # can_use_tool guard (which allows non-protected paths, blocks untouchables).
         "allowed_tools": allowed_tools,
+        "tools": ["Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit"],
         # Raw Bash (and every other shell-capable/escape tool) stays disallowed
         # UNCHANGED, sandboxed or not -- run_command is the only execution channel.
         "disallowed_tools": _DISALLOWED_TOOLS,
@@ -282,31 +286,47 @@ def implement(
         "raise_on_error": False,  # surface failures into state, don't crash the graph
     }
     mcp_servers: dict = {}
-    if sandbox_enabled:
-        mcp_servers[_SANDBOX_SERVER_NAME] = create_sandbox_mcp_server(
-            sandbox, exec_timeout_s=sandbox_exec_timeout_s
-        )
     if index_enabled:
         mcp_servers[INDEX_MCP_SERVER_NAME] = create_index_mcp_server(
             worktree_path, exclude=index_config.exclude
         )
     if mcp_servers:
         call_kwargs["mcp_servers"] = mcp_servers
+    call_context = call_context_for(state, unit_id=unit.id)
+    if call_context is not None:
+        call_kwargs["call_context"] = call_context
     result = run_attempt(
         _implement_prompt(
             unit,
             prior_failure=state.get("last_gate_output"),
+            review_feedback=state.get("review_feedback"),
             resuming=resuming,
+            continuation_feedback=state.get("continuation_feedback"),
             sandbox_enabled=sandbox_enabled,
             index_enabled=index_enabled,
             worktree_path=worktree_path,
-        ),
+        )
+        + render_context(state, unit, include_plan=True),
         **call_kwargs,
     )
     # Ledger event for THIS attempt (WU-COST-EVENTS), built once and emitted on EVERY return
     # below — including the failure halts — so a run that halts inside implement still counts
     # this attempt's spend and the unit still appears in the per-unit metrics.
     event = cost_event("implement", unit.id, result)
+    # Denial is terminal even if the model subsequently wrote unrelated valid files
+    # or exhausted its turns. Audit before staging so disallowed changes stay recoverable.
+    try:
+        if guard.blocked:
+            raise PolicyViolation(f"policy_violation: denied edit attempts: {guard.blocked}")
+        policy.audit(pre_implement_ref)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
+            "cost_events": [event],
+            "implementation": {"blocked": list(guard.blocked)},
+            "errors": [{"node": "implement", "message": str(exc)}],
+        }
     if result.is_error:
         # A turn-cap is a RECOVERABLE, budget-shaped failure: report it legibly (never the
         # agent's reasoning dump) and tag ``implement_error_kind`` so routing can continue the
@@ -326,58 +346,92 @@ def implement(
             "errors": [{"node": "implement", "message": message}],
         }
 
+    pending = {
+        "base_commit": pre_implement_ref,
+        "can_escalate": can_escalate,
+        "escalating": escalating,
+        "blocked": list(guard.blocked),
+        "cost_usd": result.cost_usd,
+        "usage": usage_breakdown(result.usage),
+    }
+    update = {
+        "pending_implementation": pending,
+        "attempt_base_commit": pre_implement_ref,
+        "cost_events": [event],
+        "status": Status.IMPLEMENTING,
+    }
+    if can_escalate and not escalating:
+        update["pre_implement_ref"] = pre_implement_ref
+    if defer_commit:
+        return update
+    return {**update, **audit_and_commit({**state, **update})}
+
+
+def audit_and_commit(state: BlacksmithState) -> dict:
+    """Commit a checkpointed successful model result without invoking the model."""
+    pending = state.get("pending_implementation")
+    if pending is None:
+        return {"status": Status.TESTING}  # dependency-free legacy graph
+    worktree_path = state["worktree_path"]
+    unit = state["selected_unit"]
+    pre_implement_ref = pending["base_commit"]
     try:
+        policy = policy_for_state(state)
+        policy.audit(pre_implement_ref)
         files, diff_summary = _stage_and_commit(
-            worktree_path, conventional_commit_message(unit)
+            worktree_path,
+            conventional_commit_message(unit),
+            call_context=call_context_for(state, unit_id=unit.id),
         )
+        policy.audit(pre_implement_ref)
+    except PolicyViolation as exc:
+        return {
+            "status": Status.HALTED,
+            "implement_error_kind": "policy_violation",
+            "errors": [{"node": "implement", "message": str(exc)}],
+        }
     except CommitError as exc:
         return {
             "status": Status.HALTED,
-            "cost_events": [event],
             "errors": [
                 {"node": "implement", "message": f"failed to commit the unit's changes: {exc}"}
             ],
         }
-    if not files and not guard.blocked:
+    if not files:
         # The agent changed nothing — the unit wasn't implemented. Halt rather than
         # gate an unchanged tree and then fail on an empty-diff PR.
         return {
             "status": Status.HALTED,
-            "cost_events": [event],
             "errors": [
-                {"node": "implement", "message": "implement produced no file changes; "
-                 "nothing to gate or open a PR"}
+                {
+                    "node": "implement",
+                    "message": "implement produced no file changes; nothing to gate or open a PR",
+                }
             ],
         }
     update: dict = {
+        "attempt_base_commit": pre_implement_ref,
         "implementation": {
             "files_touched": files,
             "diff_summary": diff_summary,
-            "blocked": list(guard.blocked),
-            "cost_usd": result.cost_usd,
-            "usage": usage_breakdown(result.usage),
+            "candidate_commit": _git(worktree_path, "rev-parse", "HEAD").strip(),
+            "blocked": pending["blocked"],
+            "cost_usd": pending["cost_usd"],
+            "usage": pending["usage"],
         },
         # Append-only ledger event for THIS attempt (WU-COST-EVENTS). The escalation retry
         # is a separate implement invocation that reaches here too, so each attempt
         # contributes exactly one event — the multi-unit/escalation spend is no longer lost
         # to the last-write-wins ``implementation`` slice.
-        "cost_events": [event],
+        "pending_implementation": None,
         "status": Status.TESTING,
     }
     # Record the pre-attempt ref so a gate failure can reset to exactly here — discarding only
     # this attempt's commit, never prior units' work — and escalate once. Only on the first
     # attempt, and only when the executor can escalate; otherwise leave it unset so a gate
     # failure routes straight to human_halt as before.
-    if can_escalate and not escalating and pre_implement_ref:
+    if pending["can_escalate"] and not pending["escalating"] and pre_implement_ref:
         update["pre_implement_ref"] = pre_implement_ref
-    # Only untouchable blocks (§7) are run errors that need human sign-off. Out-of-worktree
-    # blocks are the isolation boundary doing its job — benign audit info, recorded under
-    # implementation["blocked"] above but never surfaced as an implement error.
-    untouchable = [b["path"] for b in guard.blocked if b.get("reason") == "untouchable"]
-    if untouchable:
-        update["errors"] = [
-            {"node": "implement", "message": f"blocked untouchable edit(s): {untouchable}"}
-        ]
     return update
 
 
@@ -387,19 +441,134 @@ class CommitError(Exception):
     successful implement and only failing later as an empty-diff PR."""
 
 
-def _stage_and_commit(worktree_path: str, message: str) -> tuple[list[str], str]:
+def _stage_and_commit(
+    worktree_path: str,
+    message: str,
+    *,
+    call_context: CallContext | None = None,
+) -> tuple[list[str], str]:
     """Stage all changes, capture the staged file list + diffstat, and commit if any.
 
     Raises ``CommitError`` if the commit fails. Previously the commit's exit code was
     ignored, so a failed commit (e.g. a fresh clone with no author identity) looked like
     success and surfaced only at PR time as "No commits between main and <branch>"."""
+    journal = call_context.journal() if call_context else None
+    operation = call_context.key("git.commit") if call_context else None
+    if journal is not None:
+        existing = journal.get(operation)
+        base = (
+            existing.intent["base_commit"]
+            if existing
+            else _git(worktree_path, "rev-parse", "HEAD").strip()
+        )
+        receipt = journal.intent(
+            operation,
+            {
+                "path": str(Path(worktree_path).resolve()),
+                "message": message,
+                "base_commit": base,
+            },
+        )
+        if not receipt.created:
+            if receipt.status == "completed":
+                head = _git(worktree_path, "rev-parse", "HEAD").strip()
+                dirty = _git(worktree_path, "status", "--porcelain", "--untracked-files=all")
+                commit_message = _git(worktree_path, "log", "-1", "--format=%B")
+                if (
+                    head != receipt.outcome["commit"]
+                    or dirty.strip()
+                    or operation.trailer not in commit_message
+                ):
+                    raise ReceiptError(
+                        "committed operation has unknown extra changes; inspect workspace"
+                    )
+                return receipt.outcome["files"], receipt.outcome["diff_summary"]
+            tree_key = call_context.key("git.commit.tree")
+            tree_record = journal.get(tree_key)
+            head = _git(worktree_path, "rev-parse", "HEAD").strip()
+            dirty = _git(worktree_path, "status", "--porcelain", "--untracked-files=all")
+            if tree_record and head != base and not dirty.strip():
+                tree = _git(worktree_path, "rev-parse", "HEAD^{tree}").strip()
+                parent = _git(worktree_path, "rev-parse", "HEAD^").strip()
+                body = _git(worktree_path, "log", "-1", "--format=%B").splitlines()
+                expected_tree = (
+                    tree_record.outcome["observed_tree"] if tree_record.status == "completed"
+                    else tree_record.intent["tree"]
+                )
+                if (tree == expected_tree and parent == base and operation.trailer in body):
+                    outcome = {"commit": head, "files": tree_record.intent["files"],
+                               "diff_summary": tree_record.intent["diff_summary"]}
+                    proof_key = call_context.key("git.commit.reconciliation")
+                    journal.intent(proof_key, {"original_operation": operation.id,
+                                               "parent": base, "tree": tree, **outcome})
+                    journal.finish(proof_key, "completed", outcome)
+                    journal.finish(tree_key, "completed", {"commit": head, "observed_tree": tree})
+                    if receipt.status == "intent":
+                        journal.finish(operation, "completed", outcome)
+                    # An original failed/interrupted receipt remains immutable. The
+                    # separate proof records the observed Git effect, not a replay.
+                    return outcome["files"], outcome["diff_summary"]
+            if receipt.status == "intent" and tree_record and head == base:
+                expected = tree_record.intent["tree"]
+                staged = _git(worktree_path, "write-tree").strip()
+                untracked = _git(worktree_path, "ls-files", "--others", "--exclude-standard")
+                if staged != expected or untracked.strip():
+                    raise ReceiptError("unknown staged changes before implementation commit")
+                _git(worktree_path, "diff", "--quiet")
+                # Exactly the original sealed tree is staged; finish that commit once.
+            else:
+                raise ReceiptError(f"interrupted_commit_requires_reconciliation: {operation.id}")
+        message += "\n\n" + operation.trailer
+    def before_commit(files, summary, tree):
+        if journal:
+            journal.intent(call_context.key("git.commit.tree"), {
+                "tree": tree, "base_commit": base, "files": files, "diff_summary": summary,
+            })
+
+    try:
+        files, summary = _commit_changes(worktree_path, message, before_commit=before_commit)
+    except BaseException as exc:
+        if journal is not None:
+            journal.finish(
+                operation,
+                "failed" if isinstance(exc, CommitError) else "interrupted",
+                {"error_type": type(exc).__name__},
+            )
+        raise
+    if journal is not None:
+        if not files:
+            journal.finish(operation, "failed", {"error_kind": "empty_diff"})
+            return files, summary
+        head = _git(worktree_path, "rev-parse", "HEAD").strip()
+        journal.finish(call_context.key("git.commit.tree"), "completed", {
+            "commit": head,
+            "observed_tree": _git(worktree_path, "rev-parse", "HEAD^{tree}").strip(),
+        })
+        journal.finish(
+            operation,
+            "completed",
+            {
+                "commit": head,
+                "files": files,
+                "diff_summary": summary,
+            },
+        )
+    return files, summary
+
+
+def _commit_changes(
+    worktree_path: str, message: str, *, before_commit=None,
+) -> tuple[list[str], str]:
+    # All staging/diff failures are infrastructure failures, not an empty diff.
     _git(worktree_path, "add", "-A")
     files = [
         line for line in _git(worktree_path, "diff", "--cached", "--name-only").splitlines() if line
     ]
     diff_summary = _git(worktree_path, "diff", "--cached", "--stat")
     if files:
-        commit = subprocess.run(
+        if before_commit:
+            before_commit(files, diff_summary, _git(worktree_path, "write-tree").strip())
+        commit = run_command(
             ["git", "-C", str(worktree_path), "commit", "-m", message],
             capture_output=True,
             text=True,
@@ -410,9 +579,10 @@ def _stage_and_commit(worktree_path: str, message: str) -> tuple[list[str], str]
 
 
 def _git(worktree_path: str, *args: str) -> str:
-    result = subprocess.run(
-        ["git", "-C", str(worktree_path), *args], capture_output=True, text=True
-    )
+    result = run_command(["git", "-C", str(worktree_path), *args], capture_output=True, text=True)
+    result.require_complete_output()
+    if result.returncode:
+        raise CommitError(result.stderr.strip() or result.stdout.strip() or "git command failed")
     return result.stdout
 
 
@@ -428,30 +598,21 @@ _NO_SANDBOX_EXECUTION_NOTE = (
     "implementing — do not waste turns looking for a way to run commands."
 )
 
-# The sandboxed execution note (WU-SANDBOX-IMPLEMENT) REVERSES the instruction above: with a
-# real self-verify channel available, the agent is told to use it and fix failures itself
-# BEFORE finishing, rather than leaving all verification to the (still authoritative) gate.
-_SANDBOX_EXECUTION_NOTE = (
-    "You HAVE a sandbox: call the `run_command` tool to run commands INSIDE an isolated "
-    "container over this working directory — never on the host, and never via a shell of "
-    "your own (raw Bash stays disallowed; `run_command` is the only execution channel, and "
-    "it is sandboxed). Before you finish, RUN the target project's own tests and build/lint "
-    "commands in the sandbox and FIX any failures — do not finish while a test or the build "
-    "is still failing. The test gate still runs afterward as the authoritative check, but "
-    "your job is to make it pass on the first try, not to leave verification to it."
-)
-
 
 def _implement_prompt(
     unit: WorkUnit,
     *,
     prior_failure: str | None = None,
+    review_feedback: str | None = None,
     resuming: bool = False,
+    continuation_feedback: str | None = None,
     sandbox_enabled: bool = False,
     index_enabled: bool = False,
     worktree_path: str | Path | None = None,
 ) -> str:
-    execution_note = _SANDBOX_EXECUTION_NOTE if sandbox_enabled else _NO_SANDBOX_EXECUTION_NOTE
+    from blacksmith.config import reject_enabled_sandbox
+    reject_enabled_sandbox(sandbox_enabled)
+    execution_note = _NO_SANDBOX_EXECUTION_NOTE
     # When the index is enabled, the system prompt tells the agent this worktree's absolute
     # path and requires every Read/Edit to use an absolute path under it (killing observed
     # failed relative-path Read turns). This scope note MUST agree with that — an agent told
@@ -496,6 +657,8 @@ def _implement_prompt(
             "work — do NOT restart from scratch or rewrite what is already correct. Be efficient: "
             "you have a fresh turn budget but the unit must be finished within it."
         )
+    if resuming and continuation_feedback:
+        prompt += "\n\nCONTINUATION FEEDBACK:\n" + continuation_feedback
     if prior_failure and prior_failure.strip():
         # Self-heal retry (WU-GATE-SELF-HEAL): a prior attempt at THIS unit failed the gate.
         # Feed the gate's output back so the retry fixes the real error instead of re-running
@@ -509,6 +672,8 @@ def _implement_prompt(
             "green — fix the implementation. Gate output (tail):\n"
             f"{tail}"
         )
+    if review_feedback:
+        prompt += "\n\nREVIEW FEEDBACK (full reviewer request):\n" + review_feedback
     return prompt
 
 

@@ -1,0 +1,34 @@
+E501 Line too long (101 > 100)
+  --> tests/test_feature_deferrals.py:39:101
+   |
+39 | def test_enabled_graph_factory_refuses_before_executor_store_clone_or_topology(project, monkeypatch):
+   |                                                                                                     ^
+40 |     config = enabled_config(project)
+41 |     for name in ["Executor", "CloneManager", "build_store", "compile_graph"]:
+   |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_sandbox_lifecycle.py:7:1
+   |
+ 5 |   """
+ 6 |
+ 7 | / from __future__ import annotations
+ 8 | |
+ 9 | | import subprocess
+10 | | import types
+11 | |
+12 | | import pytest
+13 | |
+14 | | from blacksmith.config import ConfigError
+15 | | from pathlib import Path
+16 | |
+17 | | from blacksmith.graph import cleanup_worktree, prepare_worktree
+18 | | from blacksmith.sandbox import SandboxError
+19 | | from blacksmith.state import Status
+20 | | from blacksmith.worktree import WorktreeManager
+   | |_______________________________________________^
+   |
+help: Organize imports
+
+Found 2 errors.
+[*] 1 fixable with the `--fix` option.

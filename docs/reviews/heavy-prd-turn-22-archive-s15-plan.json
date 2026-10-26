@@ -1,0 +1,17 @@
+{
+  "accepted_receipt": "heavy-prd-turn-21-pytest-03.log",
+  "accepted_result": "1325 passed/6 SDK warnings/3373.29s, exit0",
+  "all_test_handles_terminal": true,
+  "goal_turn": 22,
+  "helper": "/private/tmp/blacksmith-heavy-prd-turn-22-archive-s15.py",
+  "helper_sha256": "63ee8dcc49aeb9c631e7235289fb7084f0f06d44bd2ad35f0d48262706f7e904",
+  "owner_log": "heavy-prd-turn-22-archive-s15-lsof-01.log",
+  "owner_scan_exit_code": 1,
+  "owner_scan_handle": 3566,
+  "prepare_handle": 4182,
+  "prepare_log": "heavy-prd-turn-22-archive-s15-prepare-01.log",
+  "recorded_at": "2026-10-25T04:10:11.576885-03:00",
+  "required_before_cleanup": "terminal successful byte/mode/symlink archive verification; positive proof/hashes; root ownership; protected inputs retained; fd-only owned directory chmod and symlink-safe removal",
+  "source": "/private/tmp/blacksmith-heavy-prd-t21-full-03",
+  "status": "accepted S15 fixture archive prepare live; no cleanup started"
+}

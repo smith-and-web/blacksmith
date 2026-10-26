@@ -1,0 +1,24 @@
+{
+  "goal_turn": 26,
+  "recorded_at": "2026-10-25T13:31:32.332Z",
+  "path": "Projects/blacksmith.md",
+  "initial_lint": {
+    "log": "heavy-prd-turn-26-brain-lint-02.log",
+    "exit_code": 1,
+    "reason": "Known archive SHA-256 checksum matched generic 64-hex secret rule; duplicate digest removed from note, preserved in repository proof; no linter rule changed"
+  },
+  "final_lint": {
+    "log": "heavy-prd-turn-26-brain-lint-03.log",
+    "exit_code": 0,
+    "errors": 0,
+    "warnings": 0
+  },
+  "index_wait_seconds_at_least": 70,
+  "last_run_errors": 0,
+  "invalid_frontmatter_count": 0,
+  "semantic_request_id": "fbe185d5-8aea-4d02-b8a5-1da752bdc22e",
+  "new_checkpoint_note_rank": 1,
+  "whole_note_equality": true,
+  "feedback": "positive once",
+  "checkpoint": "source1d68a64/176; final full1419 LIVE61391/9007/9008; old1414 green and archived/removed; no whole-goal acceptance"
+}

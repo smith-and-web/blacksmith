@@ -1,5 +1,26 @@
 # blacksmith
 
+Heavy-PRD remediation S01-S19 is implemented and locally verified on the feature
+branch. The [implementation checklist](docs/reviews/heavy-prd-progress.md) and
+[final acceptance audit](docs/reviews/heavy-prd-final-acceptance.md) record the exact
+source, 1,419 passing tests, Ruff pass, migration/recovery evidence and remaining
+live release gates. Human review is approved for the reviewed source; the paid
+disposable-target canary remains unrun and general heavy-PRD release is held.
+
+[Version-2 run context](docs/heavy-prd-run-context.md) freezes requirements,
+approved plans, execution settings and toolchains; both scheduling shapes use the
+same checkpointed unit graph. [Reviews](docs/heavy-prd-reviews.md),
+[exact-SHA approval](docs/heavy-prd-approval.md),
+[publication recovery](docs/heavy-prd-publication.md),
+[spending and deadlines](docs/heavy-prd-admission.md),
+[bounded scheduling](docs/heavy-prd-scheduling.md) and
+[observability](docs/heavy-prd-observability.md) describe the runtime guarantees and
+limits. The actual 100-unit chain and 20-root/default-two-worker cases pass.
+[Sandbox and respond remain explicitly disabled](docs/heavy-prd-disabled-features.md)
+under the specification's permitted alternatives. Real Docker proof is required
+before sandbox enablement. Offline tests establish local behavior; live provider,
+permission, billing and publication gates remain separate.
+
 [![CI](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/smith-and-web/blacksmith/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -8,7 +29,9 @@ state machine that drives a PRD's work units, in dependency order, each through
 **plan → implement → test-gate → review → PR**, with durable checkpointed state and
 human approval gates. The [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview)
 is the per-node execution engine; blacksmith operates *on* a target repository via
-isolated git clones, the repo's own test/lint toolchain, and `gh`.
+separate git clones, a frozen trusted host test/lint toolchain, and `gh`. Clones
+separate Git workspaces; generated tests execute on the host with credential
+variables stripped. This is not an OS sandbox for arbitrary untrusted repositories.
 
 The deliverable is LangGraph fluency — a working, inspectable grasp of its
 state-machine / checkpoint / human-in-the-loop model. blacksmith now drives most of
@@ -17,20 +40,21 @@ its own development: it builds its features from Contract v1 PRDs, on itself. Se
 PRD? The [PRD authoring guide](docs/prd-authoring-guide.md) documents the contract
 every PRD must conform to.
 
-**Status:** well past the v0 spine — blacksmith builds its own features end to end, and
+**Historical capabilities:** blacksmith built its own features end to end, and
 nearly everything below was shipped that way (write a PRD → blacksmith builds it → review
-the PR). Current on `main`: **multi-unit execution** of a PRD's whole `depends_on` DAG
+the PR). These include **multi-unit execution** of a PRD's whole `depends_on` DAG
 (topological order, independent units in parallel within a level, one combined PR);
-**clone-based isolation** (each run/unit works in a throwaway `git clone`, never the real
-checkout); a **human-QA path** (a `human`-gated unit opens a *draft* PR and ends
+**separate Git workspaces** (each run/unit works in a throwaway `git clone`);
+a **human-QA path** (a `human`-gated unit opens a *draft* PR and ends
 `AWAITING_QA`, branch preserved); **tiered models** (implement on Sonnet first, escalate to
 Opus only on a gate failure); **long-term memory** (per-repo gate-failure lessons fed back
 to the planner via a SQLite Store); a local **observability suite** — per-run/per-unit
 metrics recording, a `blacksmith runs` history command, a built-in `blacksmith dashboard`,
 and per-call agent **transcripts**; a **rendered interactive CLI** (Markdown plans, diffs,
 live progress) that degrades to plain output when piped; **fresh-run state isolation**;
-per-run token/cache instrumentation; and an org **cost reporter**. 300+ tests, CI-green.
-Proven against its own repo and an external Node/TypeScript target.
+per-run token/cache instrumentation; and an org **cost reporter**. Historical
+self-build and external-target runs do not establish current heavy-PRD readiness.
+Use the checklist and exact acceptance evidence above for this remediation branch.
 
 ## Stack
 
@@ -98,9 +122,9 @@ and run `blacksmith <prd>` from anywhere inside it. Setting an explicit absolute
 
 The PRD path is the single positional argument. `--config` points at a non-default
 `blacksmith.config.toml` (otherwise it's discovered by walking up to the git root);
-`--thread-id` names the checkpointer thread; a fresh run resets a terminally-finished
-thread and refuses a paused one, so a reused id won't resurrect prior state — a fresh id
-per run is still the simplest habit.
+`--thread-id` names the checkpointer thread. A fresh run refuses every retained
+thread ID, including completed runs; choose a new ID or explicitly resume the saved
+run. Existing checkpoints and recovery artifacts are preserved.
 Interactive runs pause for a y/n at the plan and PR gates; `--auto-approve` approves
 both, and `--approve plan,pr` approves only the gates you name (an unlisted gate is
 denied, halting the run there). `--quiet` silences the per-node progress stream.
@@ -109,7 +133,7 @@ Other entry points:
 
 ```sh
 blacksmith validate <prd>            # offline contract check — field-level errors, zero model spend
-blacksmith resume --thread-id <id>   # continue an interrupted run from its SQLite checkpoint
+blacksmith resume --thread-id <id>   # validate a saved run; see recovery/migration restrictions
 blacksmith runs [<thread-id>]        # recorded run history; pass a thread-id to drill into one run
 blacksmith dashboard                 # local read-only web dashboard over recorded run metrics (localhost)
 blacksmith --issue <N>               # scaffold a PRD skeleton from GitHub issue #N (PR links Closes #N)
@@ -119,7 +143,8 @@ blacksmith costs                     # org usage + cost from the Admin API (read
 ## Onboarding a new target repo
 
 blacksmith operates *on* a target repo via git clones — nothing about blacksmith is
-compiled into it, and the repo needs no prior setup beyond being a git clone.
+compiled into it. Use a trusted repository with committed verifier configuration,
+configured Git identity, available host toolchain and the required publication tools.
 
 > **blacksmith only sees committed state.** Each run cuts a fresh clone from `HEAD`,
 > so anything it should use must be **committed, not just staged** — including
@@ -202,13 +227,13 @@ To point blacksmith at a new project:
 ### Beyond the v0 spine — built by blacksmith on itself
 
 - **Multi-unit DAG execution** — topological ordering + parallel fan-out within a dependency level, accumulating onto one combined PR.
-- **Clone-based isolation** — a throwaway `git clone` per run/unit; the real checkout is never touched.
+- **Separate Git workspaces** — a throwaway clone per run/unit, guarded model writes, and trusted host verification commands.
 - **Human-QA path** — a `human`-gated unit opens a *draft* PR and ends `AWAITING_QA`, branch preserved for manual review.
 - **Tiered models** — implement on Sonnet first, escalate to Opus only on a gate failure.
 - **More CLIs** — `validate` (offline contract check), `resume` (continue from a checkpoint), `runs` (recorded run history + per-run drill-down), `dashboard` (local metrics UI), `--issue N` (scaffold from a GitHub issue), `costs` (org Admin-API usage/cost), and global `uv tool install`.
 - **Long-term memory** — per-repo gate-failure lessons persisted in a SQLite Store and fed back into the planner's context on later runs.
 - **Observability** — per-run/per-unit metrics recorded to a local SQLite, a `blacksmith runs` history command, a built-in localhost `blacksmith dashboard`, and per-call agent transcripts linked from each run.
 - **Interactive CLI** — rendered Markdown plans, diffs, and test output with a live progress indicator at the gates, degrading to plain, parseable output when piped or under `--quiet`.
-- **Fresh-run state isolation** — a fresh run resets a terminally-finished thread and refuses a paused one, so a reused `--thread-id` can't resurrect a prior run's errors.
+- **Retained run identity** — fresh runs refuse every retained thread ID; explicit compatible resume preserves the saved inputs, approvals, budget and evidence.
 - **Cost visibility** — end-of-run cost total (summed across all units + escalations) plus per-run token + cache-hit instrumentation.
 - **Robustness** — repo-consistency preflight, reason-accurate guard-block reporting, graceful executor failures, and a forward-migrating metrics store.

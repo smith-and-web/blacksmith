@@ -19,7 +19,7 @@ Python 3.12 · LangGraph · Claude Agent SDK · SQLite checkpointer · `uv`.
 
 ```sh
 uv sync                 # provision + install
-uv run pytest           # full suite (300+ tests)
+uv run pytest           # full suite; exact receipts in docs/reviews/
 uv run ruff check       # lint
 blacksmith <prd>        # run against a PRD (installed as a uv tool)
 blacksmith runs         # run history
@@ -31,23 +31,48 @@ add a dependency without adding it to `pyproject.toml`.
 
 ## Architecture
 
-- `blacksmith/graph.py` — the LangGraph topology. Nodes: `ingest_prd`,
-  `next_unit`, `approve_plan`, `implement`, `continue_implement`, `test_gate`,
-  `auto_fix`, `fix_retry`, `escalate`, `review`, `finalize_review`,
-  `prepare_review_revision`, `open_pr`, `open_draft_pr`, `approve_pr`,
-  `join_level`, `human_halt`. This file is the map — read it first.
+- `blacksmith/graph.py` — parent topology: ingest/plan/approve, prepare workspace,
+  `execute_unit`, checkpointed joins, integration/final gates, approval/publication and cleanup.
+- `blacksmith/unit_graph.py` — the shared checkpointed unit topology: prepare attempt,
+  implement, audit/commit, auto-fix, normalize parallel candidate, test gate, review,
+  recovery decision and finalize. Both scheduling shapes invoke this same graph.
+- `blacksmith/joins.py` — saved level bases, exact-source picks and critical Git reconciliation.
+- `blacksmith/integration.py` — complete unit outcomes and exact-candidate layer-union gates.
+- `blacksmith/recovery.py` — immutable recovery snapshots and read-only artifact inspection.
+- `blacksmith/recovery_control.py` — sealed explicit recovery amendments and stage selection.
+- `blacksmith/recovery_repair.py` — observed repair or retained-partial evidence for interrupted captures.
+- `blacksmith/formatter_recovery.py`, `join_recovery.py` — exact staged/committed effect recovery.
+- `blacksmith/review_patch.py`, `review_receipts.py` — full cumulative patches, bounded read_diff,
+  typed fail-closed review decisions and critical restart evidence.
+- `blacksmith/publication_approval.py` — immutable exact-SHA normal/draft proposals,
+  critical human decisions and stale-candidate guards; prepared in a separate parent node.
+- `blacksmith/publication.py` — exact remote/PR observations, sealed content/result,
+  effect reconciliation and publication-stage restart for both normal and draft PRs.
+- `blacksmith/plan_artifacts.py` — per-unit immutable plans and exact PRD/plan approval bindings.
 - `blacksmith/nodes/` — node bodies. `plan.py`, `implement.py`, `review.py`,
   `pr.py`, and `hitl.py` (the `interrupt()`-based approval gates).
 - `blacksmith/executor.py` — Claude Agent SDK invocation, tool grants, options.
+- `blacksmith/budget.py`, `run_clock.py`, `accounting.py` — critical run-wide
+  admission, active execution bounds and measured/conservative reporting.
+- `blacksmith/sdk_transport.py` — owned SDK POSIX session and cancellation cleanup.
 - `blacksmith/contract.py` — PRD schema and validator. `extra="forbid"`.
 - `blacksmith/config.py` — `blacksmith.config.toml` parsing.
 - `blacksmith/index.py` — repo map and `search_code` tool.
 - `blacksmith/state.py` — the `BlacksmithState` TypedDict threaded through nodes.
-- `blacksmith/metrics.py`, `dashboard.py` — observability.
+- `blacksmith/observability.py`, `events.py`, `metrics.py`, `dashboard.py` — optional
+  task-owned observations and bounded previews; critical receipts control routing.
 
 Config sections: `[target]`, `[models]`, `[limits]`, `[checkpointer]`, `[api]`,
 `[index]`, `[critic]`. Models are tiered — implement starts on Sonnet and
 escalates to Opus only on a gate failure.
+
+Heavy-PRD changes are on a local feature branch. See `docs/reviews/heavy-prd-progress.md`
+and `heavy-prd-evidence.md` for accepted slices and exact source/test receipts.
+Sandbox execution rejects enabled settings; `respond` explicitly refuses until
+hardened. Native gates run trusted commands on the host, with credentials stripped;
+clones do not provide an OS sandbox. Legacy checkpoints remain inspectable but cannot
+execute without required migration evidence. Never infer live release acceptance
+from offline SDK/GitHub/Docker replacements.
 
 ## Failure classes this codebase has actually exhibited
 

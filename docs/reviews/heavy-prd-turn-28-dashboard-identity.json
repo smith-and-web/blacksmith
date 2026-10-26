@@ -1,0 +1,19 @@
+{
+  "at": "2026-10-25T14:42:35.076061-03:00",
+  "goal_turn": 28,
+  "tested_baseline": "fbbd16c9a3617fd2cbb061b377ad3cc833d94899",
+  "final_implementation": "1d68a6492e53898c5011a24b9d14d771bad6275d",
+  "source_identity": {
+    "blacksmith/dashboard.py": {
+      "sha256": "a31a845ee6ae13af8e814b4537a6be2cf788aa771e9605576e7ab690d90b6e8f",
+      "matches_tested_baseline": true
+    },
+    "tests/dashboard_activity_probe.mjs": {
+      "sha256": "d2ce23988b41b0bc2b5816f30ce4440f4d905db0f6d8357b2e311bd570cc0f8c",
+      "matches_tested_baseline": true
+    }
+  },
+  "probe_log": "docs/reviews/heavy-prd-turn-23-dashboard-final-04.log",
+  "probe_log_sha256": "b1cbb2e301387d2dcc06cc355b9d329845068a1a2ddec6208a4e22c7e5c4323d",
+  "scope": "Actual inline JS in offline DOM stub; no browser layout or live service claim"
+}

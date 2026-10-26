@@ -12,6 +12,8 @@ without depending on a real toolchain.
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+
 from blacksmith.gate import (
     FixResult,
     GateError,
@@ -75,8 +77,8 @@ def test_fix_amends_unit_commit_then_gate_passes(tmp_path):
     _unit_commit(repo, "code.txt", "hello   \n")  # trailing whitespace == "unformatted"
     count_before = _head_count(repo)
     tc = TargetToolchain(
-        test_cmd="grep -qx hello code.txt",       # exact-line check fails on the trailing space
-        fix_cmd="printf 'hello\\n' > code.txt",    # the deterministic "formatter"
+        test_cmd="grep -qx hello code.txt",  # exact-line check fails on the trailing space
+        fix_cmd="printf 'hello\\n' > code.txt",  # the deterministic "formatter"
     )
     # Without the fix the gate would fail on the unformatted file.
     assert run_gate(repo, toolchain=tc).passed is False
@@ -113,16 +115,19 @@ def test_failing_fix_cmd_is_best_effort(tmp_path):
     assert _head(repo) == before
 
 
-def test_partial_fix_is_committed_even_when_cmd_exits_nonzero(tmp_path):
-    # Whatever the fixer managed to change is still folded in, even on a non-zero exit.
+def test_partial_failed_fix_is_retained_without_amending(tmp_path):
+    # A failed formatter cannot turn its partial source edits into a verified candidate.
     repo = _repo(tmp_path)
     _unit_commit(repo, "code.txt", "hello   \n")
+    before = _head(repo)
     count_before = _head_count(repo)
     tc = TargetToolchain(test_cmd="true", fix_cmd="printf 'hello\\n' > code.txt; false")
-    res = run_fix(repo, toolchain=tc)
-    assert res.applied is True and res.ok is False and res.changed is True
+    with pytest.raises(GateError, match="failed formatter left source changes"):
+        run_fix(repo, toolchain=tc)
     assert (repo / "code.txt").read_text() == "hello\n"
-    assert _head_count(repo) == count_before  # amended, not a new commit
+    assert _head_count(repo) == count_before
+    assert _head(repo) == before
+    assert _git(repo, "diff", "--name-only").stdout.strip() == "code.txt"
 
 
 def test_fix_does_not_mask_a_real_failure(tmp_path):
@@ -153,7 +158,7 @@ def test_fix_cmd_loads_from_toml(tmp_path):
     (tmp_path / "blacksmith.toml").write_text(
         'test_cmd = "cargo test"\n'
         'fix_cmd = "cargo fmt --all"\n\n'
-        '[layers.frontend]\n'
+        "[layers.frontend]\n"
         'fix_cmd = "npm run format"\n'
     )
     tc = load_toolchain(tmp_path)

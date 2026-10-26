@@ -1,0 +1,79 @@
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+_ test_single_worker_cli_completes_custom_stream_without_coordinator_starvation _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t21-scheduling-workers-01/test_single_worker_cli_complet0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+
+    def test_single_worker_cli_completes_custom_stream_without_coordinator_starvation(
+        project,
+    ):
+        import json
+        import os
+        import subprocess
+        import sys
+    
+        data = project[1].parent / "single-worker-project.json"
+        data.write_text(json.dumps(project[3]))
+        script = r"""
+    import json,sys
+    from pathlib import Path
+    from pytest import MonkeyPatch
+    sys.path.insert(0,sys.argv[1])
+    from test_scheduling_runtime import execute
+    project=(Path(sys.argv[2]),Path(sys.argv[3]),Path(sys.argv[4]),
+             json.loads(Path(sys.argv[5]).read_text()))
+    mp=MonkeyPatch()
+    try:
+        state,seen=execute(project,mp,2,bound=1)
+        assert seen['maximum']==1 and len(seen['units'])==2
+        print('SINGLE_WORKER_CLI_COMPLETED')
+    finally:mp.undo()
+    """
+        source = Path(__file__).resolve().parents[1]
+        env = {**os.environ, "PYTHONPATH": str(source)}
+>       result = subprocess.run([sys.executable, "-c", script, str(Path(__file__).parent),
+                                 str(project[0]), str(project[1]), str(project[2]), str(data)],
+                                cwd=source, env=env, capture_output=True, text=True, timeout=120)
+
+tests/test_scheduling_runtime.py:251: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py:550: in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py:1209: in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py:2116: in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Popen: returncode: -9 args: ['/Users/josh.smith/Code/blacksmith/.venv/bin/p...>
+endtime = 412170.779938541, orig_timeout = 120, stdout_seq = [], stderr_seq = []
+skip_check_and_raise = False
+
+    def _check_timeout(self, endtime, orig_timeout, stdout_seq, stderr_seq,
+                       skip_check_and_raise=False):
+        """Convenience for checking if a timeout has expired."""
+        if endtime is None:
+            return
+        if skip_check_and_raise or _time() > endtime:
+>           raise TimeoutExpired(
+                    self.args, orig_timeout,
+                    output=b''.join(stdout_seq) if stdout_seq else None,
+                    stderr=b''.join(stderr_seq) if stderr_seq else None)
+E           subprocess.TimeoutExpired: Command '['/Users/josh.smith/Code/blacksmith/.venv/bin/python', '-c', "\nimport json,sys\nfrom pathlib import Path\nfrom pytest import MonkeyPatch\nsys.path.insert(0,sys.argv[1])\nfrom test_scheduling_runtime import execute\nproject=(Path(sys.argv[2]),Path(sys.argv[3]),Path(sys.argv[4]),\n         json.loads(Path(sys.argv[5]).read_text()))\nmp=MonkeyPatch()\ntry:\n    state,seen=execute(project,mp,2,bound=1)\n    assert seen['maximum']==1 and len(seen['units'])==2\n    print('SINGLE_WORKER_CLI_COMPLETED')\nfinally:mp.undo()\n", '/private/tmp/blacksmith-heavy-prd-scheduling-stage/tests', '/private/tmp/blacksmith-heavy-prd-t21-scheduling-workers-01/test_single_worker_cli_complet0/target', '/private/tmp/blacksmith-heavy-prd-t21-scheduling-workers-01/test_single_worker_cli_complet0/runtime.toml', '/private/tmp/blacksmith-heavy-prd-t21-scheduling-workers-01/test_single_worker_cli_complet0/task.md', '/private/tmp/blacksmith-heavy-prd-t21-scheduling-workers-01/test_single_worker_cli_complet0/single-worker-project.json']' timed out after 120 seconds
+
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py:1253: TimeoutExpired
+=============================== warnings summary ===============================
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[worker_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigint]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigint]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigterm]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_scheduling_runtime.py::test_single_worker_cli_completes_custom_stream_without_coordinator_starvation
+1 failed, 5 passed, 5 warnings in 494.69s (0:08:14)

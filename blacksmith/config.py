@@ -17,7 +17,7 @@ import os
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 # Current model IDs only (PRD §8). The legacy ``claude-*-4-20250514`` IDs are
 # retired and will error — do not reintroduce date-suffixed IDs here.
@@ -37,6 +37,16 @@ CONFIG_FILENAME = "blacksmith.config.toml"
 
 class ConfigError(Exception):
     """Raised when blacksmith's runtime config is missing, malformed, or invalid."""
+
+
+def reject_enabled_sandbox(enabled: bool) -> None:
+    """Keep historical settings readable while refusing unsupported execution."""
+    if enabled:
+        raise ConfigError(
+            "sandbox_unsupported_until_hardened: [sandbox].enabled=true is disabled "
+            "until per-workspace ownership, timeout/restart recovery and real Docker "
+            "smoke evidence are implemented; set enabled=false. Retained runs remain "
+            "available for read-only recovery inspection.")
 
 
 def find_git_root(start: str | Path | None = None) -> Path | None:
@@ -157,8 +167,8 @@ class TranscriptsConfig(_Strict):
     """Per-call transcript capture settings (WU-TRANSCRIPT-CAPTURE).
 
     A purely ADDITIVE observability channel: when ``enabled`` (the default), the
-    executor writes one JSONL file per model call under ``dir``, keyed by the call's
-    session id. It is its OWN directory, never the checkpointer/state — disabling it,
+    executor writes one JSONL file per model call under ``dir``, keyed by its unique
+    call ID even without a provider session. It is separate from state; disabling it,
     or an unwritable ``dir``, writes nothing and the run behaves exactly as today.
     """
 
@@ -180,11 +190,15 @@ class LimitsConfig(_Strict):
       the self-heal loop entirely (escalate-then-halt, the prior behaviour). The bounded
       count is the primary anti-runaway guard: worst case per unit is
       ``1 + max_fix_attempts + 1`` implement attempts.
-    * ``max_run_cost_usd`` — an OPTIONAL hard ceiling on total run spend. Once the run's
-      summed ``cost_events`` cross it, no further retry OR escalation fires and the run
-      halts with a "cost cap reached" error. ``None`` (the default) means no cap; it is
-      left off by default because a hard whole-run cap can strand a multi-unit run's
-      already-committed units, so the value is best chosen per project.
+    * ``max_run_cost_usd`` — the run-wide admission budget, default $50. An intentional
+      uncapped run uses the recorded CLI --unlimited-cost choice. SDK stopping is soft;
+      an actual overrun remains visible and prevents further admission.
+    * ``max_parallel_units`` — maximum simultaneous unit workers, default two.
+      Overlapping target groups are serialized independently of dependency edges.
+    * ``max_call_cost_usd`` — default $5; each paid call reserves the smaller of this
+      value and remaining unreserved run budget, then receives that SDK budget.
+    * ``model_timeout_s`` / ``max_run_seconds`` — model and accumulated execution
+      deadlines. Run execution excludes human approval waiting and spans resumes.
     * ``max_review_revisions`` — bounds the SEPARATE post-gate review loop
       (WU-REVIEW-CONFIG): the maximum number of review-driven revision attempts on a
       unit that already PASSED the test gate. It is independent of ``max_fix_attempts``
@@ -199,30 +213,37 @@ class LimitsConfig(_Strict):
       CONTINUE (keeping its partial work, fresh turn budget) before the run halts. A
       turn-cap is a budget-shaped failure, not a broken one, so — unlike a gate failure —
       the partial work is kept and finished rather than discarded. ``0`` disables the loop
-      (a turn cap halts immediately, the prior behaviour). Sequential path only, mirroring
-      escalation; a fan-out worker still records the cap and lets the join halt the level.
+      (a turn cap halts immediately). Both scheduling shapes use this same policy.
+      Explicit recovery of started uncertain/budget-stopped model calls consumes
+      the saved allowance; a denied-before-start call does not.
     """
 
+    max_parallel_units: int = Field(default=2, ge=1, strict=True)
     max_fix_attempts: int = Field(default=1, ge=0)
-    max_run_cost_usd: float | None = Field(default=None, gt=0)
+    max_run_cost_usd: float | None = Field(default=50.0, gt=0, allow_inf_nan=False)
+    max_call_cost_usd: float = Field(default=5.0, gt=0, allow_inf_nan=False)
+    model_timeout_s: float = Field(default=1800, gt=0, allow_inf_nan=False)
+    max_run_seconds: float = Field(default=21600, gt=0, allow_inf_nan=False)
     max_review_revisions: int = Field(default=1, ge=0)
     max_implement_turns: int = Field(default=40, ge=1)
     max_implement_continuations: int = Field(default=1, ge=0)
+    # Input bytes are rejected before model admission; requirements are never truncated.
+    max_prd_bytes: int = Field(default=262144, ge=1)
+    command_timeout_s: float = Field(default=1800, gt=0, allow_inf_nan=False)
+    max_command_output_bytes: int = Field(default=1048576, ge=128)
 
 
 class ReviewConfig(_Strict):
     """Additive post-gate review loop settings (WU-REVIEW-CONFIG).
 
     A SEPARATE, bounded loop that runs only AFTER the test gate PASSES; it never
-    alters how the gate itself decides pass/fail. ``enabled`` (default ``True``) is a
-    plain on/off toggle — disabling it makes a run behave exactly as it does today,
-    with no review step attempted regardless of ``[limits].max_review_revisions``.
+    alters how the gate itself decides pass/fail. Enabled review requires complete,
+    strict terminal evidence: any panel blocker blocks; unavailable evidence halts.
+    Disabling review records ``disabled``, never ``clean``, and makes no review call.
 
-    ``panel_size`` (int >= 1, default 1) only controls how ``review_clean`` /
-    ``review_findings`` are COMPUTED — the default of 1 is BYTE-FOR-BYTE today's
-    single-reviewer behaviour (one ``run_review`` call, the current neutral prompt,
-    ``review_clean`` = has-no-blocking-finding). It never changes the post-gate
-    revise loop that consumes those values.
+    ``panel_size`` (int >= 1, default 1) selects independently recorded review seats.
+    Valid completed seats are reused on compatible recovery. Bounded review-driven
+    revisions preserve the cumulative patch; exhausted blockers halt with artifacts.
     """
 
     enabled: bool = True
@@ -230,16 +251,16 @@ class ReviewConfig(_Strict):
 
 
 class SandboxConfig(_Strict):
-    """Additive, opt-in sandbox self-verify channel settings (WU-SANDBOX-CONFIG).
+    """Structurally readable historical sandbox settings; execution stays disabled.
 
     OFF by default (``enabled=false``): with the default config, a run's tool surface,
     prompt, and behaviour are byte-for-byte unchanged from today — no HOST command
-    execution is ever added. When explicitly enabled, this section only configures
-    where an agent-run command is allowed to execute: inside a container built from
-    ``image``, over the mounted clone, never on the host. It never alters the test
-    gate's (``blacksmith/gate.py``) authoritative pass/fail semantics.
+    execution is ever added. Enabled configuration is rejected at runtime loading
+    and execution boundaries until per-workspace ownership, reliable timeout/restart
+    recovery and real Docker smoke evidence are implemented. Parsing saved settings
+    remains available for read-only recovery inspection; it does not authorize use.
 
-    * ``enabled`` — plain on/off toggle, default ``False``.
+    * ``enabled`` — historical flag, default ``False``; ``True`` cannot execute.
     * ``image`` — the container image name to run the sandbox in.
     * ``setup_cmd`` — optional command run once in the container after it starts (e.g.
       installing the target toolchain). ``None`` (the default) runs no setup step.
@@ -283,17 +304,11 @@ class IndexConfig(_Strict):
 
 
 class RespondConfig(_Strict):
-    """Additive ``blacksmith respond`` revise-loop settings (WU-RESPOND-CONFIG).
+    """Historical/reserved revision settings retained for config compatibility.
 
-    ``respond`` is a NEW, separate entry point (PRD-additive) for revising an already
-    opened PR from review comments; it never changes the normal ingest→plan→implement→
-    gate→PR run. This section only bounds how many revise→gate attempts a single
-    ``respond`` invocation makes before it stops.
-
-    * ``max_attempts`` — an int >= 1, default 2, capping the revise→gate cycles a single
-      ``respond`` invocation may run. A default of 2 mirrors the build loop's self-heal
-      (``max_fix_attempts`` default 1 = two implement attempts): on a failed revision,
-      ``respond`` re-implements once with the gate's own output fed back before giving up.
+    Respond execution is explicitly unsupported until shared integrity/recovery
+    services are integrated. max_attempts remains structurally validated for old
+    configurations; it cannot enable the disabled command or library workflow.
     """
 
     max_attempts: int = Field(default=2, ge=1)
@@ -400,6 +415,39 @@ class BlacksmithConfig(_Strict):
     sbfl: SBFLConfig = Field(default_factory=SBFLConfig)
     critic: CriticConfig = Field(default_factory=CriticConfig)
     hitl: HitlConfig = Field(default_factory=HitlConfig)
+    _source_path: Path | None = PrivateAttr(default=None)
+
+    @property
+    def config_path(self) -> Path | None:
+        return self._source_path
+
+    @property
+    def config_dir(self) -> Path:
+        return self._source_path.parent if self._source_path else Path.cwd().resolve()
+
+    def require_supported_execution(self) -> None:
+        """Execution policy is separate from parsing immutable historical inputs."""
+        reject_enabled_sandbox(self.sandbox.enabled)
+
+    def resolved(self, base: Path | None = None) -> BlacksmithConfig:
+        """Normalize storage and explicit target paths against one stable config directory."""
+        base = (base or self.config_dir).resolve()
+
+        def absolute(path: Path) -> Path:
+            return (path if path.is_absolute() else base / path).resolve()
+
+        updates = {}
+        for name in ("checkpointer", "store", "metrics", "live"):
+            section = getattr(self, name)
+            updates[name] = section.model_copy(update={"db_path": absolute(section.db_path)})
+        updates["transcripts"] = self.transcripts.model_copy(
+            update={"dir": absolute(self.transcripts.dir)}
+        )
+        if self.target.repo_path is not None:
+            updates["target"] = self.target.model_copy(
+                update={"repo_path": absolute(self.target.repo_path)}
+            )
+        return self.model_copy(update=updates)
 
     @classmethod
     def load(cls, path: str | Path) -> BlacksmithConfig:
@@ -409,7 +457,7 @@ class BlacksmithConfig(_Strict):
         not conform to the schema (missing required keys, wrong types, or unknown
         keys). The error message names the offending field(s).
         """
-        path = Path(path)
+        path = Path(path).resolve()
         if not path.is_file():
             raise ConfigError(f"blacksmith config not found: {path}")
         try:
@@ -417,7 +465,10 @@ class BlacksmithConfig(_Strict):
         except tomllib.TOMLDecodeError as exc:
             raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
         try:
-            return cls.model_validate(raw)
+            config = cls.model_validate(raw)
+            config.require_supported_execution()
+            config._source_path = path
+            return config.resolved(path.parent)
         except ValidationError as exc:
             raise ConfigError(_format_validation_error(path, exc)) from exc
 
@@ -507,7 +558,7 @@ class BlacksmithConfig(_Strict):
         """
         if self.target.repo_path is not None:
             return self.target.repo_path
-        root = find_git_root(start)
+        root = find_git_root(start if start is not None else self.config_dir)
         if root is None:
             raise ConfigError(
                 "[target].repo_path is not set and the current directory is not "

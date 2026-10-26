@@ -1,0 +1,12 @@
+E501 Line too long (108 > 100)
+  --> tests/test_sdk_deadlines.py:42:101
+   |
+40 |         child = subprocess.Popen([sys.executable, '-c',
+41 |             "import signal,time,pathlib; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+42 |             "time.sleep(9); pathlib.Path(" + repr(os.environ['OFFLINE_SENTINEL']) + ").write_text('late')"])
+   |                                                                                                     ^^^^^^^^
+43 |         with open(os.environ['OFFLINE_STARTED'], 'w') as out:
+44 |             json.dump({'leader':os.getpid(),'child':child.pid,'pgid':os.getpgrp()}, out)
+   |
+
+Found 1 error.

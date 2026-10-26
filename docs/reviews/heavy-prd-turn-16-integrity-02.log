@@ -1,0 +1,208 @@
+.............FFFF....                                                    [100%]
+=================================== FAILURES ===================================
+_ test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[push-106] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote0/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109bd3650>
+stage = 'push', code = 106
+
+    @pytest.mark.parametrize("stage,code", [("push", 106), ("create", 107),
+                                            ("receipt", 108), ("content", 109)])
+    def test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls(
+        project, monkeypatch, stage, code,
+    ):
+        child = subprocess.run([sys.executable, "-c", CRASH, str(Path(__file__).parent),
+                                *(str(p) for p in project), stage],
+                               capture_output=True, text=True, timeout=180)
+>       assert child.returncode == code, child.stdout + child.stderr
+E       AssertionError: Run 619f5c6f-a7a2-4b36-80cd-c30d893c2024: selected committed HEAD f9da150709fbac10369bcb41e143b5f0778ea103
+E         Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote0/.blacksmith/runs/619f5c6f-a7a2-4b36-80cd-c30d893c2024
+E         [auto] gate 'plan': approved
+E         [auto] gate 'pr': approved
+E         
+E         status: done
+E         PR: https://github.com/example/context-demo/pull/1
+E         total cost: $0.04
+E         tokens: unavailable
+E         blacksmith: ingest_prd
+E         blacksmith: plan
+E         blacksmith: approve_plan
+E         blacksmith: approve_plan
+E         blacksmith: prepare_worktree
+E         blacksmith: prepare_level
+E         blacksmith: execute_unit
+E         blacksmith: prepare_attempt
+E         blacksmith: implement
+E         blacksmith: audit_commit
+E         blacksmith: auto_fix
+E         blacksmith: normalize_candidate
+E         blacksmith: test_gate
+E         blacksmith: review
+E         blacksmith: finalize_unit
+E         blacksmith: final_gate
+E         blacksmith: prepare_pr_approval
+E         blacksmith: approve_pr
+E         blacksmith: approve_pr
+E         blacksmith: open_pr
+E         blacksmith: cleanup_worktree
+E         
+E       assert 0 == 106
+E        +  where 0 = CompletedProcess(args=['/private/tmp/blacksmith-heavy-prd-publication-stage/.venv/bin/python', '-c', "\nimport os, sys...pare_pr_approval\nblacksmith: approve_pr\nblacksmith: approve_pr\nblacksmith: open_pr\nblacksmith: cleanup_worktree\n').returncode
+
+tests/test_publication_recovery.py:63: AssertionError
+_ test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[create-107] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote1/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109bd0ce0>
+stage = 'create', code = 107
+
+    @pytest.mark.parametrize("stage,code", [("push", 106), ("create", 107),
+                                            ("receipt", 108), ("content", 109)])
+    def test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls(
+        project, monkeypatch, stage, code,
+    ):
+        child = subprocess.run([sys.executable, "-c", CRASH, str(Path(__file__).parent),
+                                *(str(p) for p in project), stage],
+                               capture_output=True, text=True, timeout=180)
+>       assert child.returncode == code, child.stdout + child.stderr
+E       AssertionError: Run d7e0e054-f292-474a-9a66-29110f33895e: selected committed HEAD 41ae7e4cec299f3b5ac24be5f36b7dc42b9f2166
+E         Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote1/.blacksmith/runs/d7e0e054-f292-474a-9a66-29110f33895e
+E         [auto] gate 'plan': approved
+E         [auto] gate 'pr': approved
+E         
+E         status: done
+E         PR: https://github.com/example/context-demo/pull/1
+E         total cost: $0.04
+E         tokens: unavailable
+E         blacksmith: ingest_prd
+E         blacksmith: plan
+E         blacksmith: approve_plan
+E         blacksmith: approve_plan
+E         blacksmith: prepare_worktree
+E         blacksmith: prepare_level
+E         blacksmith: execute_unit
+E         blacksmith: prepare_attempt
+E         blacksmith: implement
+E         blacksmith: audit_commit
+E         blacksmith: auto_fix
+E         blacksmith: normalize_candidate
+E         blacksmith: test_gate
+E         blacksmith: review
+E         blacksmith: finalize_unit
+E         blacksmith: final_gate
+E         blacksmith: prepare_pr_approval
+E         blacksmith: approve_pr
+E         blacksmith: approve_pr
+E         blacksmith: open_pr
+E         blacksmith: cleanup_worktree
+E         
+E       assert 0 == 107
+E        +  where 0 = CompletedProcess(args=['/private/tmp/blacksmith-heavy-prd-publication-stage/.venv/bin/python', '-c', "\nimport os, sys...pare_pr_approval\nblacksmith: approve_pr\nblacksmith: approve_pr\nblacksmith: open_pr\nblacksmith: cleanup_worktree\n').returncode
+
+tests/test_publication_recovery.py:63: AssertionError
+_ test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[receipt-108] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote2/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109c4e3c0>
+stage = 'receipt', code = 108
+
+    @pytest.mark.parametrize("stage,code", [("push", 106), ("create", 107),
+                                            ("receipt", 108), ("content", 109)])
+    def test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls(
+        project, monkeypatch, stage, code,
+    ):
+        child = subprocess.run([sys.executable, "-c", CRASH, str(Path(__file__).parent),
+                                *(str(p) for p in project), stage],
+                               capture_output=True, text=True, timeout=180)
+>       assert child.returncode == code, child.stdout + child.stderr
+E       AssertionError: Run 70d83554-7224-4bd9-ab15-226b9db08728: selected committed HEAD 22e64065672bc464306cf93c9d37361121b9f4fc
+E         Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote2/.blacksmith/runs/70d83554-7224-4bd9-ab15-226b9db08728
+E         [auto] gate 'plan': approved
+E         [auto] gate 'pr': approved
+E         
+E         status: done
+E         PR: https://github.com/example/context-demo/pull/1
+E         total cost: $0.04
+E         tokens: unavailable
+E         blacksmith: ingest_prd
+E         blacksmith: plan
+E         blacksmith: approve_plan
+E         blacksmith: approve_plan
+E         blacksmith: prepare_worktree
+E         blacksmith: prepare_level
+E         blacksmith: execute_unit
+E         blacksmith: prepare_attempt
+E         blacksmith: implement
+E         blacksmith: audit_commit
+E         blacksmith: auto_fix
+E         blacksmith: normalize_candidate
+E         blacksmith: test_gate
+E         blacksmith: review
+E         blacksmith: finalize_unit
+E         blacksmith: final_gate
+E         blacksmith: prepare_pr_approval
+E         blacksmith: approve_pr
+E         blacksmith: approve_pr
+E         blacksmith: open_pr
+E         blacksmith: cleanup_worktree
+E         
+E       assert 0 == 108
+E        +  where 0 = CompletedProcess(args=['/private/tmp/blacksmith-heavy-prd-publication-stage/.venv/bin/python', '-c', "\nimport os, sys...pare_pr_approval\nblacksmith: approve_pr\nblacksmith: approve_pr\nblacksmith: open_pr\nblacksmith: cleanup_worktree\n').returncode
+
+tests/test_publication_recovery.py:63: AssertionError
+_ test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[content-109] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote3/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109dc40e0>
+stage = 'content', code = 109
+
+    @pytest.mark.parametrize("stage,code", [("push", 106), ("create", 107),
+                                            ("receipt", 108), ("content", 109)])
+    def test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls(
+        project, monkeypatch, stage, code,
+    ):
+        child = subprocess.run([sys.executable, "-c", CRASH, str(Path(__file__).parent),
+                                *(str(p) for p in project), stage],
+                               capture_output=True, text=True, timeout=180)
+>       assert child.returncode == code, child.stdout + child.stderr
+E       AssertionError: Run 9e47564e-e328-447a-a659-50f2629ef90c: selected committed HEAD 43e772c0bb344c89b1babf3472ad19fc824aabc9
+E         Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-02/test_new_process_reuses_remote3/.blacksmith/runs/9e47564e-e328-447a-a659-50f2629ef90c
+E         [auto] gate 'plan': approved
+E         [auto] gate 'pr': approved
+E         
+E         status: done
+E         PR: https://github.com/example/context-demo/pull/1
+E         total cost: $0.04
+E         tokens: unavailable
+E         blacksmith: ingest_prd
+E         blacksmith: plan
+E         blacksmith: approve_plan
+E         blacksmith: approve_plan
+E         blacksmith: prepare_worktree
+E         blacksmith: prepare_level
+E         blacksmith: execute_unit
+E         blacksmith: prepare_attempt
+E         blacksmith: implement
+E         blacksmith: audit_commit
+E         blacksmith: auto_fix
+E         blacksmith: normalize_candidate
+E         blacksmith: test_gate
+E         blacksmith: review
+E         blacksmith: finalize_unit
+E         blacksmith: final_gate
+E         blacksmith: prepare_pr_approval
+E         blacksmith: approve_pr
+E         blacksmith: approve_pr
+E         blacksmith: open_pr
+E         blacksmith: cleanup_worktree
+E         
+E       assert 0 == 109
+E        +  where 0 = CompletedProcess(args=['/private/tmp/blacksmith-heavy-prd-publication-stage/.venv/bin/python', '-c', "\nimport os, sys...pare_pr_approval\nblacksmith: approve_pr\nblacksmith: approve_pr\nblacksmith: open_pr\nblacksmith: cleanup_worktree\n').returncode
+
+tests/test_publication_recovery.py:63: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_publication_recovery.py::test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[push-106]
+FAILED tests/test_publication_recovery.py::test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[create-107]
+FAILED tests/test_publication_recovery.py::test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[receipt-108]
+FAILED tests/test_publication_recovery.py::test_new_process_reuses_remote_effect_and_summary_without_duplicate_calls[content-109]
+4 failed, 17 passed in 265.88s (0:04:25)

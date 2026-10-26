@@ -1,0 +1,79 @@
+..........................F......                                        [100%]
+=================================== FAILURES ===================================
+_ test_large_patch_over_command_log_cap_has_full_artifact_and_actual_bounded_mcp_tool _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-153/test_large_patch_...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10b98d370>
+
+    def test_large_patch_over_command_log_cap_has_full_artifact_and_actual_bounded_mcp_tool(
+        project, monkeypatch,
+    ):
+        project[1].write_text(project[1].read_text() + "[limits]\nmax_command_output_bytes=4096\n")
+        content = "FULL_PATCH_SENTINEL\n" + ("added source line " + "x" * 80 + "\n") * 14000
+        verified = []
+    
+        def change(unit, number, workspace, prompt):
+            (workspace / "result.txt").write_text(content)
+    
+        async def inspect(unit, number, prompt, options):
+            assert "This prompt contains a manifest, not a truncated patch" in prompt
+            assert "FULL_PATCH_SENTINEL" not in prompt and DIFF_TOOL in options.allowed_tools
+            server = options.mcp_servers[DIFF_SERVER]["instance"]
+            listing = await server.request_handlers[mcp_types.ListToolsRequest](None)
+            assert [t.name for t in listing.root.tools] == ["read_diff"]
+            manifest = json.loads(prompt.split("includes deletions/renames/binary changes):\n")[1]
+                                  .splitlines()[0])
+            from blacksmith.review_receipts import ReviewPatch
+            definition = make_read_diff_tool(ReviewPatch.model_validate(manifest))
+            chunks, offset = [], 0
+            while True:
+                response = await definition.handler({"offset": offset, "max_bytes": 32768})
+                assert not response.get("isError")
+                row = json.loads(response["content"][0]["text"])
+                assert len(row["patch"].encode()) <= 32768
+                chunks.append(row["patch"])
+                offset = row["next_offset"]
+                if row["complete"]:
+                    break
+            full = "".join(chunks).encode()
+            assert len(full) == manifest["bytes"] > 1048576
+            assert hashlib.sha256(full).hexdigest() == manifest["sha256"]
+            assert b"+FULL_PATCH_SENTINEL" in full
+            invalid = await definition.handler({"offset": 0, "max_bytes": 32769})
+            assert invalid["isError"]
+            verified.append(manifest)
+    
+        install(monkeypatch, implement=change, inspect=inspect)
+        stop_at_pr(monkeypatch)
+>       with pytest.raises(KeyboardInterrupt, match="no publication"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE KeyboardInterrupt
+
+tests/test_review_integrity.py:222: Failed
+----------------------------- Captured stdout call -----------------------------
+Run 017e40e3-b450-483d-9b30-0527f471e623: selected committed HEAD b8f15aa8514337dcc153371f000d7a84a02695e9
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-153/test_large_patch_over_command_0/.blacksmith/runs/017e40e3-b450-483d-9b30-0527f471e623
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: approve_pr
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-153/test_large_patch_over_command_0/.blacksmith/runs/017e40e3-b450-483d-9b30-0527f471e623/recovery/a9af2bcd-d520-404e-80f9-d634b522d317/manifest.json
+Next action: blacksmith recovery inspect --thread-id large --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-153/test_large_patch_over_command_0/runtime.toml
+blacksmith: command output truncated; logs: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-153/test_large_patch_over_command_0/.blacksmith/runs/017e40e3-b450-483d-9b30-0527f471e623/commands/7dcb3689fdc88372efab44c4a3ac062b5e715996c1dd55b43750b779d5318c26
+=========================== short test summary info ============================
+FAILED tests/test_review_integrity.py::test_large_patch_over_command_log_cap_has_full_artifact_and_actual_bounded_mcp_tool
+1 failed, 32 passed in 64.62s (0:01:04)

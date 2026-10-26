@@ -1,0 +1,18 @@
+{
+  "status": "halted",
+  "source_module": "/private/tmp/blacksmith-heavy-prd-scheduling-stage/blacksmith/scheduling.py",
+  "nodes": [
+    "ingest_prd",
+    "human_halt",
+    "cleanup_worktree"
+  ],
+  "paid_plan_entered": false,
+  "workspace_created": false,
+  "publication": false,
+  "checkpoint_errors": [
+    {
+      "node": "ingest_prd",
+      "message": "/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/blacksmith-heavy-prd-invalid-library-371v8cx7/invalid.md: missing YAML frontmatter. A conforming PRD (Contract v1) must begin with a '---' fenced block carrying the machine-readable contract."
+    }
+  ]
+}

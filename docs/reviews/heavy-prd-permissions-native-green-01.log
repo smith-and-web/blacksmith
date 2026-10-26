@@ -1,0 +1,8 @@
+..............                                                           [100%]
+=============================== warnings summary ===============================
+tests/test_sdk_permissions.py::test_real_executor_sdk_and_owned_cli_allow_writes_but_deny_unsafe_targets
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+14 passed, 1 warning in 2.91s

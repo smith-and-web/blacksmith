@@ -1,0 +1,197 @@
+F..                                                                      [100%]
+=================================== FAILURES ===================================
+__ test_real_executor_sdk_and_owned_cli_allow_writes_but_deny_unsafe_targets ___
+
+project = (PosixPath('/private/tmp/blacksmith-permission-red02-20261026/test_real_executor_sdk_and_own0/target'), PosixPath('/pr...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1099d1c70>
+
+    def test_real_executor_sdk_and_owned_cli_allow_writes_but_deny_unsafe_targets(
+        project, monkeypatch,
+    ):
+        root = project[0]
+        protected = root / 'protected'
+        protected.mkdir()
+        sentinel = protected / 'sentinel.txt'
+        sentinel.write_text('protected baseline')
+        outside = root.parent / 'outside.txt'
+        outside.write_text('outside baseline')
+        (root / 'escape').symlink_to(root.parent, target_is_directory=True)
+        config_before = (root / 'blacksmith.toml').read_bytes()
+        git_config_before = (root / '.git/config').read_bytes()
+        requests = [
+            {'tool': 'Write', 'input': {'file_path': 'module.py', 'content': 'value = 1\n'}},
+            {'tool': 'Edit', 'input': {'file_path': str(root / 'module.py'),
+                                     'old_string': '1', 'new_string': '2'}},
+            {'tool': 'Write', 'input': {'file_path': str(sentinel), 'content': 'unsafe'}},
+            {'tool': 'Write', 'input': {'file_path': 'blacksmith.toml', 'content': 'unsafe'}},
+            {'tool': 'Write', 'input': {'file_path': '.git/config', 'content': 'unsafe'}},
+            {'tool': 'Edit', 'input': {'file_path': '../outside.txt',
+                                     'old_string': 'baseline', 'new_string': 'unsafe'}},
+            {'tool': 'Write', 'input': {'file_path': 'escape/outside.txt', 'content': 'unsafe'}},
+            {'tool': 'NotebookEdit', 'input': {'notebook_path': str(outside)}},
+            {'tool': 'Bash', 'input': {'command': 'touch forbidden'}},
+        ]
+        proof = root.parent / 'permission-proof.json'
+        cli = root.parent / 'offline-permission-cli'
+        cli.write_text(f'#!{sys.executable}\n' + PERMISSION_CLI)
+        cli.chmod(0o700)
+    
+        async def only_local(self):
+            assert Path(self._cli_path) == cli
+            await _LOCAL_SDK_CONNECT(self)
+    
+        monkeypatch.setattr(OwnedCLITransport, 'connect', only_local)
+        monkeypatch.setenv('BLACKSMITH_ANTHROPIC_API_KEY', 'unused-offline')
+        context = create(project)
+        executor = Executor(context.execution_config())
+        build = executor.build_options
+        client_options = []
+    
+        def options(**kwargs):
+            actual = replace(build(**kwargs), cli_path=str(cli))
+            actual = replace(actual, env={**actual.env,
+                'OFFLINE_REQUESTS': json.dumps(requests), 'OFFLINE_PROOF': str(proof)})
+            client_options.append(actual)
+            return actual
+    
+        monkeypatch.setattr(executor, 'build_options', options)
+        guard = make_pre_edit_guard(compile_path_rules(['path:protected']), worktree_root=root)
+>       result = executor.run_implement(
+            'offline permission protocol',
+            call_context=call_context_for(context.initial_state(), unit_id='U1', attempt_id='permissions'),
+            cwd=root, max_turns=40, permission_mode='default', can_use_tool=guard,
+            allowed_tools=['Read', 'Glob', 'Grep'],
+            disallowed_tools=['Bash', 'BashOutput', 'KillShell', 'Agent', 'Task'],
+            tools=['Read', 'Glob', 'Grep', 'Write', 'Edit', 'NotebookEdit'],
+        )
+
+tests/test_sdk_permissions.py:129: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+blacksmith/executor.py:412: in run_implement
+    return self.run(prompt, model=self._config.models.implement,
+blacksmith/executor.py:235: in run
+    return self._run(prompt, model=model, raise_on_error=raise_on_error,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <blacksmith.executor.Executor object at 0x1097512e0>
+prompt = 'offline permission protocol', model = 'claude-sonnet-4-6'
+raise_on_error = True, emit_findings = False
+call_context = CallContext(journal_path='/private/tmp/blacksmith-permission-red02-20261026/test_real_executor_sdk_and_own0/.blacksmit...mith-permission-red02-20261026/test_real_executor_sdk_and_own0/.blacksmith/runs/0fe2826d-03ce-4c38-8104-8020091c43fa'})
+operation_kind = 'model.implement'
+option_kwargs = {'cwd': PosixPath('/private/tmp/blacksmith-permission-red02-20261026/test_real_executor_sdk_and_own0/target'), 'max_tu...'permission_mode': 'default', 'can_use_tool': <function make_pre_edit_guard.<locals>.can_use_tool at 0x1099e6160>, ...}
+
+    def _run(
+        self,
+        prompt: str,
+        *,
+        model: str,
+        raise_on_error: bool = True,
+        emit_findings: bool = False,
+        call_context: CallContext | None = None,
+        operation_kind: str = "model.call",
+        **option_kwargs: Any,
+    ) -> ExecutorResult:
+        """Run one prompt to completion and return a structured result.
+    
+        ``emit_findings`` (WU-LIVE-INTRA-NODE), set only by ``run_review``, additionally
+        parses the call's final text as a review verdict and emits each finding as a
+        "finding" activity event, in order, on the custom stream (best-effort; see
+        ``_emit_activity``).
+        """
+        if call_context is None and self._query is query:
+            raise ReceiptError(
+                "run_admission_context_required: default SDK execution needs an immutable "
+                "run/call context before options or transport")
+        options = self.build_options(model=model, **option_kwargs)
+        journal = call_context.journal() if call_context else None
+        key = call_context.key(operation_kind) if call_context else None
+        budget_ledger = reservation = None
+        if journal is not None:
+            from blacksmith.budget import BudgetLedger
+            budget_ledger = BudgetLedger.for_call(call_context)
+            reservation = (budget_ledger.reservation_for(key) if journal.get(key)
+                           else budget_ledger.reserve(key))
+            options = replace(options, max_budget_usd=reservation.amount_usd)
+        cached = None
+        if journal is not None:
+            from blacksmith.receipts import MODEL_TERMINAL_POLICY_VERSION
+            receipt = journal.intent(key, {
+                "terminal_policy_version": MODEL_TERMINAL_POLICY_VERSION,
+                "prompt_sha256": digest(prompt),
+                "system_prompt_sha256": digest(str(options.system_prompt or "")),
+                "model": options.model, "cwd": str(options.cwd) if options.cwd else None,
+                "max_turns": options.max_turns, "max_budget_usd": options.max_budget_usd,
+                "admission_id": reservation.operation_id,
+                "allowed_tools": options.allowed_tools,
+                "disallowed_tools": options.disallowed_tools,
+                "tools": options.tools,
+                "permission_mode": options.permission_mode,
+                "mcp_servers": sorted(options.mcp_servers),
+            })
+            if not receipt.created:
+                if receipt.status not in {"completed", "failed"}:
+                    raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+                try:
+                    cached = ExecutorResult(**receipt.outcome["result"])
+                except (KeyError, TypeError) as exc:
+                    raise ReceiptError("invalid retained SDK result") from exc
+                if (cached.call_id != key.id or not cached.terminal_received
+                        or cached.is_error != (receipt.status == "failed")):
+                    raise ReceiptError("invalid retained SDK result identity/status")
+        if cached is not None:
+            result = cached
+            if budget_ledger is not None:
+                budget_ledger.settle(reservation)
+        else:
+            call = {"call_id": key.id if key else str(uuid4()), "role": operation_kind}
+            if key:
+                call.update(run_id=key.run_id, unit_id=key.unit_id, attempt_id=key.attempt_id)
+            try:
+                token = _CALL.set(call)
+                try:
+                    result = asyncio.run(self._bounded_collect(
+                        prompt, options, emit_findings=emit_findings))
+                    result = replace(result, transcript_path=_CALL.get().get("transcript_path"))
+                finally:
+                    _CALL.reset(token)
+            except BaseException as exc:
+                if journal is not None:
+                    partial = _partial_result(options.model, call, kind="interrupted",
+                                              text=f"call interrupted: {type(exc).__name__}")
+                    journal.finish(key, "interrupted", {"error_type": type(exc).__name__,
+                        "result": asdict(partial)},
+                        events=_cost_record(key, operation_kind, partial))
+                    budget_ledger.settle(reservation)
+                raise
+            if journal is not None:
+                result = replace(result, call_id=key.id)
+                status = ("unknown" if not result.terminal_received
+                          else "failed" if result.is_error else "completed")
+                journal.finish(key, status,
+                               {"result": asdict(result)},
+                               events=_cost_record(key, operation_kind, result))
+                budget_ledger.settle(reservation)
+                if not result.terminal_received:
+                    if result.error_kind in {"timeout", "run_deadline"}:
+                        raise ModelCallStopped(result.error_kind, result)
+>                   raise ReceiptError(f"interrupted_attempt_requires_resume: {key.id}")
+E                   blacksmith.receipts.ReceiptError: interrupted_attempt_requires_resume: 1cf0e6959bfe07208794f871606ab8ba737a3a12262cc6025a4ac2b881034990
+
+blacksmith/executor.py:333: ReceiptError
+----------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "/private/tmp/blacksmith-permission-red02-20261026/test_real_executor_sdk_and_own0/offline-permission-cli", line 25, in <module>
+    raise RuntimeError('missing stdio permission routing')
+RuntimeError: missing stdio permission routing
+------------------------------ Captured log call -------------------------------
+ERROR    claude_agent_sdk._internal.query:query.py:351 Fatal error in message reader: Command failed with exit code 1 (exit code: 1)
+Error output: Check stderr output for details
+=============================== warnings summary ===============================
+tests/test_sdk_permissions.py::test_real_executor_sdk_and_owned_cli_allow_writes_but_deny_unsafe_targets
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_sdk_permissions.py::test_real_executor_sdk_and_owned_cli_allow_writes_but_deny_unsafe_targets
+1 failed, 2 passed, 1 warning in 4.96s

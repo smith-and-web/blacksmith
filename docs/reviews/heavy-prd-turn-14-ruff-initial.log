@@ -1,0 +1,50 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> blacksmith/nodes/review.py:3:1
+   |
+ 1 |   """Read-only, cumulative exact-candidate review with honest fail-closed receipts."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | from pathlib import Path
+ 6 | | from typing import Any
+ 7 | |
+ 8 | | from blacksmith.config import IndexConfig
+ 9 | | from blacksmith.context import render_context, requirements_prd
+10 | | from blacksmith.contract import PRDContract, WorkUnit
+11 | | from blacksmith.executor import Executor, ExecutorResult
+12 | | from blacksmith.index import (
+13 | |     INDEX_MCP_SERVER_NAME, QUALIFIED_INDEX_TOOL_NAMES,
+14 | |     create_index_mcp_server, index_tools_prompt_section,
+15 | | )
+16 | | from blacksmith.nodes.plan import cost_event
+17 | | from blacksmith.plan_artifacts import PlanIntegrityError, verify_approved_plan
+18 | | from blacksmith.receipts import ReceiptError, attempt_identity, call_context_for, digest, encoded
+19 | | from blacksmith.review_patch import (
+20 | |     DIFF_SERVER, DIFF_TOOL, INLINE_PATCH_BYTES, capture_patch, diff_server,
+21 | |     prompt_patch, verify_patch,
+22 | | )
+23 | | from blacksmith.review_receipts import (
+24 | |     PanelResult, ReviewReceipt, aggregate_panel, artifact, parse_verdict, retain,
+25 | | )
+26 | | from blacksmith.run_context import context_from_state
+27 | | from blacksmith.state import BlacksmithState, Status
+28 | | from blacksmith.verification import candidate_identity, required_layers, verify_gate_receipt
+   | |____________________________________________________________________________________________^
+29 |
+30 |   _REVIEW_READ_ONLY = ["Read", "Glob", "Grep"]
+   |
+help: Organize imports
+
+E501 Line too long (102 > 100)
+   --> blacksmith/nodes/review.py:113:101
+    |
+111 |         if cached:
+112 |             if identity_error:
+113 |                 raise ReceiptError("review candidate changed before receipt reuse: " + identity_error)
+    |                                                                                                     ^^
+114 |             if cached.patch:
+115 |                 verify_patch(cached.patch, root=context.directory / "reviews" / "patches")
+    |
+
+Found 2 errors.
+[*] 1 fixable with the `--fix` option.

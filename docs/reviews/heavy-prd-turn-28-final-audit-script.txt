@@ -1,0 +1,139 @@
+"""Read-only closeout audit; does not execute Blacksmith or change evidence."""
+import hashlib
+import importlib.metadata
+import json
+import platform
+import re
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path('/Users/josh.smith/Code/blacksmith')
+REVIEWS = ROOT / 'docs/reviews'
+
+
+def digest(path):
+    p = Path(path)
+    if not p.is_absolute():
+        p = ROOT / p
+    assert not p.is_symlink(), str(p)
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+env_path = REVIEWS / 'heavy-prd-turn-26-environment-01.json'
+inventory_path = REVIEWS / 'heavy-prd-turn-26-final-acceptance-inventory.json'
+receipt_path = REVIEWS / 'heavy-prd-turn-26-full-command-01.json'
+env = json.loads(env_path.read_text())
+inventory = json.loads(inventory_path.read_text())
+receipt = json.loads(receipt_path.read_text())
+spec = (ROOT / 'docs/heavy-prd-readiness-spec.md').read_text()
+matrix_text = spec.split('## 6. Acceptance matrix and release decision', 1)[1].split('## 7.', 1)[0]
+original_rows = []
+for line in matrix_text.splitlines():
+    if line.startswith('| ') and not line.startswith('| Test |'):
+        parts = [part.strip() for part in line.strip().strip('|').split('|')]
+        assert len(parts) == 2, parts
+        original_rows.append(parts)
+
+assert [r['id'] for r in inventory['requirements']] == [f'R{i:02d}' for i in range(1, 13)]
+assert sorted(inventory['slices']) == [f'S{i:02d}' for i in range(1, 20)]
+assert len(original_rows) == len(inventory['acceptance_matrix']) == 21
+assert [r['id'] for r in inventory['acceptance_matrix']] == [f'A{i:02d}' for i in range(1, 22)]
+assert [[r['test'], r['required_result']] for r in inventory['acceptance_matrix']] == original_rows
+
+references = {}
+for row in inventory['requirements'] + inventory['acceptance_matrix']:
+    assert row['regressions'], row['id']
+    for reference in row.get('production_sources', []) + row['regressions']:
+        path = reference['path']
+        assert digest(path) == reference['sha256'] == env['source_sha256'][path], path
+        if path.startswith('tests/'):
+            assert reference['collected_cases_not_passes'] > 0, path
+        references[path] = reference['sha256']
+for requirement_ids in inventory['slices'].values():
+    assert requirement_ids and all(identifier in {r['id'] for r in inventory['requirements']} for identifier in requirement_ids)
+assert {r['id'] for r in inventory['requirements'] if r['permitted_disabled_alternative']} == {'R10', 'R11'}
+assert {r['id'] for r in inventory['acceptance_matrix'] if r['permitted_disabled_alternative']} == {'A19', 'A20'}
+assert inventory['slices']['S17'] == ['R10'] and inventory['slices']['S18'] == ['R11']
+
+source_now = {str(p.relative_to(ROOT)): digest(p) for top in ('blacksmith', 'tests') for p in sorted((ROOT / top).rglob('*.py'))}
+identity = {
+    'source_matches': source_now == env['source_sha256'] and len(source_now) == 176,
+    'config_matches': all(digest(p) == value for p, value in env['config_sha256'].items()),
+    'input_matches': all(digest(p) == value for p, value in env['input_sha256'].items()),
+    'extra_matches': all(digest(p) == value for p, value in env['extra_verification_sha256'].items()),
+    'frozen_verification_receipts_match': all(digest(p) == value for p, value in env['receipt_sha256'].items()),
+    'distributions_match': sorted([d.metadata['Name'], d.version] for d in importlib.metadata.distributions()) == env['all_installed_distributions'],
+    'python_matches': platform.python_version() == env['python'],
+    'sqlite_matches': sqlite3.sqlite_version == env['sqlite'],
+    'receipt_environment_matches': digest(env_path) == receipt['environment_sha256'],
+    'implementation_matches': receipt['implementation_revision'] == inventory['implementation_revision'] == env['implementation_revision'] == '1d68a6492e53898c5011a24b9d14d771bad6275d',
+}
+assert all(identity.values()), identity
+compatibility = json.loads((REVIEWS / 'heavy-prd-turn-27-compatibility-audit.json').read_text())
+assert compatibility['contract_v1_field_names_unchanged'] and compatibility['uv_lock_unchanged'] and compatibility['pyproject_diff_empty']
+assert digest(compatibility['contract_patch']) == compatibility['contract_patch_sha256']
+assert compatibility['human_contract_review'].startswith('NOT RUN')
+ruff = REVIEWS / 'heavy-prd-turn-26-ruff-primary-final-01.log'
+assert ruff.read_text().strip() == 'All checks passed!'
+brain_path = REVIEWS / 'heavy-prd-turn-28-brain-proof.json'
+brain = json.loads(brain_path.read_text())
+assert brain['lint']['exit_code'] == brain['lint']['errors'] == brain['lint']['warnings'] == 0
+assert brain['index_wait_seconds'] >= 70
+assert brain['last_run_errors'] == brain['invalid_frontmatter_count'] == 0
+assert brain['whole_note_equality'] and brain['new_checkpoint_note_rank'] == 1
+assert brain['semantic_request_id'] and brain['feedback'] == 'positive once'
+dashboard_path = REVIEWS / 'heavy-prd-turn-28-dashboard-identity.json'
+dashboard = json.loads(dashboard_path.read_text())
+for path, row in dashboard['source_identity'].items():
+    assert row['matches_tested_baseline'] and digest(path) == row['sha256']
+assert digest(dashboard['probe_log']) == dashboard['probe_log_sha256']
+progress = (REVIEWS / 'heavy-prd-progress.md').read_text()
+assert re.search(r'^- Goal turn: 28 / 30\.', progress, re.M)
+checklist = progress.split('## Implementation checklist (dependency order)', 1)[1].split('## Acceptance and verification', 1)[0]
+assert re.findall(r'^- \[x\] (S\d{2}):', checklist, re.M) == [f'S{i:02d}' for i in range(1, 20)]
+assert not re.search(r'^- \[ \]', checklist, re.M)
+exception = json.loads((REVIEWS / 'heavy-prd-turn-13-unexpected-push.json').read_text())[0]
+assert exception['outcome']['returncode'] == 128 and exception['gh_commands'] == 0
+
+result = {
+    'recorded_at': datetime.now().astimezone().isoformat(),
+    'goal_turn': 28,
+    'implementation_revision': env['implementation_revision'],
+    'requirements': 12, 'slices': 19, 'exact_specification_acceptance_rows': 21,
+    'unique_hashed_production_and_regression_references': len(references),
+    'source_count': len(source_now),
+    'audit_script': str(Path(__file__).relative_to(ROOT)),
+    'audit_script_sha256': digest(__file__),
+    'current_identity': identity,
+    'inventory_file': str(inventory_path.relative_to(ROOT)),
+    'inventory_sha256_at_audit': digest(inventory_path),
+    'full_command_receipt': str(receipt_path.relative_to(ROOT)),
+    'full_command_receipt_sha256': digest(receipt_path),
+    'ruff_log': str(ruff.relative_to(ROOT)), 'ruff_log_sha256': digest(ruff),
+    'brain_proof': str(brain_path.relative_to(ROOT)), 'brain_proof_sha256': digest(brain_path),
+    'dashboard_identity_proof': str(dashboard_path.relative_to(ROOT)),
+    'dashboard_identity_proof_sha256': digest(dashboard_path),
+    'completed_checklist_entries': 19,
+    'progress_sha256': digest('docs/reviews/heavy-prd-progress.md'),
+    'historical_process_boundary_exception': 'Turn13 attempted synthetic-remote push failed128 before authentication; no PR create; guards strengthened; retained receipt disclosed',
+    'contract_review': 'NOT RUN; prepared exact patch is not human review',
+    'compatibility_audit_sha256': digest('docs/reviews/heavy-prd-turn-27-compatibility-audit.json'),
+    'contract_review_patch_sha256': digest(compatibility['contract_patch']),
+    'paid_canary': 'NOT RUN; prohibited by goal',
+    'real_docker_smoke': 'NOT RUN; sandbox remains explicitly disabled',
+    'sandbox_and_respond': 'Only specification-permitted disabled alternatives accepted; enabled implementations unaccepted',
+    'full_suite_status': receipt['status'],
+    'local_acceptance': False,
+}
+if receipt['status'] == 'terminal':
+    log = Path(receipt['pytest_log'])
+    text = log.read_text()
+    summary = text.splitlines()[-1]
+    assert receipt['exit_code'] == 0 and receipt['all_identities_unchanged']
+    assert all(receipt['before'].values()) and all(receipt['after'].values())
+    assert digest(log) == receipt['log_sha256']
+    assert summary.startswith('1419 passed, ') and 'warning' in summary and ' in ' in summary, summary
+    assert all(term not in summary for term in ('skip', 'xfail', 'xpass', 'fail', 'error')), summary
+    result.update(local_acceptance=True, full_summary=summary, full_log_sha256=digest(log), all_before_after_identities_match=True)
+print(json.dumps(result, indent=2, sort_keys=True))

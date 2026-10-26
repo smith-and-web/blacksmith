@@ -1,0 +1,31 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 15%]
+........................................................................ [ 20%]
+........................................................................ [ 25%]
+........................................................................ [ 30%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+........................................................................ [ 56%]
+........................................................................ [ 61%]
+........................................................................ [ 66%]
+........................................................................ [ 72%]
+........................................................................ [ 77%]
+........................................................................ [ 82%]
+........................................................................ [ 87%]
+........................................................................ [ 92%]
+........................................................................ [ 97%]
+..............................                                           [100%]
+=============================== warnings summary ===============================
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[worker_error]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigint]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigint]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[sigterm]
+tests/test_parallel_cancellation.py::test_parallel_sdk_writers_are_stopped_before_cli_recovery_capture[scope_entry_error]
+  /Users/josh.smith/Code/blacksmith/.venv/lib/python3.12/site-packages/claude_agent_sdk/client.py:177: CanUseToolShadowedWarning: can_use_tool will not be invoked for: Read, Glob, Grep. An allowed_tools entry that allows a whole tool auto-approves it before the callback is consulted. To gate every tool call, use a PreToolUse hook; or narrow the entry so calls fall through to can_use_tool. Allow rules from settings files can also shadow the callback but are not visible here.
+    _warn_if_can_use_tool_shadowed(self.options)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1398 passed, 5 warnings in 5047.97s (1:24:07)

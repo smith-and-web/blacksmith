@@ -1,0 +1,26 @@
+E501 Line too long (103 > 100)
+   --> blacksmith/nodes/plan.py:345:101
+    |
+343 |     try:
+344 |         store = current_store()
+345 |         return [] if store is None else recent_lessons(store, repo_namespace(contract), _LESSONS_LIMIT)
+    |                                                                                                     ^^^
+346 |     except Exception as exc:
+347 |         from blacksmith.observability import warn_optional
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+   --> blacksmith/unit_graph.py:472:13
+    |
+470 |               if checkpointer is None:
+471 |                   checkpointer = inherited_checkpointer
+472 | /             from blacksmith.scheduling import invocation_config
+473 | |             from blacksmith.observability import parent_task_scope
+    | |__________________________________________________________________^
+474 |               with parent_task_scope(parent_config.get("configurable", {}).get("__pregel_task_id")):
+475 |                   result = unit_graph.invoke(
+    |
+help: Organize imports
+
+Found 2 errors.
+[*] 1 fixable with the `--fix` option.

@@ -1,0 +1,73 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_budget_amendment_lost_before_checkpoint_is_applied_once_and_scheduled_flags_refuse _
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-146/test_budget_amend...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10e186db0>
+
+    def test_budget_amendment_lost_before_checkpoint_is_applied_once_and_scheduled_flags_refuse(
+        project,
+        monkeypatch,
+    ):
+        calls = []
+        install_transport(monkeypatch, calls)
+        project[1].write_text(project[1].read_text() + "[limits]\nmax_run_cost_usd=1\n")
+        assert (
+            cli.main(
+                [str(project[2]), "--config", str(project[1]), "--thread-id", "once", "--approve", ""]
+            )
+            == 1
+        )
+        before = saved_values(project[1], "once")
+        context = context_from_state(before)
+        saver = build_checkpointer(context.execution_config().checkpointer.db_path)
+        try:
+            saved = saver.get_tuple({"configurable": {"thread_id": "once"}})
+            patch = recovery_control.prepare(context, saver, saved, add_budget_usd=2)
+            # Repairing an unrelated partial capture must not create another budget amendment.
+            from blacksmith import recovery
+            from blacksmith.recovery_repair import repair
+    
+            def failed_capture(*args, **kwargs):
+                raise OSError("unrelated partial capture")
+    
+            with monkeypatch.context() as local:
+                local.setattr(recovery, "_workspace", failed_capture)
+                with pytest.raises(OSError, match="unrelated partial capture"):
+                    recovery.capture(context, saver, reason="independent capture failure")
+            pending = next(o for o in context.journal().operations()
+                           if o.key.kind == "recovery.capture" and o.status == "intent")
+            assert repair(context, pending.key.id)["disposition"] == "retained_partial"
+>           assert recovery_control.prepare(context, saver, saved, add_budget_usd=2) == patch
+E           AssertionError: assert {'status': <S...sd': 4.0, ...} == {'status': <S..._usd': 2, ...}
+E             
+E             Omitting 7 identical items, use -vv to show
+E             Differing items:
+E             {'limits': {'max_fix_attempts': 1, 'max_run_cost_usd': 5.0, 'max_review_revisions': 1, 'max_implement_turns': 40, ...}} != {'limits': {'max_fix_attempts': 1, 'max_run_cost_usd': 3.0, 'max_review_revisions': 1, 'max_implement_turns': 40, ...}}
+E             {'budget_amendment_usd': 4.0} != {'budget_amendment_usd': 2}
+E             {'attempt_id': '[0,false,0,0]:recovery:c64a12777b026095'} != {'attempt_id': '[0,false,0,0]:recovery:55edb53bfb01abb6'}
+E             {'recovery_amendment_id': 'c64a12777b02609518416620be4e0f808d82714d1659bbe7339352a8629b37fd'} != ...
+E             
+E             ...Full output truncated (2 lines hidden), use '-vv' to show
+
+tests/test_recovery_boundaries.py:121: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 32bd92f0-c6c4-442a-8318-b897dcc19afb: selected committed HEAD f0756abb10db6c9dc273b150e2dcda4fce22e716
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-146/test_budget_amendment_lost_bef0/.blacksmith/runs/32bd92f0-c6c4-442a-8318-b897dcc19afb
+[auto] gate 'plan': denied
+
+status: halted
+total cost: $0.01
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+Recovery manifest: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-146/test_budget_amendment_lost_bef0/.blacksmith/runs/32bd92f0-c6c4-442a-8318-b897dcc19afb/recovery/b15b373a-5457-4f9c-8606-ec4e4105c15e/manifest.json
+Next action: blacksmith recovery inspect --thread-id once --config /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-146/test_budget_amendment_lost_bef0/runtime.toml
+=========================== short test summary info ============================
+FAILED tests/test_recovery_boundaries.py::test_budget_amendment_lost_before_checkpoint_is_applied_once_and_scheduled_flags_refuse
+1 failed, 4 deselected in 3.01s

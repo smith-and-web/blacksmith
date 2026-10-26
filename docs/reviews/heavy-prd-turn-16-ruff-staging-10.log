@@ -1,0 +1,22 @@
+E501 Line too long (101 > 100)
+   --> blacksmith/nodes/pr.py:244:101
+    |
+242 |     body_state = {**state, "cost_events": merge_events(state.get("cost_events") or [],
+243 |                                                      [event] if event else [])}
+244 |     return {"title": title or _pr_title(units), "body": _pr_body(body_state, units, summary=summary),
+    |                                                                                                     ^
+245 |             "cost_events": [event] if event is not None else []}
+    |
+
+E501 Line too long (101 > 100)
+   --> tests/test_publication_integrity.py:196:101
+    |
+194 |     pending = context.journal().command_intent("__run__", create.key.attempt_id,
+195 |         "publication.create:gh", {"argv": ["gh", "pr", "create"], "stage": "publication.create"})
+196 |     pending = context.journal().get(pending.key)  # Compare persisted fields, not insertion metadata.
+    |                                                                                                     ^
+197 |     effects, paid = list(remote.effects()), list(calls)
+198 |     remote.mode = "fresh"
+    |
+
+Found 2 errors.

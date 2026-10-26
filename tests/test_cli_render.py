@@ -19,11 +19,22 @@ import io
 import re
 from types import SimpleNamespace
 
+import pytest
+
 from blacksmith.cli import _build_renderer, _progress_emitter, _report
 from blacksmith.render import Renderer
 from blacksmith.state import Status
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+@pytest.fixture(autouse=True)
+def simulated_terminal_environment(monkeypatch):
+    # Fake TTY streams need an explicit capable terminal. A caller's TERM=dumb
+    # must not silently turn the asserted colored output into an unstyled panel.
+    monkeypatch.setenv('TERM', 'xterm-256color')
+    for name in ('NO_COLOR', 'FORCE_COLOR', 'CLICOLOR_FORCE'):
+        monkeypatch.delenv(name, raising=False)
 
 
 def _strip_ansi(text: str) -> str:

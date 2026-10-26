@@ -1,0 +1,385 @@
+................F....................................................... [  7%]
+........................................................................ [ 15%]
+........................................................................ [ 23%]
+.............F.......................................................... [ 30%]
+..........................F....FFFFF.................................... [ 38%]
+........................................................................ [ 46%]
+........................................................................ [ 53%]
+........................................................................ [ 61%]
+........................................................................ [ 69%]
+........................................................................ [ 76%]
+........................................................................ [ 84%]
+............................F........................................FF. [ 92%]
+........................................................................ [ 99%]
+..                                                                       [100%]
+=================================== FAILURES ===================================
+______________ test_progress_streams_each_node_to_stderr_in_order ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_progress_streams_each_nod0')
+capsys = <_pytest.capture.CaptureFixture object at 0x10c191b20>
+
+    def test_progress_streams_each_node_to_stderr_in_order(tmp_path, capsys):
+        repo = _target_repo(tmp_path, gate_cmd="true")  # gate passes
+        graph, saver = _wire(tmp_path, repo)
+        approver = _recording_approver(decision=True)
+    
+        final = drive(
+            graph, _write_prd(tmp_path), approver=approver,
+            thread_id="pass", on_node=_progress_emitter(quiet=False),
+        )
+        _report(final)
+        captured = capsys.readouterr()
+        saver.conn.close()
+    
+        # (4) happy path: still ends DONE, gates flow through plan then pr.
+        assert final.values["status"] == Status.DONE
+        assert approver.gates == ["plan", "pr"]
+    
+        # (1) each node named on STDERR, in execution order.
+        nodes = _emitted_nodes(captured.err)
+>       assert _is_ordered_subsequence(nodes, HAPPY_PATH_NODES), nodes
+E       AssertionError: ['ingest_prd', 'plan', 'approve_plan', 'approve_plan', 'prepare_worktree', 'execute_unit', ...]
+E       assert False
+E        +  where False = _is_ordered_subsequence(['ingest_prd', 'plan', 'approve_plan', 'approve_plan', 'prepare_worktree', 'execute_unit', ...], ['ingest_prd', 'plan', 'implement', 'test_gate', 'open_pr', 'cleanup_worktree'])
+
+tests/test_cli_progress.py:164: AssertionError
+______________ test_fanout_unit_exhausts_retries_then_level_halts ______________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_fanout_unit_exhausts_retr0')
+
+    def test_fanout_unit_exhausts_retries_then_level_halts(tmp_path):
+        # A fan-out level where WU-Y's gate fails on EVERY attempt: base + one same-model retry both
+        # fail, retries are spent, and the whole level halts with nothing cherry-picked and no PR.
+        repo = _target_repo(tmp_path)
+        executor = FakeExecutor()
+        gh = _recording_gh("https://github.com/owner/demo/pull/8")
+        gate = FlakyUnitGate(unit_substr="wu-y", fail_times=99)  # WU-Y never passes
+        limits = LimitsConfig(max_fix_attempts=1)
+        graph, saver = _wire(tmp_path, repo, executor=executor, gh=gh, gate=gate, limits=limits)
+    
+        final = drive(graph, _write_prd(tmp_path), approver=_approver(), thread_id="fan-exhaust")
+    
+        # WU-Y built base + exactly one same-model retry, then halts. No escalation in the fan-out.
+        assert executor.implement_calls.count("WU-Y") == 2
+>       assert executor.escalate_calls == []
+E       AssertionError: assert ['WU-Y'] == []
+E         
+E         Left contains one more item: 'WU-Y'
+E         Use -v to get more diff
+
+tests/test_fanout_self_heal.py:259: AssertionError
+__________________ test_pr_gate_halts_and_resumes_on_approval __________________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_pr_gate_halts_and_resumes0')
+
+    def test_pr_gate_halts_and_resumes_on_approval(tmp_path):
+        unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+        pr_url = "https://github.com/smith-and-web/kindling/pull/7"
+        g, saver = _graph(tmp_path, pr_runner=_fake_gh_runner(pr_url))
+        cfg = _cfg("pr-approve")
+        seed = {
+            "status": Status.PENDING,
+            "selected_unit": unit,
+            "worktree_path": "/tmp/wt",
+            "test_results": PASSING,
+        }
+    
+        g.invoke(seed, cfg)
+        g.invoke(Command(resume=True), cfg)  # approve plan -> runs through to the PR gate
+>       assert g.get_state(cfg).next == ("approve_pr",)
+E       AssertionError: assert () == ('approve_pr',)
+E         
+E         Right contains one more item: 'approve_pr'
+E         Use -v to get more diff
+
+tests/test_hitl.py:118: AssertionError
+_________ test_approve_pr_payload_includes_diff_text_when_hitl_enabled _________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_approve_pr_payload_includ0')
+
+    def test_approve_pr_payload_includes_diff_text_when_hitl_enabled(tmp_path):
+        unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+        repo = _init_repo(tmp_path / "shared-diff")
+        base_ref = _git(repo, "rev-parse", "HEAD").strip()
+        (repo / "b.txt").write_text("added by unit\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "unit commit")
+    
+        g, saver = _graph(tmp_path, hitl=HitlConfig(pr_diff_max_bytes=60000))
+        cfg = _cfg("pr-diff-payload")
+        seed = {
+            "status": Status.PENDING,
+            "selected_unit": unit,
+            "worktree_path": str(repo),
+            "pr_base_ref": base_ref,
+            "test_results": PASSING,
+        }
+    
+        g.invoke(seed, cfg)
+        result = g.invoke(Command(resume=True), cfg)  # approve plan -> halts at approve_pr
+>       payload = result["__interrupt__"][0].value
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: '__interrupt__'
+
+tests/test_hitl.py:193: KeyError
+___ test_approve_pr_payload_has_no_diff_text_when_pr_diff_max_bytes_is_zero ____
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_approve_pr_payload_has_no0')
+
+    def test_approve_pr_payload_has_no_diff_text_when_pr_diff_max_bytes_is_zero(tmp_path):
+        unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+        repo = _init_repo(tmp_path / "shared-off")
+        base_ref = _git(repo, "rev-parse", "HEAD").strip()
+        (repo / "b.txt").write_text("added by unit\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "unit commit")
+    
+        g, saver = _graph(tmp_path, hitl=HitlConfig(pr_diff_max_bytes=0))
+        cfg = _cfg("pr-diff-off")
+        seed = {
+            "status": Status.PENDING,
+            "selected_unit": unit,
+            "worktree_path": str(repo),
+            "pr_base_ref": base_ref,
+            "test_results": PASSING,
+        }
+    
+        g.invoke(seed, cfg)
+        result = g.invoke(Command(resume=True), cfg)  # approve plan -> halts at approve_pr
+>       payload = result["__interrupt__"][0].value
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: '__interrupt__'
+
+tests/test_hitl.py:221: KeyError
+_________ test_approve_pr_payload_has_no_diff_text_without_hitl_config _________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_approve_pr_payload_has_no1')
+
+    def test_approve_pr_payload_has_no_diff_text_without_hitl_config(tmp_path):
+        unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+        repo = _init_repo(tmp_path / "shared-no-hitl")
+        base_ref = _git(repo, "rev-parse", "HEAD").strip()
+        (repo / "b.txt").write_text("added by unit\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "unit commit")
+    
+        g, saver = _graph(tmp_path)  # no hitl kwarg at all
+        cfg = _cfg("pr-diff-no-hitl")
+        seed = {
+            "status": Status.PENDING,
+            "selected_unit": unit,
+            "worktree_path": str(repo),
+            "pr_base_ref": base_ref,
+            "test_results": PASSING,
+        }
+    
+        g.invoke(seed, cfg)
+        result = g.invoke(Command(resume=True), cfg)  # approve plan -> halts at approve_pr
+>       payload = result["__interrupt__"][0].value
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: '__interrupt__'
+
+tests/test_hitl.py:246: KeyError
+__ test_pr_gate_approval_still_a_bool_and_routing_unchanged_with_hitl_enabled __
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_pr_gate_approval_still_a_0')
+
+    def test_pr_gate_approval_still_a_bool_and_routing_unchanged_with_hitl_enabled(tmp_path):
+        """The approver contract and gate routing are unchanged even with the combined-diff
+        display on: approval still opens the PR, rejection still halts (WU-PR-DIFF-CAPTURE)."""
+        unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+        repo = _init_repo(tmp_path / "shared-approve")
+        base_ref = _git(repo, "rev-parse", "HEAD").strip()
+        pr_url = "https://github.com/owner/demo/pull/2"
+    
+        g, saver = _graph(
+            tmp_path,
+            pr_runner=_fake_gh_runner(pr_url),
+            hitl=HitlConfig(pr_diff_max_bytes=60000),
+        )
+        cfg = _cfg("pr-diff-approve")
+        seed = {
+            "status": Status.PENDING,
+            "selected_unit": unit,
+            "worktree_path": str(repo),
+            "pr_base_ref": base_ref,
+            "test_results": PASSING,
+        }
+        g.invoke(seed, cfg)
+        g.invoke(Command(resume=True), cfg)  # approve plan -> halts at approve_pr
+        g.invoke(Command(resume=True), cfg)  # approve PR -> open_pr
+        state = g.get_state(cfg)
+>       assert state.values["approvals"]["pr"] is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'pr'
+
+tests/test_hitl.py:276: KeyError
+_____________ test_pr_gate_rejection_still_halts_with_hitl_enabled _____________
+
+tmp_path = PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_pr_gate_rejection_still_h0')
+
+    def test_pr_gate_rejection_still_halts_with_hitl_enabled(tmp_path):
+        unit = parse_prd(VENDORED_PRD).contract.work_unit_by_id("WU-01")
+        repo = _init_repo(tmp_path / "shared-reject")
+        base_ref = _git(repo, "rev-parse", "HEAD").strip()
+    
+        g, saver = _graph(tmp_path, hitl=HitlConfig(pr_diff_max_bytes=60000))
+        cfg = _cfg("pr-diff-reject")
+        seed = {
+            "status": Status.PENDING,
+            "selected_unit": unit,
+            "worktree_path": str(repo),
+            "pr_base_ref": base_ref,
+            "test_results": PASSING,
+        }
+        g.invoke(seed, cfg)
+        g.invoke(Command(resume=True), cfg)  # approve plan
+>       assert g.get_state(cfg).next == ("approve_pr",)
+E       AssertionError: assert () == ('approve_pr',)
+E         
+E         Right contains one more item: 'approve_pr'
+E         Use -v to get more diff
+
+tests/test_hitl.py:299: AssertionError
+__ test_real_cli_parallel_resume_forwards_frozen_context_to_distinct_workers ___
+
+project = (PosixPath('/private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_real_cli_para...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c3516a0>
+
+    def test_real_cli_parallel_resume_forwards_frozen_context_to_distinct_workers(project, monkeypatch):
+        root, config_path, prd_path, contract = project
+        contract["work_units"].append({
+            **contract["work_units"][0], "id": "U2", "target_modules": ["second-result.txt"],
+        })
+        write_prd(prd_path, contract)
+        calls = []
+        install_transport(monkeypatch, calls)
+    
+        def stop(payload, values):
+            raise KeyboardInterrupt("stopped after all plans, before approval")
+    
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: stop)
+        with pytest.raises(KeyboardInterrupt):
+            cli.main([str(prd_path), "--config", str(config_path), "--thread-id", "parallel"])
+        context = context_from_state(saved_values(config_path, "parallel"))
+        assert len(calls) == 2
+        assert all(call["cwd"] == context.planning_path for call in calls)
+        (root / "README.md").write_text("SOURCE_ADVANCED\n")
+        git(root, "add", "README.md")
+        git(root, "commit", "-m", "advance source before parallel resume")
+        prd_path.unlink()
+        monkeypatch.setattr(cli, "_resolve_approver", lambda args, renderer: (
+            lambda payload, values: payload["gate"] == "plan"
+        ))
+        assert cli.main(["resume", "--config", str(config_path), "--thread-id", "parallel"]) == 1
+        assert len(calls) == 6  # two plans, two implementations, two reviews
+        workers = [call for call in calls if call["prompt"].startswith("Implement this work unit")]
+        assert {call["cwd"] for call in workers} == {context.unit_path("U1"), context.unit_path("U2")}
+        assert all(call["base"] == "BASE_SENTINEL\n" for call in calls)
+        assert all("EXACT_PROSE_SENTINEL" in call["prompt"] for call in workers)
+        final = saved_values(config_path, "parallel")
+        assert final["status"] == Status.HALTED and not final.get("pr_url")
+>       assert {Path(b["clone_path"]) for b in final["level_builds"]} == {
+                                               ^^^^^^^^^^^^^^^^^^^^^
+            context.unit_path("U1"), context.unit_path("U2"),
+        }
+E       KeyError: 'level_builds'
+
+tests/test_run_context.py:520: KeyError
+----------------------------- Captured stdout call -----------------------------
+Run 424796bd-a292-42cc-b580-7a38543b8276: selected committed HEAD 69e829aa9f45505a331cdf6e101f71396614a5ed
+Run artifacts: /private/var/folders/x6/g490lp6x58q0vy3r4bkqtflm0000gq/T/pytest-of-josh.smith/pytest-75/test_real_cli_parallel_resume_0/.blacksmith/runs/424796bd-a292-42cc-b580-7a38543b8276
+Resuming run 424796bd-a292-42cc-b580-7a38543b8276, base 69e829aa9f45505a331cdf6e101f71396614a5ed, saved configuration
+
+status: halted
+total cost: $0.06
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: execute_unit
+blacksmith: execute_unit
+blacksmith: join_level
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: human_halt
+blacksmith: cleanup_worktree
+__________ test_build_graph_wires_the_sandbox_into_the_implement_node __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c507e60>
+
+    def test_build_graph_wires_the_sandbox_into_the_implement_node(monkeypatch):
+        # Gap that hid for a whole feature: prepare_worktree/cleanup got the sandbox but the IMPLEMENT
+        # node's add_node omitted it, so the run_command tool was never granted even with a sandbox
+        # wired in. Spy on _node_with to assert the implement node is injected with the sandbox (and
+        # its exec timeout). The existing implement test passes sandbox directly, so only this — the
+        # graph wiring — guards the gap.
+        from blacksmith import graph as graph_mod
+        from blacksmith.nodes.implement import implement as implement_fn
+        from blacksmith.sandbox import SandboxConfig, SandboxManager
+    
+        calls: list[tuple] = []
+        real_node_with = graph_mod._node_with
+    
+        def spy(fn, **injected):
+            calls.append((fn, injected))
+            return real_node_with(fn, **injected)
+    
+        monkeypatch.setattr(graph_mod, "_node_with", spy)
+    
+        sandbox = SandboxManager(config=SandboxConfig(enabled=True, exec_timeout_s=42))  # inert
+        graph_mod.build_graph(executor=object(), sandbox=sandbox)
+    
+>       impl_injected = next(inj for fn, inj in calls if fn is implement_fn)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests/test_sandbox_lifecycle.py:255: StopIteration
+______ test_build_graph_wires_index_config_into_plan_and_implement_nodes _______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10c504d70>
+
+    def test_build_graph_wires_index_config_into_plan_and_implement_nodes(monkeypatch):
+        # index_config drives the repo map + search_code tool. It must reach BOTH the plan node
+        # (already wired) AND the implement node — implement's add_node omitted it, so implement's
+        # index was dark (map + tool never offered) even with [index] enabled, while plan's worked.
+        # Guards build_graph's per-node injection, which the build_graph_for forwarding test misses.
+        from blacksmith import graph as graph_mod
+        from blacksmith.config import IndexConfig
+        from blacksmith.nodes.implement import implement as implement_fn
+        from blacksmith.nodes.plan import plan as plan_fn
+    
+        calls: list[tuple] = []
+        real_node_with = graph_mod._node_with
+    
+        def spy(fn, **injected):
+            calls.append((fn, injected))
+            return real_node_with(fn, **injected)
+    
+        monkeypatch.setattr(graph_mod, "_node_with", spy)
+    
+        index = IndexConfig(enabled=True)
+        graph_mod.build_graph(executor=object(), index=index)
+    
+        plan_injected = next(inj for fn, inj in calls if fn is plan_fn)
+>       impl_injected = next(inj for fn, inj in calls if fn is implement_fn)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       StopIteration
+
+tests/test_sandbox_lifecycle.py:283: StopIteration
+=========================== short test summary info ============================
+FAILED tests/test_cli_progress.py::test_progress_streams_each_node_to_stderr_in_order
+FAILED tests/test_fanout_self_heal.py::test_fanout_unit_exhausts_retries_then_level_halts
+FAILED tests/test_hitl.py::test_pr_gate_halts_and_resumes_on_approval - Asser...
+FAILED tests/test_hitl.py::test_approve_pr_payload_includes_diff_text_when_hitl_enabled
+FAILED tests/test_hitl.py::test_approve_pr_payload_has_no_diff_text_when_pr_diff_max_bytes_is_zero
+FAILED tests/test_hitl.py::test_approve_pr_payload_has_no_diff_text_without_hitl_config
+FAILED tests/test_hitl.py::test_pr_gate_approval_still_a_bool_and_routing_unchanged_with_hitl_enabled
+FAILED tests/test_hitl.py::test_pr_gate_rejection_still_halts_with_hitl_enabled
+FAILED tests/test_run_context.py::test_real_cli_parallel_resume_forwards_frozen_context_to_distinct_workers
+FAILED tests/test_sandbox_lifecycle.py::test_build_graph_wires_the_sandbox_into_the_implement_node
+FAILED tests/test_sandbox_lifecycle.py::test_build_graph_wires_index_config_into_plan_and_implement_nodes
+11 failed, 927 passed in 263.95s (0:04:23)

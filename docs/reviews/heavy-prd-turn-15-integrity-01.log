@@ -1,0 +1,58 @@
+................F.......                                                 [100%]
+=================================== FAILURES ===================================
+____ test_guard_rechecks_after_summary_and_between_push_and_create[summary] ____
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t15-approval-integrity-01/test_guard_rechecks_after_summ0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10de2f9b0>
+stage = 'summary'
+
+    @pytest.mark.parametrize("stage", ["summary", "push"])
+    def test_guard_rechecks_after_summary_and_between_push_and_create(project, monkeypatch, stage):
+        def mutate(workspace):
+            (workspace / "unapproved.txt").write_text("external update while effect was running")
+            git(workspace, "add", "unapproved.txt")
+            git(workspace, "commit", "-m", "external update")
+    
+        calls, remote, _ = install(monkeypatch,
+            on_summary=mutate if stage == "summary" else None,
+            on_push=mutate if stage == "push" else None)
+>       assert run(project, "recheck") == 1
+E       AssertionError: assert 0 == 1
+E        +  where 0 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t15-approval-integrity-01/test_guard_rechecks_after_summ0/target'), Posi...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'recheck')
+
+tests/test_publication_approval.py:172: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 460ac0ac-f309-4044-8d33-3ed8be0a6fc4: selected committed HEAD 874767ed1a0230f290d0b6cd6245f4c73e7239cb
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t15-approval-integrity-01/test_guard_rechecks_after_summ0/.blacksmith/runs/460ac0ac-f309-4044-8d33-3ed8be0a6fc4
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+
+status: done
+PR: https://github.com/example/context-demo/pull/1
+total cost: $0.03
+tokens: unavailable
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+blacksmith: cleanup_worktree
+=========================== short test summary info ============================
+FAILED tests/test_publication_approval.py::test_guard_rechecks_after_summary_and_between_push_and_create[summary]
+1 failed, 23 passed in 236.94s (0:03:56)

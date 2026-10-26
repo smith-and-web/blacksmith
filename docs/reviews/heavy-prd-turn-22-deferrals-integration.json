@@ -1,0 +1,54 @@
+{
+  "final_full_required": true,
+  "goal_turn": 22,
+  "phases": [
+    {
+      "acceptance": "unchecked pending final integrated full after S19",
+      "complete169_source_config_input_match": true,
+      "feature_base": "780bd457889c7271e346366a99b8c10d0f81f677",
+      "feature_files": [
+        "blacksmith.config.toml",
+        "blacksmith/budget.py",
+        "blacksmith/cli.py",
+        "blacksmith/commands.py",
+        "blacksmith/config.py",
+        "blacksmith/executor.py",
+        "blacksmith/graph.py",
+        "blacksmith/nodes/implement.py",
+        "blacksmith/recovery.py",
+        "blacksmith/run_context.py",
+        "blacksmith/unit_graph.py",
+        "docs/heavy-prd-disabled-features.md",
+        "tests/test_config.py",
+        "tests/test_feature_deferrals.py",
+        "tests/test_implement.py",
+        "tests/test_sandbox_lifecycle.py"
+      ],
+      "feature_head": "2c197feabbc4bf7f2ef9e6dbaa6d9299579d7578",
+      "implementation_revision": "24e52e1b143208982b552e0a8c4a32903fa803aa",
+      "patch_sha256": "1bf970e9aa45e43a19994cf8044e10cefd3401b740bce19cd844c79919679e34",
+      "slice": "S17",
+      "source_record": "heavy-prd-turn-22-deferrals-source-02.json"
+    },
+    {
+      "acceptance": "unchecked pending final integrated full after S19",
+      "complete169_source_config_input_match": true,
+      "feature_base": "2c197feabbc4bf7f2ef9e6dbaa6d9299579d7578",
+      "feature_files": [
+        "blacksmith/cli.py",
+        "blacksmith/config.py",
+        "blacksmith/respond.py",
+        "docs/heavy-prd-disabled-features.md",
+        "tests/test_respond_cli.py",
+        "tests/test_respond_flow.py"
+      ],
+      "feature_head": "e51d65371510bb552fa1ab039449af616fccb138",
+      "implementation_revision": "33eba45e451b77d0c71c4f3f062dc557c1348fcd",
+      "patch_sha256": "bf743fec69a4ee405377a3dde87edcb3e713daec182a40dcb13c69d5052fd1ef",
+      "slice": "S18",
+      "source_record": "heavy-prd-turn-22-deferrals-source-03.json"
+    }
+  ],
+  "recorded_at": "2026-10-25T03:57:16.657357-03:00",
+  "source_set_after_final": "heavy-prd-turn-22-deferrals-source-03.json"
+}

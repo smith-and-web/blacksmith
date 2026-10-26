@@ -1,0 +1,28 @@
+{
+  "python": "3.12.13",
+  "parent_revision": "89029603e6a3d60e1e97d6445bf3407268564da1",
+  "branch": "feature/heavy-prd-readiness",
+  "dependencies": {
+    "langgraph": "1.2.9",
+    "langgraph-checkpoint-sqlite": "3.1.0",
+    "claude-agent-sdk": "0.2.115",
+    "pydantic": "2.13.4",
+    "pyyaml": "6.0.3",
+    "rich": "15.0.0",
+    "pytest": "9.1.1",
+    "ruff": "0.15.21"
+  },
+  "preserved_input_sha256": {
+    "docs/heavy-prd-readiness-spec.md": "4aecbe39632dd6aa1060b95b1319b4ec40a62824f1f094745d36dd463cd3a4a3",
+    "docs/reviews/2026-10-24-readiness-probes.py": "70e36e96aba1a449244bddca13150eeeda7fe0874e663f8b75a8f44ad0e2901c"
+  },
+  "state_version": 2,
+  "journal_schema_version": 1,
+  "sdk_offline_flags": {
+    "tools_argument": "",
+    "strict_mcp_config": true,
+    "setting_sources_flag": "--setting-sources=",
+    "transport_connected": false
+  },
+  "scope": "Offline S04 operation transactions, model/commit receipts and restart guards; no live SDK/GitHub/Docker"
+}

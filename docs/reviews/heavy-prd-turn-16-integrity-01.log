@@ -1,0 +1,145 @@
+F.FF
+=================================== FAILURES ===================================
+_ test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create[fresh] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec0/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x10977e510>
+mode = 'fresh'
+
+    @pytest.mark.parametrize("mode", ["fresh", "existing", "branch_only", "push_error", "create_error"])
+    def test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create(
+        project, monkeypatch, mode,
+    ):
+        calls, remote, _ = setup(project, monkeypatch, mode=mode)
+>       assert run(project, "publication") == 0
+E       AssertionError: assert 1 == 0
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec0/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'publication')
+
+tests/test_publication_integrity.py:121: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run ee89c688-56da-4745-84c9-e43a00cac7b8: selected committed HEAD 8460abbb8abb5dc5f01daf0f9633e7f58863948e
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec0/.blacksmith/runs/ee89c688-56da-4745-84c9-e43a00cac7b8
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec0/.blacksmith/runs/ee89c688-56da-4745-84c9-e43a00cac7b8/recovery/605f5ca2-ad51-4c4f-8a7a-16a8ad459aef/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec0/runtime.toml
+blacksmith: publication content cost differs from critical accounting
+_ test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create[branch_only] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec2/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109844830>
+mode = 'branch_only'
+
+    @pytest.mark.parametrize("mode", ["fresh", "existing", "branch_only", "push_error", "create_error"])
+    def test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create(
+        project, monkeypatch, mode,
+    ):
+        calls, remote, _ = setup(project, monkeypatch, mode=mode)
+>       assert run(project, "publication") == 0
+E       AssertionError: assert 1 == 0
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec2/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'publication')
+
+tests/test_publication_integrity.py:121: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run 82e9ad4d-7b09-4661-8bec-d6eaba97e7cd: selected committed HEAD fd062c718aa946970db005e4167fde82a19c5454
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec2/.blacksmith/runs/82e9ad4d-7b09-4661-8bec-d6eaba97e7cd
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec2/.blacksmith/runs/82e9ad4d-7b09-4661-8bec-d6eaba97e7cd/recovery/d7a48d4c-b01e-43d6-8b59-b1a961722c28/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec2/runtime.toml
+blacksmith: publication content cost differs from critical accounting
+_ test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create[push_error] _
+
+project = (PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec3/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x109844530>
+mode = 'push_error'
+
+    @pytest.mark.parametrize("mode", ["fresh", "existing", "branch_only", "push_error", "create_error"])
+    def test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create(
+        project, monkeypatch, mode,
+    ):
+        calls, remote, _ = setup(project, monkeypatch, mode=mode)
+>       assert run(project, "publication") == 0
+E       AssertionError: assert 1 == 0
+E        +  where 1 = run((PosixPath('/private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec3/target'), P...d'), {'contract_version': 1, 'component': 'demo', 'version': 'v1', 'primary_target_repo': 'example/context-demo', ...}), 'publication')
+
+tests/test_publication_integrity.py:121: AssertionError
+----------------------------- Captured stdout call -----------------------------
+Run d870f217-83ba-44ae-afb6-936fc18c1999: selected committed HEAD 2fe48ff0d8008960f584ba878dcf1eb2eb977448
+Run artifacts: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec3/.blacksmith/runs/d870f217-83ba-44ae-afb6-936fc18c1999
+[auto] gate 'plan': approved
+[auto] gate 'pr': approved
+----------------------------- Captured stderr call -----------------------------
+blacksmith: ingest_prd
+blacksmith: plan
+blacksmith: approve_plan
+blacksmith: approve_plan
+blacksmith: prepare_worktree
+blacksmith: prepare_level
+blacksmith: execute_unit
+blacksmith: prepare_attempt
+blacksmith: implement
+blacksmith: audit_commit
+blacksmith: auto_fix
+blacksmith: normalize_candidate
+blacksmith: test_gate
+blacksmith: review
+blacksmith: finalize_unit
+blacksmith: final_gate
+blacksmith: prepare_pr_approval
+blacksmith: approve_pr
+blacksmith: approve_pr
+blacksmith: open_pr
+Recovery manifest: /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec3/.blacksmith/runs/d870f217-83ba-44ae-afb6-936fc18c1999/recovery/289d4586-bdb5-4b6d-941e-92776f51c490/manifest.json
+Next action: blacksmith recovery inspect --thread-id publication --config /private/tmp/blacksmith-heavy-prd-t16-publication-integrity-01/test_exact_observed_effect_rec3/runtime.toml
+blacksmith: publication content cost differs from critical accounting
+=========================== short test summary info ============================
+FAILED tests/test_publication_integrity.py::test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create[fresh]
+FAILED tests/test_publication_integrity.py::test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create[branch_only]
+FAILED tests/test_publication_integrity.py::test_exact_observed_effect_reconciles_without_duplicate_summary_push_or_create[push_error]
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! KeyboardInterrupt !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+/Users/josh.smith/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/threading.py:355: KeyboardInterrupt
+(to show a full traceback on KeyboardInterrupt use --full-trace)
+3 failed, 1 passed in 89.58s (0:01:29)

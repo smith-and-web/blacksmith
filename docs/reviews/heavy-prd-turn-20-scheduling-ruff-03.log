@@ -1,0 +1,23 @@
+E501 Line too long (102 > 100)
+  --> tests/test_scheduling_runtime.py:81:101
+   |
+79 |     context = context_from_state(state)
+80 |     balance = BudgetLedger(context).balance()
+81 |     assert not balance.accounting_incomplete and balance.charged_usd == pytest.approx(.01*(3*count+1))
+   |                                                                                                     ^^
+82 |     assert len(calls) == 3*count+1 and len(remote.effects()) == 2
+83 |     assert state["publication_receipt"]["candidate_commit"] == git(
+   |
+
+E501 Line too long (102 > 100)
+   --> tests/test_scheduling_runtime.py:146:101
+    |
+144 |     saver.conn.close()
+145 |     before = saved_values(project[1], "publication")
+146 |     operations, events, count = context.journal().operations(), context.journal().events(), len(calls)
+    |                                                                                                     ^^
+147 |     monkeypatch.setattr(cli, "Executor", lambda *a, **k: pytest.fail("constructed executor"))
+148 |     monkeypatch.setattr("blacksmith.run_context.git_read", lambda *a, **k:
+    |
+
+Found 2 errors.

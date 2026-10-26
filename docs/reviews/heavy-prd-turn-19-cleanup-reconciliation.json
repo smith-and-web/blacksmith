@@ -1,0 +1,10 @@
+[
+  {
+    "case": 13,
+    "operation_id": "45215fd40fd437ccb3ec5c5135680af00b693dc03d0e665474c3444fb1167772",
+    "unit_id": "A",
+    "owned_pgid": 83405,
+    "members": [],
+    "outcome": "positive no live group members"
+  }
+]
