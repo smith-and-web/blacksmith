@@ -65,7 +65,9 @@ jobs:
         run: uv sync --frozen
 
       - name: Tests (pytest)
-        run: uv run pytest -v --exitfirst --tb=short --durations=25 ${{ matrix.pytest_args }}
+        run: >-
+          uv run pytest -v --exitfirst --tb=short --durations=25
+          ${{ matrix.pytest_args }}
 
   # Preserve the existing required check name. A skipped/cancelled/failed
   # prerequisite must never make the merge gate green.
