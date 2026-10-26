@@ -122,3 +122,12 @@ clean. The two utility implementations and their new tests are intentionally lef
 for Blacksmith. Prepared launchers verify these identities before invoking the CLI.
 The implementation goal stays complete at28/30; setup does not reset/resume it.
 No paid call or canary-run publication occurred during setup.
+
+## Follow-up: informational SDK startup warning
+
+- [ ] Silence the known informational `claude.ai connectors are disabled` notice
+  for Blacksmith's deliberate dedicated-API-key sessions. Keep authentication,
+  billing, configured tools and critical receipts unchanged. Preserve genuine
+  SDK/auth/network failures and unrelated stderr. Cover the narrow suppression
+  and real-error passthrough with regression tests. Recorded at the owner's
+  request; not implemented, and not a reason to change the active canary runtime.
