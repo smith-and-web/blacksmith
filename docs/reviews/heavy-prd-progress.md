@@ -1,6 +1,6 @@
 # Heavy-PRD implementation progress
 
-- Goal status: complete (local implementation); S01-S19 accepted; live release gates remain unrun.
+- Goal status: complete (local implementation); S01-S19 accepted locally. The fresh post-goal live canary published the exact candidate at AWAITING_QA; human QA and remaining release gates are separate. The original failed run is preserved.
 - Goal turn: 28 / 30. Never reset this counter automatically.
 - Initial interrupted goal turn: turn 1 (no implementation or tool evidence).
 - Previous-turn classification: progress; compatibility and exact21-row acceptance audits retained, full1419 observed on frozen1d68a64 through both100-chain/20-root passes; same full terminal0 now independently confirmed with all before/after identities unchanged.
@@ -26,7 +26,7 @@
 - S15 completion commit: `44f0108bbe38acdd638e16cea13d37865a23c885` (local only; turn22 full1325/ruff/165-source identity proof).
 - Starting revision: `dcc3bb56940c3907b2e0fcaf13c254e1c55f9767` (verified).
 - Existing untracked inputs preserved: specification and `2026-10-24-readiness-probes.py`.
-- No push, merge, publication, paid model call or live Blacksmith canary authorized.
+- Initial implementation scope excluded push, merge, publication and paid canaries. Later private-target setup and the owner's manual canary are recorded below; they do not resume the completed goal.
 
 ## Input preservation
 
@@ -64,9 +64,71 @@ See [heavy-prd-evidence.md](heavy-prd-evidence.md) for commands, scoped results,
 The repository owner explicitly approved the reviewed diff through36885ee,
 including contract.py, after the source walkthrough. See heavy-prd-human-approval.json.
 The implementation and its1419/Ruff-tested identity are unchanged. Human review is
-satisfied for that source; the paid canary and conditional Docker enablement gate
-remain unrun. Heavy-prd-canary-plan.md is a proposed disposable-target run, not
-spend/publication authorization. The completed goal counter stays28/30.
+satisfied for that source. The owner subsequently approved private setup and ran
+the canary manually; it stopped incomplete. The conditional Docker enablement gate
+remains unrun. The completed goal counter stays28/30.
+
+## Post-goal live-canary review, 2026-10-26
+
+Run `19277790-18ab-4792-8e45-be61a8cccd9b` stopped before test gates, reviews or
+publication. A custom transport options mismatch in SDK permission routing denied
+85 Write requests; neither utility exists. A zero-cost probe reproduces the exact
+missing flag. Original/shared/unit baseline hashes and remote refs remain unchanged.
+Known SDK estimates total about $1.426663; policy charge is about $3.426663 including
+two unknown-cost reservations. Accounting and all subsequent live gates remain
+incomplete. See [the review and next action](heavy-prd-canary-run-19277790.md).
+This review changes documentation only and makes no new paid call or goal-counter
+change. The runtime fix is outstanding; offline acceptance is not live acceptance.
+
+## Post-goal permission fix, 2026-10-26
+
+The owner requested a fix for writes and permissions. `OwnedCLITransport` now
+supplies stdio permission routing on a copy of guarded options. The real SDK/local
+CLI regression reproduced the old missing flag, then passed allowed Write/Edit and
+seven fail-closed denial checks after the fix. Unguarded routing remains compatible.
+Ruff passes. Full01 finished 1 failed/1421 passed on unchanged177-source identity:
+the 100-unit chain hit a separate native cleanup PermissionError after its unit
+commits. Failed log, recovery and fixture are retained. Native/SDK cleanup now share
+a bounded fail-closed observer, including prevention of recursive probes. Broader
+46-test command/SDK/deadline/cancellation verification passes. Full02 is terminal0:
+1431 passed/6 retained SDK warnings/7209.51s, with all178 source/test/runtime/input
+identities unchanged. The actual100-unit chain and20-root/default-two-worker cases
+pass. Final Ruff and separate fixed-source/private-target preflight pass; see
+[the fix record](heavy-prd-permissions-fix.md). No paid retry, allowance change or
+publication occurred. The original goal counter stays28/30. Requested urgent disk
+cleanup is complete: current verified full1431 archive retained; raw successful
+full1419/full1431 and passed full01 fixture siblings removed. Failed100-unit case,
+paid canary and original receipts remain. Source/input identity still matches full02;
+about12GiB available in the final observation. See the disk-cleanup JSON receipt.
+
+## Fresh live canary verified, 2026-10-26
+
+Operational rollout check: normal `/Users/josh.smith/.local/bin/blacksmith` still
+uses the older separate uv tool installation; it lacks remediation modules and
+does not contain the tested fixes. The canary used the checkout interpreter.
+`/Users/josh.smith/Code/blacksmith/.venv/bin/python -m blacksmith.cli` resolves the
+tested checkout even from outside this repository. Use that explicit interpreter
+until the installed tool is updated and verified. The final permission/cleanup
+delta and its two regression files are included in the readiness feature branch.
+The status check did not install or start paid work. All178 source/test hashes
+still match passing full02. Sandbox
+and respond remain disabled under the specification's permitted alternatives.
+
+Run `c36c7939-b2e1-45f4-97b1-aebd0a915d45` completed the automated path and
+published candidate `6996ab55beac70a7999bf1c6dd587c660d933ae0` as private canary
+PR #2. Both utility gates/reviews, final12-test/Ruff gate, independent rerun/smoke,
+source/baseline/sentinel identities, saved-call reuse and two concurrent model
+calls in distinct clones were verified. Seven paid calls total, SDK estimate
+$0.29278945, no uncertain operations. Exactly one push and one PR-create effect.
+The original failed run remains unchanged. No paid call or GitHub mutation was
+performed during this review. Goal counter remains28/30.
+
+GitHub records the PR being marked ready for review after draft creation; current
+`03-check.sh` correctly refuses the changed draft flag. The SHA still matches all
+gates/approval/remote/PR marker. Human QA is still pending in Blacksmith; the owner
+reports the PR looks good. Provider billing, original unknown costs and conditional
+Docker/crash-recovery follow-ups remain separate. See [live review](heavy-prd-canary-run-c36c7939.md)
+and its JSON evidence. PR #1 is the closed setup probe, not this canary.
 
 ## Final handoff: turn28; S01-S19 locally accepted
 

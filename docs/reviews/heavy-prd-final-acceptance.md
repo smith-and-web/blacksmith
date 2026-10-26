@@ -1,5 +1,17 @@
 # Heavy-PRD final acceptance audit
 
+Post-goal update, 2026-10-26: the live canary exposed an SDK write-permission routing
+defect. The authorized [permission/cleanup repair](heavy-prd-permissions-fix.md)
+now passes the complete1431-test suite and Ruff on unchanged178-file before/after
+identity. Both scale cases pass. The fresh [live canary](heavy-prd-canary-run-c36c7939.md)
+now verifies real writes, unit/final gates, strict reviews, saved-call reuse and
+exact-SHA draft creation at AWAITING_QA. Its12-test/Ruff candidate and independent
+smoke pass; seven settled calls report $0.29278945. GitHub subsequently marked PR #2
+ready for review, so the strict draft-state check currently refuses that changed
+flag. Human QA and provider billing remain separate. The original1419-test
+acceptance below is a historical baseline.
+The completed goal counter remains28/30.
+
 Goal turn **28/30**. **S01-S19 are locally accepted** on implementation
 `1d68a6492e53898c5011a24b9d14d771bad6275d` on `feature/heavy-prd-readiness`.
 S17/S18 use the specification's permitted disabled alternatives: enabled sandbox
@@ -11,7 +23,7 @@ Final command: `uv run pytest -q --basetemp /private/tmp/blacksmith-heavy-prd-t2
 **1419 passed, 7 warnings in 5207.92s (1:26:47)**, exit0. No skips, xfails or warning
 filtering. The actual100-unit chain and20-root/default2-worker cases pass. All176
 Python sources, inline-JS probe, supervisor, config, original spec/probe,65 installed
-distributions, Python3.12.13 and SQLite3.53.1 match before/after and current rechecks.
+distributions, Python3.12.13 and SQLite3.53.1 match before/after and turn28 rechecks.
 `uv run ruff check` passed on the same unchanged source.
 
 The seven retained SDK advisories concern auto-approved Read/Glob/Grep in the
@@ -149,9 +161,12 @@ services are replaced where documented. After the retained turn13 exception,
 native Git transport/auth guards restrict fixture pushes to scratch local bare
 repositories. No live release gate is inferred from these fixtures.
 
-Remaining live gates: an explicitly authorized disposable-target $10 paid canary with two independent auto units plus terminal QA,
-plan-only refusal then exact-SHA draft approval/publication; real Docker ownership/
-timeout/restart smoke before any future sandbox enablement. Neither live gate has run. The implementation approval
-does not authorize push/merge/publication/paid canaries. The historical turn13 unintended
-external push attempt failed128 before authentication; its receipt is retained and
-must remain disclosed in the goal closeout. No successful live publication is claimed.
+The separately owner-run disposable-target canary now verifies the two auto units,
+plan-only refusal and exact-SHA resumed draft publication; its terminal human QA
+remains pending. Remaining live gates include recorded human QA and provider
+billing reconciliation, plus real Docker ownership/timeout/restart smoke before
+any future sandbox enablement. Real crash-injection follow-ups are separate from
+the successful nominal canary. No merge or broad enabled-feature release is
+authorized or claimed here. The original failed canary and its unknown usage are
+preserved. The historical turn13 unintended external push attempt failed128 before
+authentication; its receipt remains disclosed in the goal closeout.

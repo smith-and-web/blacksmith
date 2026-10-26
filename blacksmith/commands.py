@@ -25,7 +25,7 @@ from pathlib import Path
 from threading import Event
 from uuid import uuid4
 
-from blacksmith.receipts import OperationJournal, attempt_identity
+from blacksmith.receipts import OperationJournal, ReceiptError, attempt_identity
 
 TAIL_BYTES = 16384
 GIT_TIMEOUT_S = 120
@@ -53,6 +53,7 @@ class CommandScope:
 
 
 _scope = contextvars.ContextVar("blacksmith_command_scope", default=None)
+_group_observation = contextvars.ContextVar("blacksmith_group_observation", default=False)
 
 
 @contextmanager
@@ -202,12 +203,52 @@ class _Capture:
         return bytes(self.raw) if self.sensitive else Path(self.file.name).read_bytes()
 
 
+def process_group_gone(pid, *, command_runner=None, stage="native_cleanup", kind=None):
+    """Observe no live group members; never recursively observe our observer."""
+    from blacksmith.run_clock import current
+
+    if _group_observation.get():
+        raise ReceiptError("recursive process observation is unavailable")
+    previous, owner = _scope.get(), current()
+    context = previous.context if previous is not None else owner.context if owner else None
+    fallback_attempt = "sdk-cleanup" if stage == "sdk_cleanup" else "native-cleanup"
+    token = _group_observation.set(True)
+    try:
+        with command_scope(context, stage=stage,
+                unit_id=previous.unit_id if previous else "__run__",
+                attempt_id=previous.attempt_id if previous else fallback_attempt):
+            result = (command_runner or run_command)(
+                ["ps", "-A", "-o", "pid=,pgid=,stat="], timeout=1,
+                kind=kind or f"native_group_observe:{pid}")
+        result.check_returncode()
+        result.require_complete_output()
+        rows = result.stdout.splitlines()
+        if not rows:
+            raise ReceiptError("cleanup process observation returned no process inventory")
+        states = []
+        for row in rows:
+            fields = row.split()
+            if len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit():
+                raise ReceiptError("cleanup process observation is malformed")
+            if int(fields[1]) == pid:
+                states.append(fields[2])
+        return not states or all(state.startswith("Z") for state in states)
+    finally:
+        _group_observation.reset(token)
+
+
 def _group_signal(pid, sig):
     try:
         os.killpg(pid, sig)
         return True
     except ProcessLookupError:
         return False
+    except PermissionError:
+        # Darwin can deny a signal while a terminated group is being reaped.
+        # Only a complete positive inventory can establish that writers stopped.
+        if not _group_observation.get() and process_group_gone(pid):
+            return False
+        raise
 
 
 def run_command(

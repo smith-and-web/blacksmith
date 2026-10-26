@@ -12,11 +12,12 @@ import os
 import signal
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
-from blacksmith.commands import run_command
+from blacksmith.commands import process_group_gone, run_command
 from blacksmith.receipts import ReceiptError
 
 
@@ -36,28 +37,8 @@ def _signal(pid, sig, *, group=False):
 
 def _group_gone(pid):
     """Positive bounded observation of no live members; fail closed on uncertainty."""
-    from blacksmith.commands import _scope, command_scope
-    from blacksmith.run_clock import current
-    previous, owner = _scope.get(), current()
-    context = previous.context if previous is not None else owner.context if owner else None
-    with command_scope(context, stage="sdk_cleanup",
-            unit_id=previous.unit_id if previous else "__run__",
-            attempt_id=previous.attempt_id if previous else "sdk-cleanup"):
-        result = run_command(["ps", "-A", "-o", "pid=,pgid=,stat="], timeout=1,
-                             kind=f"sdk_group_observe:{pid}")
-    result.check_returncode()
-    result.require_complete_output()
-    rows = result.stdout.splitlines()
-    if not rows:
-        raise ReceiptError("SDK cleanup process observation returned no process inventory")
-    states = []
-    for row in rows:
-        fields = row.split()
-        if len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit():
-            raise ReceiptError("SDK cleanup process observation is malformed")
-        if int(fields[1]) == pid:
-            states.append(fields[2])
-    return not states or all(state.startswith("Z") for state in states)
+    return process_group_gone(pid, command_runner=run_command, stage="sdk_cleanup",
+                              kind=f"sdk_group_observe:{pid}")
 
 
 def _stop(process):
@@ -115,6 +96,12 @@ async def finish_cleanup(coro):
 
 class OwnedCLITransport(SubprocessCLITransport):
     def __init__(self, prompt, options):
+        # ClaudeSDKClient adds this flag to a copy of its options, but that copy
+        # never reaches a preconstructed custom transport. Route CLI permission
+        # requests to the Python guard without mutating the client's options:
+        # the SDK rejects can_use_tool + permission_prompt_tool_name together.
+        if options.can_use_tool is not None:
+            options = replace(options, permission_prompt_tool_name="stdio")
         super().__init__(prompt, options)
         self._owned_cleanup_task = None
 

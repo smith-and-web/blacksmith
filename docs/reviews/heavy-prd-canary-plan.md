@@ -1,11 +1,18 @@
 # Heavy-PRD live canary plan and private setup
 
-Status: the repository owner approved the plan and requested private setup. The
-private target, baseline and launch inputs are prepared. The owner started the
-plan-only run: U01 planning completed and U02 planning was interrupted. The live
-canary remains incomplete; credentials worked and the connector warning is
-informational. An explicit same-run continuation is prepared locally, not executed. Human source approval is recorded separately in
+Status: the owner ran the prepared same-run continuation. Both plans are saved,
+but implementation stopped without either utility: the custom SDK transport drops
+the permission callback routing flag, and allowed writes were repeatedly denied.
+U02 reached the turn cap and its continuation timed out. No gate, review or
+publication receipts exist. The target remains private and unchanged. See the
+[2026-10-26 run review](heavy-prd-canary-run-19277790.md) for the confirmed local
+reproduction, costs and remaining live gates. Do not restart paid execution before
+fixing and verifying that boundary. Human source approval is recorded separately in
 [heavy-prd-human-approval.json](heavy-prd-human-approval.json).
+The subsequently authorized [permission fix](heavy-prd-permissions-fix.md) passes
+the local SDK protocol regression, full1431-test suite and Ruff. A separate
+fixed-source/private-target preflight also passes without starting a model call. It does not
+change the outcome of the saved paid run or establish live release acceptance.
 The implementation goal remains complete at turn28/30; this proposal does not
 resume it or reset its counter.
 
@@ -122,6 +129,13 @@ clean. The two utility implementations and their new tests are intentionally lef
 for Blacksmith. Prepared launchers verify these identities before invoking the CLI.
 The implementation goal stays complete at28/30; setup does not reset/resume it.
 No paid call or canary-run publication occurred during setup.
+
+## Fresh fixed-source canary scripts
+
+Fresh launchers after the verified permissions repair are prepared separately;
+see [the scripts and validation record](heavy-prd-canary-scripts.md). They preserve
+the failed run and original setup launchers. No paid retry or publication ran
+during script preparation.
 
 ## Follow-up: informational SDK startup warning
 

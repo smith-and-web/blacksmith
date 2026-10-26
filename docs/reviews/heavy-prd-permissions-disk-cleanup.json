@@ -1,0 +1,24 @@
+{
+  "status": "completed",
+  "completed_at": "2026-10-26T15:01:28.075495-03:00",
+  "source_and_original_inputs_unchanged": true,
+  "original_goal_turn": 28,
+  "successful_roots_removed": [
+    "/private/tmp/blacksmith-permissions-full02-20261026",
+    "/private/tmp/blacksmith-heavy-prd-t26-full-01"
+  ],
+  "passed_fixture_siblings_removed": true,
+  "failed_case_preserved": "/private/tmp/blacksmith-permissions-full01-20261026/test_hundred_unit_chain_comple0",
+  "paid_canary_preserved": "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/private-canary-setup/.blacksmith/runs/19277790-18ab-4792-8e45-be61a8cccd9b",
+  "verified_archive": "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/disk-cleanup-20261026/permissions1431.tar.gz",
+  "archive_bytes": 351486394,
+  "archive_entries": 950935,
+  "archive_verified_before_removal": true,
+  "historical1419_raw_fixtures_removed_without_new_archive_at_owner_urgency": true,
+  "historical_test_logs_source_identity_receipts_and_current1431_full_archive_retained": true,
+  "regular_file_modes_changed": false,
+  "free_bytes_now": 13234835456,
+  "stopped_extra_archive_recheck": true,
+  "uv_cache_prune": "no unused entries",
+  "native_cleanup_record": "/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/disk-cleanup-20261026/native-cleanup-completed.json"
+}
