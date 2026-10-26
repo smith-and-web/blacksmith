@@ -1,17 +1,22 @@
-# Proposed heavy-PRD live canary
+# Heavy-PRD live canary plan and private setup
 
-Status: proposed, not executed or authorized. Human approval of the implementation
-is recorded separately in [heavy-prd-human-approval.json](heavy-prd-human-approval.json).
+Status: the repository owner approved the plan and requested private setup. The
+private target, baseline and launch inputs are prepared; paid execution has not
+started. Human source approval is recorded separately in
+[heavy-prd-human-approval.json](heavy-prd-human-approval.json).
 The implementation goal remains complete at turn28/30; this proposal does not
 resume it or reset its counter.
 
 ## Disposable target and work
 
-Use a new disposable GitHub repository, suggested name
-`blacksmith-readiness-canary`, with a tiny Python package, pytest and Ruff. Confirm
-the chosen repository/account supports draft PRs before any paid call. Prefer a
-private target where draft PRs are supported; otherwise explicitly select a public
-toy repository containing no private material. No repository has been created.
+The disposable `blacksmith-readiness-canary` repository is now PRIVATE, with a
+minimal Python package, locked pytest/Ruff dependencies and trusted toolchain.
+The latest request requires private visibility; there is no public fallback.
+Private draft support was verified with a setup-only draft and that draft was
+closed without merging. The main checkout and protected sentinel remain unchanged.
+Operational inputs, private setup receipts and logs are retained locally outside
+this source repository under
+`/Users/josh.smith/.codex/artifacts/blacksmith-heavy-prd-readiness/private-canary-setup/`.
 
 Commit the minimal package scaffold, a passing smoke test, locked development
 dependencies and a trusted `blacksmith.toml` first. Prewarm the gate environment.
@@ -70,7 +75,9 @@ billing separately. No automatic budget increase, uncapped fallback or canary re
 1. Run from the approved feature checkout using its source environment, a unique
    thread ID and `--approve plan`. Both auto units should implement, gate and review.
    Expect exit1 at denied PR approval, retained workspaces/recovery manifest and
-   no paid summary, remote branch or PR. Save the exact candidate, final gate,
+   no paid summary or canary-run-owned remote branch/PR. The closed setup probe
+   and bootstrap refs are pre-existing setup evidence, not canary publication.
+   Save the exact candidate, final gate,
    review receipts, approval proposal and cost/call IDs.
 2. Start a fresh process and resume the same thread/config with `--approve pr`.
    Expect the same candidate and consumed budget, no repeated plan/implementation/
@@ -103,3 +110,13 @@ testing are separate follow-ups, not part of this first canary.
 - [GitHub draft PR availability](https://docs.github.com/en/rest/pulls/pulls).
 - [SDK budget example and overshoot semantics](https://github.com/anthropics/claude-agent-sdk-python/blob/main/examples/max_budget_usd.py).
 - [SDK estimates versus authoritative billing](https://code.claude.com/docs/en/agent-sdk/cost-tracking).
+
+## Prepared setup evidence
+
+The actual offline validate command accepted the three-unit PRD and compiled hard
+path rules. Baseline pytest/Ruff passed, dependencies are warmed, private visibility
+and source/runtime/input hashes were checked, and the original target checkout is
+clean. The two utility implementations and their new tests are intentionally left
+for Blacksmith. Prepared launchers verify these identities before invoking the CLI.
+The implementation goal stays complete at28/30; setup does not reset/resume it.
+No paid call or canary-run publication occurred during setup.
