@@ -132,11 +132,31 @@ def test_unavailable_or_any_panel_blocker_halts_both_shapes_before_later_effects
     '{"verdict":"clean","findings":[{"severity":"typo","file":"a","detail":"b"}]}',
     '{"verdict":"clean","findings":[{"severity":"blocking","file":3,"detail":"b"}]}',
     '{"verdict":"clean","findings":[{"severity":"blocking","file":"a","detail":" "}]}',
-    'prefix ```json\n' + CLEAN + '\n```', '```json\n' + CLEAN + '\n``` trailing',
+    'prose only, no block',
+    'prose ' + CLEAN,                                   # bare object with surrounding prose
+    '```json\n' + CLEAN,                                # unterminated fence
+    '```json\n' + CLEAN + '\n```\n```json\n' + CLEAN + '\n```',  # two blocks
+    'prose ```json\n' + CLEAN + '\n``` and ```\n{}\n```',
 ])
 def test_verdict_requires_one_strict_complete_object(text):
     with pytest.raises(ValueError):
         parse_verdict(text)
+
+
+@pytest.mark.parametrize("text", [
+    CLEAN,
+    '```json\n' + CLEAN + '\n```',
+    '```\n' + CLEAN + '\n```',
+    # Reviewers write a prose summary around the block despite the prompt; the block is
+    # the verdict and the prose is ignored (seen twice on the first external PRD run).
+    'I verified the four edits and the test.\n\nNo blocking bugs found.\n\n```json\n'
+    + CLEAN + '\n```',
+    '```json\n' + CLEAN + '\n```\n\nSummary: nothing blocking.',
+    'prefix ```json\n' + CLEAN + '\n``` trailing',
+])
+def test_verdict_accepts_one_fenced_block_anywhere(text):
+    verdict = parse_verdict(text)
+    assert verdict.verdict == "clean" and verdict.findings == ()
 
 
 @pytest.mark.parametrize("parallel", [False, True])

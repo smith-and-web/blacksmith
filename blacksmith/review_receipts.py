@@ -103,14 +103,23 @@ class ReviewReceipt(_Record):
         return self
 
 
+_FENCED_BLOCK = re.compile(r"```(?:json)?[ \t]*\n?(.*?)\n?[ \t]*```", re.DOTALL)
+
+
 def parse_verdict(text):
-    """Accept one complete JSON object, optionally fenced; never infer a clean vote."""
+    """Accept one complete JSON object: bare, or inside exactly one fenced block.
+
+    Reviewers sometimes write a prose summary before (or after) the fenced verdict even
+    though the prompt forbids it; the prose is ignored, the block is the verdict. Zero
+    fences with prose, more than one fence, or an unterminated fence are rejected, and a
+    clean vote is never inferred from prose.
+    """
     value = text.strip()
-    if value.startswith("```"):
-        match = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\s*```", value, re.DOTALL)
-        if not match:
-            raise ValueError("expected exactly one JSON verdict")
-        value = match.group(1)
+    if "```" in value:
+        blocks = _FENCED_BLOCK.findall(value)
+        if len(blocks) != 1 or value.count("```") != 2:
+            raise ValueError("expected exactly one fenced JSON verdict")
+        value = blocks[0].strip()
 
     def unique(pairs):
         result = {}

@@ -36,8 +36,11 @@ Reviewers return one complete JSON object, optionally in one fenced JSON block:
 
 `verdict` is `clean` or `needs_changes`; findings require nonblank string `file`
 and `detail` and severity `blocking` or `advisory`. Unknown/missing fields,
-duplicate JSON keys, unknown severities, malformed JSON or surrounding prose do
-not count as a valid verdict. Any validated blocking finding from any panelist
+duplicate JSON keys, unknown severities or malformed JSON do not count as a
+valid verdict. Prose around one fenced block is ignored and the block is the
+verdict (stronger reviewers write a summary before it despite the prompt); a
+bare object with surrounding prose, no fence, more than one fence, or an
+unterminated fence is rejected, and a clean vote is never inferred from prose. Any validated blocking finding from any panelist
 blocks the candidate, including a minority of one. Advisory-only findings remain
 nonblocking. The top-level verdict cannot override a blocking finding.
 
